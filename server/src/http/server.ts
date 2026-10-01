@@ -31,8 +31,9 @@ export async function buildServer(services: AppServices, config: Config, opts: H
   const defaultJson = app.getDefaultJsonParser("error", "ignore");
   app.removeContentTypeParser("application/json");
   app.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, done) => {
-    if (typeof body === "string" && body.trim() === "") return done(null, undefined);
-    defaultJson(req, body, (err, parsed) => {
+    const raw = typeof body === "string" ? body : body.toString("utf8");
+    if (raw.trim() === "") return done(null, undefined);
+    defaultJson(req, raw, (err, parsed) => {
       if (err) return done(new AppError(400, "validation", "İstek gövdesi geçerli bir JSON değil."), undefined);
       done(null, parsed);
     });
