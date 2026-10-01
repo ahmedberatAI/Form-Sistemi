@@ -2,9 +2,7 @@ node_modules/
 dist/
 *.log
 .env
-server/data/*.db
-server/data/*.db-*
-server/data/keys/
+server/data/
 web/android/app/build/
 web/android/.gradle/
 web/android/build/
@@ -12,3 +10,10 @@ web/android/local.properties
 web/android/app/src/main/assets/public/
 coverage/
 .DS_Store
+
+# Ajan/geliştirici geçici dosyaları
+server/scratch*
+*.tmp.ts
+
+# Yerel Claude Code ayarları
+.claude/
