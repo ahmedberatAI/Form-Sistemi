@@ -7,7 +7,7 @@ import { runScenario } from "./scenario";
 import { printSummary, verifySeed, type Check } from "./verify";
 
 export { SeedEngine } from "./engine";
-export { KEYS, runScenario } from "./scenario";
+export { KEYS, runScenario, setupAccounts, setupGraph } from "./scenario";
 export { verifySeed, printSummary, type Check } from "./verify";
 
 export const SEED = "forum-seed-1";

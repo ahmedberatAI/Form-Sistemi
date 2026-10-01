@@ -456,7 +456,7 @@ export async function runScenario(e: SeedEngine, opts: { start: number; end: num
 
 // ═══════════════════════════ Hesaplar ve graf ═══════════════════════════
 
-async function setupAccounts(e: SeedEngine): Promise<Map<string, RegistrationInput>> {
+export async function setupAccounts(e: SeedEngine): Promise<Map<string, RegistrationInput>> {
   const s = e.s;
   const usedTckn = new Set<string>();
   const addressOf = new Map<string, RegistrationInput["address"]>();
@@ -493,7 +493,7 @@ async function setupAccounts(e: SeedEngine): Promise<Map<string, RegistrationInp
   return regs;
 }
 
-function setupGraph(e: SeedEngine): void {
+export function setupGraph(e: SeedEngine): void {
   const g = e.s.graph;
   const id = (n: string) => e.user(n).id;
   const voters = [...e.users.values()].filter((u) => u.person.block && u.person.kind !== "expert").map((u) => u.person.nickname);

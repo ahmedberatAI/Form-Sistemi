@@ -3,6 +3,7 @@
 // "bugün"e ilerletilerek üretilir. Defter kayıtları gerçek BFT defterden geçer.
 import { existsSync, readdirSync, rmSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { createApp } from "./app";
 import { DAY, HOUR, ScaledClock } from "./core/clock";
@@ -94,7 +95,10 @@ async function main(): Promise<void> {
   console.log("\n✔ Tohum verisi hazır. Sunucuyu başlatmak için: npm run dev -w server");
 }
 
-main().catch((err) => {
-  console.error("Tohum verisi üretilemedi:", err);
-  process.exit(1);
-});
+// Yalnızca doğrudan çalıştırıldığında (tsx src/seed.ts); içe aktarıldığında hiçbir şey yapmaz.
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  main().catch((err) => {
+    console.error("Tohum verisi üretilemedi:", err);
+    process.exit(1);
+  });
+}
