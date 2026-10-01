@@ -1,7 +1,7 @@
 // Tohum motoru: simüle saati bir ajanda ve evre bitişleri boyunca ilerletir, her adımda yaşam döngüsünü
 // (lifecycle.tick) çalıştırıp defteri boşaltır (ledger.flush) ve faz geçişlerine bağlı senaryo kancalarını tetikler.
 // Tüm alan verisi SERVİSLER üzerinden yazılır; doğrudan SQL yalnızca okuma içindir.
-import { fy, type ProposalStatus, type Rng, type VoteChoice } from "@forum/shared";
+import type { ProposalStatus, Rng, VoteChoice } from "@forum/shared";
 import type { AppServices } from "../app";
 import { HOUR, type Clock } from "../core/clock";
 import type { AuthUser } from "../core/contracts";
@@ -367,6 +367,4 @@ export class SeedEngine {
     }
     return !!this.s.experts.panel(id);
   }
-
-  fy = fy;
 }
