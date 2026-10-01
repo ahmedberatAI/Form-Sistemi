@@ -38,9 +38,11 @@ describe("forum: yönetmelik değişikliği ve konu sürümleri", () => {
     d = h.forum.proposals.get(id, null);
     expect(d.status).toBe("objection_window");
     // Eşik, oylama açılışında sabitlenen parametredir (T2: en az 2/3; nitelikli hükümde ontoloji 3/4 ister)
-    const th = d.results[0].thresholdUsed;
-    expect(th.num * 3).toBeGreaterThanOrEqual(2 * th.den);
+    // Nitelikli hüküm değişikliği (fy:NitelikliHukumDegisikligi): τ = 3/4; soğuk başlangıç eşiği max(τ, min(τ+δ, 2/3)) = 3/4.
     expect(d.params?.tier).toBe("T2");
+    expect(d.results[0].thresholdUsed).toEqual({ num: 3, den: 4 });
+    expect(d.results[0].thresholdUsed).toEqual(d.params!.threshold);
+    expect(d.results[0].totals).toMatchObject({ yes: 25, no: 2 }); // %92,6 ≥ 3/4
     await endPhase(h, id);
     d = h.forum.proposals.get(id, null);
     expect(d.status).toBe("enacted");

@@ -32,7 +32,10 @@ export default function BlockPage() {
   const pin = usePinnedValidators();
 
   const b = block.data;
-  const validators = pin.data?.pinned.validators ?? status.data?.validators.map((v) => ({ id: v.id, publicKey: v.publicKey })) ?? null;
+  const validators = useMemo(
+    () => pin.data?.pinned.validators ?? status.data?.validators.map((v) => ({ id: v.id, publicKey: v.publicKey })) ?? null,
+    [pin.data, status.data],
+  );
 
   const check = useMemo(() => (b ? verifyBlock(b, validators) : null), [b, validators]);
   const nodeQs = node ? `?node=${encodeURIComponent(node)}` : "";
@@ -62,7 +65,7 @@ export default function BlockPage() {
         }
       />
       {status.data ? (
-        <div style={{ maxWidth: 320 }}>
+        <div className="sy-narrow-field">
           <Select
             label="Hangi kopya?"
             value={node}

@@ -164,3 +164,7 @@
   overflow: auto;
   font-size: 0.78rem;
 }
+
+.sy-narrow-field {
+  max-width: 320px;
+}
