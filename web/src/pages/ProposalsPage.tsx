@@ -71,7 +71,7 @@ const SORTS: { value: SortId; label: string }[] = [
   { value: "eski", label: "En eski" },
 ];
 
-const LIMIT = 1000;
+const LIMIT = 500; // sunucunun izin verdiği en büyük sayfa (http şeması)
 
 export default function ProposalsPage() {
   const auth = useAuth();
