@@ -49,7 +49,8 @@ export function FindingList({ findings, empty }: { findings: Finding[]; empty?: 
     <ul className="pre-findings">
       {findings.map((f, i) => {
         const s = SEVERITY[f.severity] ?? SEVERITY.info;
-        const art = f.articleLabel ?? (f.article ? articleLabel(f.article) : null);
+        const label = f.articleLabel ?? (f.article ? articleLabel(f.article) : null);
+        const art = label && !f.message.includes(label) ? label : null;
         return (
           <li key={`${f.code}-${i}`} className={`pre-finding pre-finding-${f.severity}`}>
             <Badge tone={s.tone}>{s.label}</Badge>

@@ -47,7 +47,7 @@ async function proofStep(label: string, txHash: string | null, pinned: PinnedVal
       ok: v.ok,
       detail: v.ok ? (
         <>
-          Blok <Link to={routes.block(proof.height)}>#{proof.height}</Link>, sıra {proof.index}; Merkle yolu ve {proof.header.commitSigs.length} doğrulayıcı imzası denetlendi.
+          Blok <Link to={routes.block(proof.height)}>#{proof.height}</Link>, sıra {proof.index + 1}; Merkle yolu ve {proof.header.commitSigs.length} doğrulayıcı imzası denetlendi.
         </>
       ) : (
         v.reasons.join("; ")

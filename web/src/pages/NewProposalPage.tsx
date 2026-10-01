@@ -3,13 +3,13 @@
 // Ön doldurma: ?tur=<kind>&konu=<topicId>&mesaj=<messageId> (routes.newProposal).
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { PROPOSAL_KIND_LABELS, type CreateProposalRequest, type MessageView, type ProposalKind, type TopicSummary } from "@forum/shared";
+import { expandIri, PROPOSAL_KIND_LABELS, type CreateProposalRequest, type MessageView, type ProposalKind, type TopicSummary } from "@forum/shared";
 import { ApiError } from "../api/client";
 import { createProposal, getTopic, listTopics, precheckProposal } from "../api/endpoints";
 import { useAuth } from "../auth/AuthContext";
 import { CategoryPicker } from "../components/CategoryPicker";
 import { DeletionForm, deletionTargetProblems, type DeletionDraft } from "../components/proposals/DeletionForm";
-import { KIND_ORDER, KindPicker } from "../components/proposals/KindPicker";
+import { KIND_INFO, KIND_ORDER, KindPicker } from "../components/proposals/KindPicker";
 import { draftToPatch, PatchBuilder, type PatchDraftOp } from "../components/proposals/PatchBuilder";
 import { PII_KIND_LABELS, PrecheckPanel, PrecheckSummary } from "../components/proposals/PrecheckPanel";
 import { useOntology } from "../lib/categories";
@@ -150,7 +150,7 @@ export default function NewProposalPage() {
     setBody(topic.body);
   }, [kind, topic]);
 
-  const patchInfo = useMemo(() => draftToPatch(patchOps, body.trim(), ontology?.params ?? []), [patchOps, body, ontology]);
+  const patchInfo = useMemo(() => draftToPatch(patchOps, body.trim(), ontology?.params ?? [], ontology?.articles ?? []), [patchOps, body, ontology]);
 
   const req = useMemo<CreateProposalRequest | null>(() => {
     if (!kind) return null;
@@ -159,7 +159,8 @@ export default function NewProposalPage() {
     if (kind === "subtopic" || kind === "amendment") r.parentTopicId = parentTopicId || undefined;
     if (kind === "amendment" && topic) r.amendment = { baseVersion: topic.version, newTitle: title.trim(), newBody: body.trim() };
     if (kind === "deletion") {
-      r.title = "";
+      // HTTP şeması başlığı zorunlu tutar; sunucunun varsayılanıyla aynı başlık üretilir, metin = açıklama.
+      r.title = `Silme talebi: ${deletion.messageIds.length} mesaj`;
       r.body = "";
       r.categories = [];
       r.deletion = { messageIds: deletion.messageIds, ground: deletion.ground, statement: deletion.statement.trim() };
@@ -184,7 +185,12 @@ export default function NewProposalPage() {
     }
   }, [kind, title, body, parentTopicId, topic, deletion, patchInfo]);
 
-  const reqKey = req && !idleText ? JSON.stringify(req) : "";
+  // Ön denetim başlık yazılmadan da çalışsın (HTTP şeması boş başlığı reddeder): geçici başlık.
+  const reqKey = useMemo(() => {
+    if (!req || idleText) return "";
+    const t = req.title || "Başlıksız öneri";
+    return JSON.stringify({ ...req, title: t, amendment: req.amendment ? { ...req.amendment, newTitle: t } : undefined });
+  }, [req, idleText]);
   const debKey = useDebounced(reqKey, 700);
   const canPropose = auth.can("V");
   const pre = useAsync(() => precheckProposal(JSON.parse(debKey) as CreateProposalRequest), [debKey], { enabled: !!debKey && canPropose });
@@ -199,10 +205,13 @@ export default function NewProposalPage() {
     setSubmitError(null);
   }, [kind, setPreData]);
 
-  const suggestions = useMemo(
-    () => (preResult?.classification.categories ?? []).map((c) => ({ iri: c.iri, label: c.label, confidence: c.confidence })),
-    [preResult],
-  );
+  const inherited = useMemo(() => (needsTopic && topic ? topic.categories : []), [needsTopic, topic]);
+  const suggestions = useMemo(() => {
+    const have = new Set(inherited.map(expandIri));
+    return (preResult?.classification.categories ?? [])
+      .filter((c) => !have.has(expandIri(c.iri)))
+      .map((c) => ({ iri: c.iri, label: c.label, confidence: c.confidence }));
+  }, [preResult, inherited]);
   const addCategory = (iri: string) => setCategories((prev) => (prev.includes(iri) ? prev : [...prev, iri]));
 
   if (!canPropose) {
@@ -308,7 +317,6 @@ export default function NewProposalPage() {
   };
 
   const versionConflict = submitError instanceof ApiError && submitError.code === "version_conflict";
-  const inherited = needsTopic && topic ? topic.categories : [];
 
   const titleField = (
     <Input
@@ -372,16 +380,16 @@ export default function NewProposalPage() {
         subtitle="Forumda her değişiklik bir öneriyle başlar: destekçi toplar, tartışılır, köprülü çoğunlukla oylanır."
         back={{ to: routes.proposals(), label: "Öneriler" }}
       />
+      <div className="form-section np-kinds">
+        <KindPicker label="1. Öneri türü" value={kind} onChange={(k) => setKindParam(k)} disabled={!!busy} />
+      </div>
+
       <div className="split np-split">
         <form ref={formRef} className="stack" onSubmit={onSubmit} noValidate aria-label="Öneri formu">
-          <fieldset className="form-section">
-            <legend>1. Öneri türü</legend>
-            <KindPicker value={kind} onChange={(k) => setKindParam(k)} disabled={!!busy} />
-          </fieldset>
-
           {kind ? (
             <fieldset className="form-section" disabled={!!busy}>
               <legend>2. {PROPOSAL_KIND_LABELS[kind]}</legend>
+              <p className="small muted mt-0">{KIND_INFO[kind].text}</p>
 
               {kind === "topic" ? (
                 <>
@@ -494,7 +502,18 @@ export default function NewProposalPage() {
 
           {kind ? (
             <section className="stack-sm np-submit" aria-label="Gönderim">
-              <PrecheckSummary result={preResult} loading={pre.loading} stale={preStale} />
+              <div className="row-between">
+                <PrecheckSummary result={preResult} loading={pre.loading} stale={preStale} />
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  icon="chevronDown"
+                  className="np-to-panel"
+                  onClick={() => document.getElementById("np-precheck")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                >
+                  Ön denetim ayrıntıları
+                </Button>
+              </div>
 
               {pii ? (
                 <div id="np-pii">
@@ -551,7 +570,7 @@ export default function NewProposalPage() {
           ) : null}
         </form>
 
-        <aside className="np-aside" aria-label="Ön denetim">
+        <aside className="np-aside" id="np-precheck" aria-label="Ön denetim">
           {kind ? (
             <PrecheckPanel
               result={preResult}
@@ -560,7 +579,7 @@ export default function NewProposalPage() {
               stale={preStale}
               idleText={idleText}
               onRetry={() => void pre.reload()}
-              selectedCategories={kind === "deletion" || kind === "regulation" ? undefined : categories}
+              selectedCategories={kind === "deletion" || kind === "regulation" ? undefined : [...categories, ...inherited]}
               onAddCategory={kind === "topic" || kind === "subtopic" || kind === "amendment" ? addCategory : undefined}
             />
           ) : (

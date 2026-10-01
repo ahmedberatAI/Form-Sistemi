@@ -205,7 +205,7 @@ function DelegationsCard() {
                 rows={data.incoming}
                 rowKey={(d) => d.id}
                 columns={[
-                  { key: "from", header: "Veren", render: (d) => <UserLink id={d.from} nickname={d.fromNickname} /> },
+                  { key: "from", header: "Veren", render: (d) => <span className="nowrap"><UserLink id={d.from} nickname={d.fromNickname} /></span> },
                   { key: "scope", header: "Kapsam", render: (d) => scopeLabel(d.scope) },
                   { key: "rank", header: "Sıra", align: "center", render: (d) => `${d.rank}.` },
                   { key: "at", header: "Tarih", hideOnMobile: true, render: (d) => <Time at={d.createdAt} /> },

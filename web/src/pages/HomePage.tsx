@@ -465,7 +465,7 @@ export default function HomePage() {
             }
           >
             {data.recentEnacted.length ? (
-              <ProposalList proposals={data.recentEnacted} compact myId={myId} headingLevel={3} label="Son yürürlüğe giren öneriler" />
+              <ProposalList proposals={data.recentEnacted} myId={myId} headingLevel={3} label="Son yürürlüğe giren öneriler" />
             ) : (
               <p className="muted">Henüz yürürlüğe giren karar yok.</p>
             )}

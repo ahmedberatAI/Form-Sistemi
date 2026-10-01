@@ -196,7 +196,7 @@ export function MessageItem({ message: m, parentNickname, focused, deletionSeq, 
         <div className="msg-collapsed-bar">
           <p className="small">
             <strong>Gözden geçiriliyor</strong> —{" "}
-            {m.pendingDeletionProposalId ? <Link to={routes.proposal(m.pendingDeletionProposalId)}>{deletionLabel}</Link> : "silme talebi"}. Acil gerekçeli talep nedeniyle karar çıkana kadar
+            {m.pendingDeletionProposalId ? <Link className="nowrap" to={routes.proposal(m.pendingDeletionProposalId)}>{deletionLabel}</Link> : "silme talebi"}. Acil gerekçeli talep nedeniyle karar çıkana kadar
             katlandı (gizlenmedi).
           </p>
           <Button size="sm" variant="ghost" aria-expanded={expanded} onClick={() => setExpanded((x) => !x)} icon={expanded ? "chevronDown" : "chevronRight"}>
@@ -228,7 +228,7 @@ export function MessageItem({ message: m, parentNickname, focused, deletionSeq, 
                 <Badge tone="warning" icon="warning">
                   Hakkında açık silme talebi var
                 </Badge>{" "}
-                <Link to={routes.proposal(m.pendingDeletionProposalId)}>{deletionLabel}</Link> — karar oylamayla verilir; mesaj o zamana kadar görünür kalır.
+                <Link className="nowrap" to={routes.proposal(m.pendingDeletionProposalId)}>{deletionLabel}</Link> — karar oylamayla verilir; mesaj o zamana kadar görünür kalır.
               </p>
             ) : null}
             {m.aiFlag ? (

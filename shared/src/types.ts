@@ -396,6 +396,8 @@ export interface ProposalDetail extends ProposalSummary {
   objectionEvaluation: ObjectionEvaluation | null;
   minorityReports: MinorityReport[];
   expertPanel: ExpertPanelInfo | null;
+  /** Önerinin TÜM bilirkişi soruları (panel çekilmeden sorulanlar dahil) */
+  expertQuestions: ExpertQuestion[];
   aiAnalyses: AiAnalysisInfo[];
   myBallot: { choice: VoteChoice; receipt: BallotReceipt } | null;
   myEffectiveVia: { delegateNickname: string; choice: VoteChoice } | null;

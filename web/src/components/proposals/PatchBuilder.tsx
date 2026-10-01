@@ -87,7 +87,13 @@ export function newDraftOp(kind: PatchOpKind): PatchDraftOp {
 }
 
 /** Taslağı yamaya çevirir. Eksik işlemler yamaya alınmaz, `incomplete` listesinde (1'den başlayan sıra) döner. */
-export function draftToPatch(drafts: PatchDraftOp[], rationale: string, params: ParamInfo[]): { patch: RegulationPatch; incomplete: number[] } {
+export function draftToPatch(
+  drafts: PatchDraftOp[],
+  rationale: string,
+  params: ParamInfo[],
+  articles: ArticleInfo[] = [],
+): { patch: RegulationPatch; incomplete: number[] } {
+  const articleText = new Map(articles.map((a) => [expandIri(a.iri), a.text]));
   const ops: RegulationPatchOp[] = [];
   const incomplete: number[] = [];
   const byKey = new Map(params.map((p) => [paramKey(p), p]));
@@ -117,7 +123,7 @@ export function draftToPatch(drafts: PatchDraftOp[], rationale: string, params: 
         break;
       }
       case "amendArticleText":
-        if (!d.article || !d.text.trim()) break;
+        if (!d.article || !d.text.trim() || articleText.get(expandIri(d.article)) === d.text) break;
         op = { op: "amendArticleText", article: d.article, text: d.text };
         break;
       case "addArticle":
@@ -153,7 +159,7 @@ export function PatchBuilder({ drafts, onChange, rationale, error }: PatchBuilde
   const { ontology, flat, loading, error: ontErr, reload } = useOntology();
   const params = ontology?.params ?? [];
   const articles = ontology?.articles ?? [];
-  const { patch, incomplete } = useMemo(() => draftToPatch(drafts, rationale, params), [drafts, rationale, params]);
+  const { patch, incomplete } = useMemo(() => draftToPatch(drafts, rationale, params, articles), [drafts, rationale, params, articles]);
 
   const update = (key: string, patchFields: Partial<PatchDraftOp>) => onChange(drafts.map((d) => (d.key === key ? ({ ...d, ...patchFields } as PatchDraftOp) : d)));
   const remove = (key: string) => onChange(drafts.filter((d) => d.key !== key));
@@ -178,7 +184,8 @@ export function PatchBuilder({ drafts, onChange, rationale, error }: PatchBuilde
 
   const debounced = useDebounced(JSON.stringify(patch), 700);
   const ready = patch.ops.length > 0;
-  const check = useAsync(() => validatePatch(JSON.parse(debounced) as RegulationPatch), [debounced], { enabled: ready });
+  const debPatch = useMemo(() => JSON.parse(debounced) as RegulationPatch, [debounced]);
+  const check = useAsync(() => validatePatch(debPatch), [debPatch], { enabled: ready && debPatch.ops.length > 0 });
   const stale = ready && (debounced !== JSON.stringify(patch) || check.loading);
 
   if (loading && !ontology) return <Spinner block label="Yönetmelik yükleniyor…" />;
@@ -202,7 +209,13 @@ export function PatchBuilder({ drafts, onChange, rationale, error }: PatchBuilde
                 <span className="patch-op-title">
                   {i + 1}. {PATCH_OP_LABELS[d.op]}
                 </span>
-                {isIncomplete ? <Badge tone="warning">Eksik</Badge> : <Badge tone="success">Hazır</Badge>}
+                {isIncomplete ? (
+                  <Badge tone="warning" title="Zorunlu alanlar boş ya da metin değişmedi">
+                    Eksik
+                  </Badge>
+                ) : (
+                  <Badge tone="success">Hazır</Badge>
+                )}
                 <Button size="sm" variant="ghost" icon="close" onClick={() => remove(d.key)} aria-label={`${i + 1}. işlemi kaldır`}>
                   Kaldır
                 </Button>

@@ -3,7 +3,7 @@
 import type { ClusterResult, DecisionResult, MinorityReport } from "@forum/shared";
 import { clusterLabel } from "@forum/shared";
 import { formatNumber, formatPercent } from "../../lib/format";
-import { Card, HashText, OutcomeBadge, ProgressBar, Stat, StatGrid, Table, Time, VoteBadge } from "../../ui";
+import { Card, cx, HashText, OutcomeBadge, ProgressBar, Table, Time, VoteBadge } from "../../ui";
 import { UserLink } from "../UserLink";
 import { fmtDecimal, PlainText, SubHeading, Tick } from "./common";
 
@@ -40,15 +40,15 @@ export function ResultsCard({ result: r, minorityReports, reconciliationOrigin, 
           </p>
         ) : null}
 
-        <StatGrid>
-          <Stat label="Uygun seçmen" value={formatNumber(r.totals.eligible)} />
-          <Stat label="Katılım" value={formatNumber(r.totals.participants)} tone={r.quorumMet ? "success" : "danger"} hint={`gerekli ≥ ${r.quorumRequired}`} />
-          <Stat label="Kabul" value={formatNumber(r.totals.yes)} tone="success" />
-          <Stat label="Red" value={formatNumber(r.totals.no)} tone="danger" />
-          <Stat label="Çekimser" value={formatNumber(r.totals.abstain)} />
-          <Stat label="Vekâletle sayılan" value={formatNumber(r.totals.delegated)} tone="info" />
-          <Stat label="Yönlendirilemeyen" value={formatNumber(r.totals.unrouted)} hint="vekâlet sınırı aşıldı" />
-        </StatGrid>
+        <dl className="result-totals">
+          <Total label="Uygun seçmen" value={r.totals.eligible} />
+          <Total label="Katılım" value={r.totals.participants} tone={r.quorumMet ? "success" : "danger"} />
+          <Total label="Kabul" value={r.totals.yes} tone="success" />
+          <Total label="Red" value={r.totals.no} tone="danger" />
+          <Total label="Çekimser" value={r.totals.abstain} />
+          <Total label="Vekâletle" value={r.totals.delegated} tone="info" title="Doğrudan oy vermeyen, oyu vekâlet zinciriyle sayılan kişi" />
+          <Total label="Yönlendirilemeyen" value={r.totals.unrouted} title="Delegenin vekâlet sınırı aşıldığı için oyu kullanılamayan kişi" />
+        </dl>
 
         <ProgressBar
           label="Katılım"
@@ -103,6 +103,15 @@ export function ResultsCard({ result: r, minorityReports, reconciliationOrigin, 
         </p>
       </div>
     </Card>
+  );
+}
+
+function Total({ label, value, tone, title }: { label: string; value: number; tone?: "success" | "danger" | "info"; title?: string }) {
+  return (
+    <div className={cx("result-total", tone && `result-total-${tone}`)} title={title}>
+      <dt>{label}</dt>
+      <dd>{formatNumber(value)}</dd>
+    </div>
   );
 }
 

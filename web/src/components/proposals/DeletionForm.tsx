@@ -249,8 +249,8 @@ export function DeletionForm({ value, onChange, errors = {}, onMessagesLoaded }:
               value: g.iri,
               disabled: invalid,
               label: (
-                <span className={cx("del-ground", invalid && "del-ground-invalid")}>
-                  {g.label}
+                <span className="del-ground">
+                  <span className={cx(invalid && "del-ground-invalid")}>{g.label}</span>
                   {g.urgent ? (
                     <Badge tone="danger" title="Talep anında mesaj daraltılır">
                       acil

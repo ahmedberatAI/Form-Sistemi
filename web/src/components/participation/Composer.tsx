@@ -140,7 +140,7 @@ export function Composer({ threadType, threadId, mode = "new", parent, message, 
           layout="inline"
           value={stance}
           onChange={setStance}
-          options={(Object.keys(STANCE_LABELS) as Stance[]).map((s) => ({ value: s, label: STANCE_LABELS[s], hint: STANCE_HINTS[s] }))}
+          options={(Object.keys(STANCE_LABELS) as Stance[]).map((s) => ({ value: s, label: <span title={STANCE_HINTS[s]}>{STANCE_LABELS[s]}</span> }))}
         />
       ) : null}
       <Textarea

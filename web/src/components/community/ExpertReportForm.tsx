@@ -23,6 +23,14 @@ interface Draft {
   dissent: string;
 }
 
+const LINT_KIND_LABELS: Record<string, string> = {
+  legal_qualification: "Hukuki nitelendirme",
+  overclaim: "Aşırı kesin ifade",
+  out_of_domain: "Uzmanlık alanı dışı",
+  unsupported_claim: "Dayanaksız iddia",
+  other: "Diğer",
+};
+
 const draftKey = (assignmentId: string) => `forum.expertDraft.${assignmentId}`;
 
 function loadDraft(assignmentId: string): Draft | null {
@@ -128,7 +136,7 @@ export function ExpertReportForm({ assignment, onSubmitted, onCancel }: { assign
     const issues = lint?.issues.length ?? 0;
     if (issues > 0 || unanswered.length > 0) {
       const parts: string[] = [];
-      if (issues) parts.push(`Denetim, hukuki nitelendirme olabilecek ${issues} ifade işaretledi.`);
+      if (issues) parts.push(`Denetim, düzeltilmesi önerilen ${issues} ifade işaretledi (hukuki nitelendirme, alan dışı ya da aşırı kesin ifade).`);
       if (unanswered.length) parts.push(`${unanswered.length} soru yanıtsız (tüm soruların yanıtlanması itibar ölçütlerindendir).`);
       const ok = await confirm({ title: "Rapor yine de gönderilsin mi?", message: parts.join(" "), confirmLabel: "Gönder" });
       if (!ok) return;
@@ -276,16 +284,16 @@ export function ExpertReportForm({ assignment, onSubmitted, onCancel }: { assign
           <AiLabel label={lint.aiLabel} model={lint.model} offline={lint.offline}>
             <div className="stack-sm">
               <div className="row-between">
-                <strong>Hukuki nitelendirme denetimi</strong>
+                <strong>Rapor denetimi: hukuki nitelendirme, alan dışı ve aşırı kesin ifadeler</strong>
                 {linting || stale ? <Spinner label="Denetleniyor…" showLabel size="sm" /> : null}
               </div>
               {lint.issues.length === 0 ? (
-                <p className="mt-0">Hukuki nitelendirme olabilecek bir ifade bulunmadı.</p>
+                <p className="mt-0">Hukuki nitelendirme ya da alan dışı değerlendirme olabilecek bir ifade bulunmadı.</p>
               ) : (
                 <ul className="cm-lint-list">
                   {lint.issues.map((it, i) => (
                     <li key={i}>
-                      <Badge tone="warning">{it.kind}</Badge>
+                      <Badge tone={it.kind === "legal_qualification" ? "danger" : "warning"}>{LINT_KIND_LABELS[it.kind] ?? it.kind}</Badge>
                       <blockquote className="cm-lint-quote">“{it.quote}”</blockquote>
                       <span>{it.message}</span>
                     </li>

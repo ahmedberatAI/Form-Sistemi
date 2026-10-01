@@ -9,7 +9,7 @@ import { useAction } from "../../lib/useAsync";
 import { Badge, Button, RadioGroup, Select } from "../../ui";
 import { SubHeading } from "./common";
 
-export function RightsFlags({ proposal: p, onUpdated }: { proposal: ProposalDetail; onUpdated: (p: ProposalDetail) => void }) {
+export function RightsFlags({ proposal: p, onUpdated, showHeading = true }: { proposal: ProposalDetail; onUpdated: (p: ProposalDetail) => void; showHeading?: boolean }) {
   const auth = useAuth();
   const { ontology, rightLabel } = useOntology();
   const [right, setRight] = useState("");
@@ -34,7 +34,7 @@ export function RightsFlags({ proposal: p, onUpdated }: { proposal: ProposalDeta
 
   return (
     <div className="stack-sm">
-      <SubHeading>Hak etkisi</SubHeading>
+      {showHeading ? <SubHeading>Hak etkisi</SubHeading> : null}
       {affected.length ? (
         <ul className="chips plain-list" aria-label="Etkilenen temel haklar">
           {affected.map((r) => (

@@ -18,6 +18,8 @@ const STATUS: Record<Suggestion["status"], { label: string; tone: "info" | "succ
 
 export interface SuggestionsPanelProps {
   proposal: ProposalDetail;
+  /** Alt başlığı göster (kart başlığı zaten varsa false) */
+  showHeading?: boolean;
   onUpdated: (p: ProposalDetail) => void;
   onAdded: (s: Suggestion) => void;
 }
@@ -82,7 +84,7 @@ export function SuggestionForm({ proposal: p, onAdded }: Pick<SuggestionsPanelPr
   );
 }
 
-export function SuggestionsPanel({ proposal: p, onUpdated, onAdded }: SuggestionsPanelProps) {
+export function SuggestionsPanel({ proposal: p, onUpdated, onAdded, showHeading = true }: SuggestionsPanelProps) {
   const auth = useAuth();
   const confirm = useConfirm();
   const isAuthor = auth.user?.id === p.authorId;
@@ -96,7 +98,7 @@ export function SuggestionsPanel({ proposal: p, onUpdated, onAdded }: Suggestion
   return (
     <div className="stack">
       {p.status === "deliberation" && auth.can("V") && !isAuthor ? <SuggestionForm proposal={p} onAdded={onAdded} /> : null}
-      <SubHeading>Metin önerileri ({list.length})</SubHeading>
+      {showHeading ? <SubHeading>Metin önerileri ({list.length})</SubHeading> : null}
       {!list.length ? (
         <EmptyState title="Henüz metin önerisi yok" icon="proposals">
           <p>Tartışma evresinde herkes metne değişiklik önerebilir; yazarın tek başına veto hakkı yoktur — reddedilen öneri ayrı bir öneri olarak açılabilir.</p>

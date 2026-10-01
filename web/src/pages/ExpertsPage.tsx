@@ -261,6 +261,7 @@ const ASSIGNMENT_TONE: Record<AssignmentStatus, Tone> = {
   reported: "success",
   overdue: "danger",
   replaced: "neutral",
+  cancelled: "neutral",
 };
 
 function AssignmentsTab() {

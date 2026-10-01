@@ -1,7 +1,7 @@
 // Ontoloji (yönetmelik) denetim raporu: katman ve gerekçesi, ihlal/uyarı/bilgi bulguları (madde atıflarıyla),
 // uygulanan kurallar, çıkarılan sınıflar, yönetmelik sürümü ve özeti.
 import { Link } from "react-router-dom";
-import type { AuditReport, Finding, Tier } from "@forum/shared";
+import { expandIri, type AuditReport, type Finding, type Tier } from "@forum/shared";
 import { useOntology } from "../../lib/categories";
 import { routes } from "../../lib/routes";
 import { Badge, Card, Details, HashText, TierBadge, Time } from "../../ui";
@@ -16,7 +16,14 @@ export const TIER_REASONS: Record<Tier, string> = {
 };
 
 function FindingList({ title, items, tone }: { title: string; items: Finding[]; tone: "danger" | "warning" | "info" }) {
-  const { articleLabel } = useOntology();
+  const { ontology, articleLabel } = useOntology();
+  /** Madde etiketi; ileti madde numarasını zaten içeriyorsa yalnızca başlık. */
+  const ref = (f: Finding): string | null => {
+    if (!f.article) return f.articleLabel ?? null;
+    const a = ontology?.articles.find((x) => expandIri(x.iri) === expandIri(f.article!));
+    if (a && f.message.includes(a.number)) return a.title;
+    return articleLabel(f.article);
+  };
   if (!items.length) return null;
   return (
     <div className="stack-sm">
@@ -25,15 +32,9 @@ function FindingList({ title, items, tone }: { title: string; items: Finding[]; 
       </SubHeading>
       <ul className={`finding-list finding-${tone}`}>
         {items.map((f, i) => (
-          <li key={`${f.code}-${i}`}>
+          <li key={`${f.code}-${i}`} title={f.code}>
             <span>{f.message}</span>
-            {f.article || f.articleLabel ? (
-              <span className="small muted finding-article">
-                {" "}
-                — {f.article ? articleLabel(f.article) : f.articleLabel}
-              </span>
-            ) : null}
-            <span className="small muted"> · {f.code}</span>
+            {ref(f) ? <span className="small muted finding-article"> — {ref(f)}</span> : null}
           </li>
         ))}
       </ul>

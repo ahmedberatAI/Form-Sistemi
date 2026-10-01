@@ -1,57 +1,85 @@
 // Görüş haritası: PCA düzlemindeki üyeler (küme rengi + şekil), küme merkezleri ve doğrudan etiketler.
-// Gizlilik: başka üyelerin takma adı haritada gösterilmez; yalnızca sizin noktanız "Siz" olarak işaretlenir.
+// Gizlilik: sunucu noktaları anonim gönderir (userId/nickname yalnız görüntüleyenin kendi noktasında dolu);
+// harita yalnızca sizin noktanızı "Siz" olarak işaretler.
+import { useEffect, useRef, useState } from "react";
 import type { ClusterSnapshotView } from "@forum/shared";
 import { formatNumber } from "../../lib/format";
 import { Table } from "../../ui";
 import { ClusterGlyph, clusterColorCss, clusterLabel, clusterShape, shapePath } from "./vizColors";
 import "./community.css";
 
-const W = 600;
-const H = 420;
-const PAD = 28;
+const PAD = 36;
+
+/** Değer aralığını genişletir: tek noktaya çöken eksen ortalanır, kenarlarda pay bırakılır. */
+function range(values: number[]): [number, number] {
+  let lo = Math.min(...values, 0);
+  let hi = Math.max(...values, 0);
+  if (hi - lo < 1e-9) {
+    lo -= 1;
+    hi += 1;
+  }
+  const m = (hi - lo) * 0.08;
+  return [lo - m, hi + m];
+}
 
 export function ClusterMap({ snapshot, meId }: { snapshot: ClusterSnapshotView; meId?: string | null }) {
-  const xs = [...snapshot.points.map((p) => p.x), ...snapshot.clusters.map((c) => c.centroid[0])];
-  const ys = [...snapshot.points.map((p) => p.y), ...snapshot.clusters.map((c) => c.centroid[1])];
-  const minX = Math.min(...xs, 0);
-  const maxX = Math.max(...xs, 0);
-  const minY = Math.min(...ys, 0);
-  const maxY = Math.max(...ys, 0);
-  const spanX = maxX - minX || 1;
-  const spanY = maxY - minY || 1;
-  const sx = (x: number) => PAD + ((x - minX) / spanX) * (W - 2 * PAD);
-  const sy = (y: number) => H - PAD - ((y - minY) / spanY) * (H - 2 * PAD);
-  const me = meId ? snapshot.points.find((p) => p.userId === meId) : undefined;
+  // viewBox kapsayıcının gerçek piksel genişliğinde: metin her ekranda okunur boyutta kalır, 360 px'de taşmaz.
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [W, setW] = useState(600);
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const update = () => setW(Math.max(240, el.clientWidth));
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const H = Math.round(Math.max(240, Math.min(460, W * 0.68)));
+
+  const [minX, maxX] = range([...snapshot.points.map((p) => p.x), ...snapshot.clusters.map((c) => c.centroid[0])]);
+  const [minY, maxY] = range([...snapshot.points.map((p) => p.y), ...snapshot.clusters.map((c) => c.centroid[1])]);
+  const sx = (x: number) => PAD + ((x - minX) / (maxX - minX)) * (W - 2 * PAD);
+  const sy = (y: number) => H - PAD - ((y - minY) / (maxY - minY)) * (H - 2 * PAD);
+  const me = meId ? snapshot.points.find((p) => p.userId && p.userId === meId) : undefined;
+  const labelRight = (x: number) => sx(x) < W * 0.6;
 
   return (
     <figure className="cm-map stack-sm">
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Görüş haritası: ${snapshot.points.length} üye, ${snapshot.k} küme`}>
-        <line className="cm-map-axis" x1={PAD} x2={W - PAD} y1={sy(0)} y2={sy(0)} />
-        <line className="cm-map-axis" y1={PAD} y2={H - PAD} x1={sx(0)} x2={sx(0)} />
-        {snapshot.points.map((p) => (
-          <path key={p.userId} className="cm-map-point" d={shapePath(clusterShape(p.clusterId), sx(p.x), sy(p.y), 5.5)} style={{ fill: clusterColorCss(p.clusterId) }}>
-            <title>{p.userId === meId ? `Siz — ${clusterLabel(p.clusterId)}` : clusterLabel(p.clusterId)}</title>
-          </path>
-        ))}
-        {snapshot.clusters.map((c) => (
-          <g key={c.clusterId}>
-            <path className="cm-map-centroid" d={shapePath(clusterShape(c.clusterId), sx(c.centroid[0]), sy(c.centroid[1]), 10)} style={{ fill: clusterColorCss(c.clusterId) }}>
-              <title>{`${c.label} merkezi — ${c.size} üye`}</title>
+      <div ref={boxRef} className="cm-map-box">
+        <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Görüş haritası: ${snapshot.points.length} anonim üye, ${snapshot.k} küme`}>
+          <line className="cm-map-axis" x1={PAD / 2} x2={W - PAD / 2} y1={sy(0)} y2={sy(0)} />
+          <line className="cm-map-axis" y1={PAD / 2} y2={H - PAD / 2} x1={sx(0)} x2={sx(0)} />
+          {snapshot.points.map((p, i) => (
+            <path key={i} className="cm-map-point" d={shapePath(clusterShape(p.clusterId), sx(p.x), sy(p.y), 5.5)} style={{ fill: clusterColorCss(p.clusterId) }}>
+              <title>{me === p ? `Siz — ${clusterLabel(p.clusterId)}` : `Anonim üye — ${clusterLabel(p.clusterId)}`}</title>
             </path>
-            <text className="cm-map-label" x={sx(c.centroid[0]) + 14} y={sy(c.centroid[1]) + 4}>
-              {c.label}
-            </text>
-          </g>
-        ))}
-        {me ? (
-          <g>
-            <circle className="cm-map-me" cx={sx(me.x)} cy={sy(me.y)} r={11} />
-            <text className="cm-map-label" x={sx(me.x)} y={sy(me.y) - 15} textAnchor="middle">
-              Siz
-            </text>
-          </g>
-        ) : null}
-      </svg>
+          ))}
+          {snapshot.clusters.map((c) => (
+            <g key={c.clusterId}>
+              <path className="cm-map-centroid" d={shapePath(clusterShape(c.clusterId), sx(c.centroid[0]), sy(c.centroid[1]), 10)} style={{ fill: clusterColorCss(c.clusterId) }}>
+                <title>{`${c.label} merkezi — ${c.size} üye`}</title>
+              </path>
+              <text
+                className="cm-map-label"
+                x={sx(c.centroid[0]) + (labelRight(c.centroid[0]) ? 15 : -15)}
+                y={sy(c.centroid[1]) + 20}
+                textAnchor={labelRight(c.centroid[0]) ? "start" : "end"}
+              >
+                {c.label} ({c.size})
+              </text>
+            </g>
+          ))}
+          {me ? (
+            <g>
+              <circle className="cm-map-me" cx={sx(me.x)} cy={sy(me.y)} r={14} />
+              <text className="cm-map-label" x={sx(me.x)} y={sy(me.y) - 19} textAnchor="middle">
+                Siz
+              </text>
+            </g>
+          ) : null}
+        </svg>
+      </div>
       <figcaption>
         <ul className="cm-legend" aria-label="Lejant">
           {snapshot.clusters.map((c) => (

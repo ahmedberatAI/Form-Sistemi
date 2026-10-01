@@ -183,7 +183,7 @@ export default function VerifyVotePage() {
           v.ok ? "ok" : "fail",
           v.ok ? (
             <>
-              İşlem <Link to={routes.block(proof.height)}>blok #{proof.height}</Link> içinde {proof.index}. sırada; Merkle yolu ({proof.path.length} adım) kök{" "}
+              İşlem <Link to={routes.block(proof.height)}>blok #{proof.height}</Link> içinde {proof.index + 1}. sırada; Merkle yolu ({proof.path.length} adım) kök{" "}
               <code className="hash">{shortHash(proof.txRoot, 10)}</code> ile eşleşti, blok özeti yeniden hesaplandı, {proof.header.commitSigs.length} imza sabitlenmiş
               anahtarlarla denetlendi.
             </>

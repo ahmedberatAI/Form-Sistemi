@@ -185,6 +185,20 @@ export function buildProposalDetail(core: ForumCore, clusters: ClusterServiceImp
     objections,
     objectionEvaluation: showEvaluation ? evaluateObjections(core, clusters, p) : null,
     minorityReports,
+    expertQuestions: db
+      .all<{ id: string; author_id: string; body: string; minority_guaranteed: number; created_at: number }>(
+        "SELECT id, author_id, body, minority_guaranteed, created_at FROM expert_questions WHERE proposal_id = ? ORDER BY created_at, rowid",
+        p.id,
+      )
+      .map((q) => ({
+        id: q.id,
+        proposalId: p.id,
+        authorId: q.author_id,
+        authorNickname: nick.get(q.author_id) ?? core.nicknames([q.author_id]).get(q.author_id) ?? "",
+        body: q.body,
+        minorityGuaranteed: q.minority_guaranteed === 1,
+        createdAt: Number(q.created_at),
+      })),
     expertPanel: safe(() => deps.experts.panel(p.id), null),
     aiAnalyses: safe(() => listAnalyses(deps.ctx, "proposal", p.id), []),
     myBallot,

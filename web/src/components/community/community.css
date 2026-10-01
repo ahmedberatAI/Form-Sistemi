@@ -255,14 +255,17 @@
 .cm-map {
   margin: 0;
 }
-.cm-map svg {
-  display: block;
+.cm-map-box {
   width: 100%;
-  height: auto;
-  max-height: 520px;
+  min-width: 0;
+  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
+}
+.cm-map-box > svg {
+  display: block;
+  max-width: 100%;
 }
 .cm-map-axis {
   stroke: var(--border);
@@ -307,4 +310,7 @@
   height: 10px;
   border-radius: 50%;
   vertical-align: middle;
+}
+.cm-dot-node {
+  background: var(--viz-c0);
 }

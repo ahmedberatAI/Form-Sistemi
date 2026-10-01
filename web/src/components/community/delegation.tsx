@@ -268,16 +268,16 @@ export function OutgoingDelegations({
       rows={sorted}
       rowKey={(d) => d.id}
       columns={[
-        ...(showDelegate ? [{ key: "to", header: "Delege", render: (d: DelegationView) => <UserLink id={d.to} nickname={d.toNickname} /> }] : []),
+        ...(showDelegate ? [{ key: "to", header: "Delege", render: (d: DelegationView) => <span className="nowrap"><UserLink id={d.to} nickname={d.toNickname} /></span> }] : []),
         { key: "scope", header: "Kapsam", render: (d) => scopeLabel(d.scope) },
-        { key: "rank", header: "Sıra", align: "center", render: (d) => `${d.rank}.` },
+        { key: "rank", header: "Sıra", align: "center", className: "nowrap", render: (d) => `${d.rank}.` },
         { key: "at", header: "Verildi", hideOnMobile: true, render: (d) => <Time at={d.createdAt} /> },
         {
           key: "act",
-          header: <span className="sr-only">İşlem</span>,
+          header: "İşlem",
           align: "right",
           render: (d) => (
-            <Button size="sm" variant="ghost" loading={busyId === d.id} onClick={() => void revoke(d)}>
+            <Button size="sm" variant="ghost" className="nowrap" loading={busyId === d.id} onClick={() => void revoke(d)}>
               Geri al
             </Button>
           ),

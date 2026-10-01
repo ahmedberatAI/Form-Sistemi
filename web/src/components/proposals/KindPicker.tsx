@@ -4,36 +4,41 @@ import { Badge, Icon, RadioGroup, type IconName } from "../../ui";
 
 export const KIND_ORDER: ProposalKind[] = ["topic", "subtopic", "amendment", "deletion", "regulation"];
 
-export const KIND_INFO: Record<ProposalKind, { icon: IconName; text: string; tiers: Tier[]; tierText: string }> = {
+export const KIND_INFO: Record<ProposalKind, { icon: IconName; short: string; text: string; tiers: Tier[]; tierText: string }> = {
   topic: {
     icon: "topics",
+    short: "Yeni bir tartışma başlığı açar.",
     text: "Forumda yeni bir tartışma başlığı açılmasını önerir. Kabul edilirse konu ağacına eklenir ve kendi tartışma alanı olur.",
     tiers: ["T0"],
-    tierText: "Olağan karar; temel bir hakkı kısıtlıyorsa nitelikli (T1).",
+    tierText: "Olağan; hak kısıtlıyorsa T1",
   },
   subtopic: {
     icon: "chevronRight",
-    text: "Yürürlükteki bir konunun altına daha özel bir başlık önerir. Üst konunun kategorilerini miras alır.",
+    short: "Yürürlükteki bir konunun altına özel bir başlık açar.",
+    text: "Yürürlükteki bir konunun altına daha özel bir başlık önerir. Üst konunun kategorilerini miras alır; yalnızca ekleme yapılabilir.",
     tiers: ["T0"],
-    tierText: "Olağan karar; temel bir hakkı kısıtlıyorsa nitelikli (T1).",
+    tierText: "Olağan; hak kısıtlıyorsa T1",
   },
   amendment: {
     icon: "refresh",
-    text: "Yürürlükteki bir konunun metnini değiştirmeyi önerir. Teklif konunun belirli bir sürümüne dayanır; kabul anında konu değişmişse sürüm çakışmasıyla reddedilir.",
+    short: "Yürürlükteki bir konunun metnini değiştirir.",
+    text: "Yürürlükteki bir konunun metnini değiştirmeyi önerir. Teklif konunun belirli bir sürümüne dayanır; kabul anında konu başka bir kararla değişmişse “sürüm çakışması” ile reddedilir.",
     tiers: ["T1"],
-    tierText: "Nitelikli karar.",
+    tierText: "Nitelikli karar",
   },
   deletion: {
     icon: "warning",
-    text: "Kurallara aykırı bir mesajın karartılmasını ister. Tartışma silinmez: kabul edilirse mesaj gizlenir, yerinde mezar taşı kalır. Görüş ayrılığı gerekçe olamaz.",
+    short: "Kurala aykırı bir mesajın karartılmasını ister.",
+    text: "Kurallara aykırı bir mesajın karartılmasını ister. Tartışma silinmez: kabul edilirse mesaj gizlenir, yerinde mezar taşı kalır. Görüş ayrılığı hiçbir zaman gerekçe olamaz.",
     tiers: ["DEL"],
-    tierText: "Silme kararı: 2/3 onay + köprü testi + yazarın kümesinde %50.",
+    tierText: "2/3 onay + yazarın kümesinde %50",
   },
   regulation: {
     icon: "book",
-    text: "Forum yönetmeliğinin parametrelerini, maddelerini ya da kategorilerini değiştirir. Değiştirilemez maddeler hiç oylanamaz.",
+    short: "Yönetmeliğin parametre, madde ya da kategorilerini değiştirir.",
+    text: "Forum yönetmeliğinin parametrelerini, maddelerini ya da kategorilerini yapılandırılmış bir yamayla değiştirir. Değiştirilemez maddelere dokunan yamalar oylanamaz (T3, geçersiz).",
     tiers: ["T2"],
-    tierText: "Yönetmelik değişikliği; değiştirilemez hükme dokunursa geçersiz (T3).",
+    tierText: "Değiştirilemez hükme dokunursa T3 (geçersiz)",
   },
 };
 
@@ -41,12 +46,13 @@ export interface KindPickerProps {
   value: ProposalKind | null;
   onChange: (k: ProposalKind) => void;
   disabled?: boolean;
+  label?: string;
 }
 
-export function KindPicker({ value, onChange, disabled }: KindPickerProps) {
+export function KindPicker({ value, onChange, disabled, label = "Öneri türü" }: KindPickerProps) {
   return (
     <RadioGroup<ProposalKind>
-      label="Öneri türü"
+      label={label}
       layout="cards"
       value={value}
       onChange={onChange}
@@ -67,7 +73,7 @@ export function KindPicker({ value, onChange, disabled }: KindPickerProps) {
         ),
         hint: (
           <>
-            {KIND_INFO[k].text} <span className="kind-tier">{KIND_INFO[k].tierText}</span>
+            {KIND_INFO[k].short} <span className="kind-tier">{KIND_INFO[k].tierText}</span>
           </>
         ),
       }))}

@@ -161,10 +161,10 @@ export default function ProposalDetailPage() {
           ) : null}
 
           {p.status !== "draft" ? <AiSummaryCard proposal={p} messages={threadMessages} onNewAnalysis={addAnalysis} /> : null}
-          {p.status !== "draft" ? <ExpertPanelCard proposal={p} onUpdated={update} /> : null}
+          {p.status !== "draft" && (p.expertPanel || (!terminal && p.kind !== "deletion")) ? <ExpertPanelCard proposal={p} onUpdated={update} /> : null}
           {p.status !== "deliberation" && p.suggestions.length ? (
-            <Card title="Metin önerileri">
-              <SuggestionsPanel proposal={p} onUpdated={update} onAdded={addSuggestion} />
+            <Card title={`Metin önerileri (${p.suggestions.length})`}>
+              <SuggestionsPanel proposal={p} onUpdated={update} onAdded={addSuggestion} showHeading={false} />
             </Card>
           ) : null}
         </div>
@@ -290,9 +290,11 @@ function ActionArea({ proposal: p, onUpdated, onReload, setData, onSuggestion, o
       return (
         <>
           <SponsorPanel proposal={p} onUpdated={onUpdated} />
-          <Card title="Hak etkisi">
-            <RightsFlags proposal={p} onUpdated={onUpdated} />
-          </Card>
+          {p.kind !== "deletion" ? (
+            <Card title="Hak etkisi">
+              <RightsFlags proposal={p} onUpdated={onUpdated} showHeading={false} />
+            </Card>
+          ) : null}
         </>
       );
     case "deliberation":
@@ -357,7 +359,7 @@ function DeliberationPanel({ proposal: p, onUpdated, onSuggestion }: { proposal:
           )
         ) : null}
         <SuggestionsPanel proposal={p} onUpdated={onUpdated} onAdded={onSuggestion} />
-        <RightsFlags proposal={p} onUpdated={onUpdated} />
+        {p.kind !== "deletion" ? <RightsFlags proposal={p} onUpdated={onUpdated} /> : null}
       </div>
     </Card>
   );

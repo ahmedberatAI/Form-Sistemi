@@ -1,11 +1,12 @@
 // İnsanlar grafı (react-force-graph-2d, tuval). Ağır olduğu için GraphPage bunu React.lazy ile yükler.
-// Renk = görüş kümesi (+ şekil, ikincil kodlama), boyut = PageRank, halka = bilirkişi, kesikli kırmızı halka = sahte hesap şüphesi.
+// Gizlilik: siyasi görüş özel nitelikli veridir (KVKK md. 6); düğümler kümeye göre RENKLENDİRİLMEZ (sunucu da başkalarının kümesini vermez).
+// Tek renk düğüm, boyut = PageRank, koyu halka = bilirkişi, kesikli kırmızı halka = sahte hesap şüphesi, mavi halka + "Siz" = kendi düğümünüz.
 // Düğüm etiketleri tuvale düz metin olarak çizilir (HTML araç ipucu kullanılmaz).
 import { useEffect, useMemo, useRef, useState } from "react";
 import ForceGraph2D, { type ForceGraphMethods, type LinkObject, type NodeObject } from "react-force-graph-2d";
 import type { EdgeType, GraphVisEdge, GraphVisNode } from "@forum/shared";
 import { Button } from "../../ui";
-import { clusterLabel, clusterShape, clusterVar, drawShape, readCssVar, useThemeVersion } from "./vizColors";
+import { readCssVar, useThemeVersion } from "./vizColors";
 import "./community.css";
 
 type GNode = NodeObject<GraphVisNode & { r: number }>;
@@ -43,11 +44,8 @@ export default function PeopleGraph({ nodes, edges, selectedId, meId, onSelect }
 
   const colors = useMemo(() => {
     void themeV;
-    const slots: Record<string, string> = {};
-    for (let i = 0; i < 5; i++) slots[`--viz-c${i}`] = readCssVar(`--viz-c${i}`);
-    slots["--viz-none"] = readCssVar("--viz-none");
     return {
-      slots,
+      node: readCssVar("--viz-c0", "#2a78d6"),
       edge: readCssVar("--viz-edge", "#b7bfcb"),
       ring: readCssVar("--viz-ring", "#18202b"),
       surface: readCssVar("--surface", "#ffffff"),
@@ -92,8 +90,9 @@ export default function PeopleGraph({ nodes, edges, selectedId, meId, onSelect }
             const r = n.r;
             const isSel = n.id === selectedId;
             const isHover = hover?.id === n.id;
-            drawShape(ctx, clusterShape(n.cluster), x, y, r);
-            ctx.fillStyle = colors.slots[clusterVar(n.cluster)] ?? colors.slots["--viz-none"];
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, 2 * Math.PI);
+            ctx.fillStyle = colors.node;
             ctx.fill();
             ctx.lineWidth = 1.5 / scale;
             ctx.strokeStyle = colors.surface;
@@ -154,7 +153,8 @@ export default function PeopleGraph({ nodes, edges, selectedId, meId, onSelect }
       ) : null}
       {hover ? (
         <div className="cm-graph-hover" aria-hidden="true">
-          <strong>@{hover.label}</strong> · {clusterLabel(hover.cluster)}
+          <strong>@{hover.label}</strong>
+          {hover.id === meId ? " · siz" : ""}
           {hover.isExpert ? " · bilirkişi" : ""}
           {hover.sybilFlag ? " · sahte hesap şüphesi" : ""}
         </div>

@@ -106,7 +106,7 @@ export default function BlockPage() {
               </li>
               <li className="list-item row-between">
                 <span>
-                  Geçerli doğrulayıcı imzası ({check.validSigs}/{check.need} gerekli)
+                  Geçerli doğrulayıcı imzası: {check.validSigs} (gerekli en az {check.need} = 2f + 1)
                 </span>
                 <VerifyMark ok={validators ? check.sigsOk : null} okText="Yeterli" failText="Yetersiz" naText="Anahtarlar yüklenmedi" />
               </li>

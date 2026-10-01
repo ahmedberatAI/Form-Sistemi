@@ -290,7 +290,7 @@ export function VersionsView({ onShowTurtle }: { onShowTurtle: (v: number) => vo
         { key: "tx", header: "Defter", hideOnMobile: true, render: (v) => (v.ledgerTx ? <HashText hash={v.ledgerTx} to={routes.tx(v.ledgerTx)} /> : <span className="muted">—</span>) },
         {
           key: "ttl",
-          header: <span className="sr-only">Turtle</span>,
+          header: "Turtle",
           render: (v) => (
             <Button size="sm" variant="ghost" onClick={() => onShowTurtle(v.version)}>
               Turtle

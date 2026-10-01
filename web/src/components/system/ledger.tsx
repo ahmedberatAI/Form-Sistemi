@@ -2,11 +2,11 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { LEDGER_TX_LABELS, type ChainVerification, type CommittedTxView, type LedgerStatus, type LedgerTxType, type ValidatorStatus } from "@forum/shared";
-import { listBlocks, listTxs, recomputeClusters, repairNode, setNodeFault, tamperBlock, verifyChain } from "../../api/endpoints";
+import { listBlocks, listTxs, repairNode, setNodeFault, tamperBlock, verifyChain } from "../../api/endpoints";
 import { formatNumber } from "../../lib/format";
 import { routes } from "../../lib/routes";
 import { useAsync } from "../../lib/useAsync";
-import { Alert, Badge, Button, Card, EmptyState, ErrorView, HashText, Input, Select, Spinner, Table, Time, useToast, type Tone } from "../../ui";
+import { Alert, Badge, Button, Card, EmptyState, ErrorView, HashText, Input, LinkButton, Select, Spinner, Table, Time, useToast, type Tone } from "../../ui";
 import { TxTypeBadge, TxTypeBadges, VerifyMark } from "./marks";
 import "./system.css";
 
@@ -236,7 +236,6 @@ export function LedgerDemo({ status, onStatus, results, onResults }: { status: L
   const [tampered, setTampered] = useState<{ node: string; height: number } | null>(null);
   const [repaired, setRepaired] = useState<ChainVerification | null>(null);
   const faultStart = useRef<{ height: number } | null>(null);
-  const [probeHeight, setProbeHeight] = useState<number | null>(null);
   const anyFault = status.validators.some((v) => v.fault !== "none");
 
   useEffect(() => {
@@ -286,20 +285,6 @@ export function LedgerDemo({ status, onStatus, results, onResults }: { status: L
       const s = await setNodeFault({ nodeId, fault: f });
       onStatus(s);
       toast.info(`${nodeId}: ${FAULT_LABELS[f].label}.`);
-    } catch (err) {
-      toast.error(err);
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const probe = async () => {
-    setBusy("probe");
-    try {
-      const before = status.height;
-      const snap = await recomputeClusters();
-      setProbeHeight(before);
-      toast.success(snap.ledgerTx ? "Deneme işlemi (küme görüntüsü) deftere gönderildi." : "Küme görüntüsü hesaplandı.");
     } catch (err) {
       toast.error(err);
     } finally {
@@ -393,20 +378,23 @@ export function LedgerDemo({ status, onStatus, results, onResults }: { status: L
                   <>
                     {" "}
                     (hata enjeksiyonu anında {formatNumber(faultStart.current.height)};{" "}
-                    <strong>{status.height - faultStart.current.height > 0 ? `${status.height - faultStart.current.height} yeni blok üretildi` : "henüz yeni blok yok"}</strong>)
+                    {status.height > faultStart.current.height ? (
+                      <VerifyMark ok okText={`hata sürerken ${status.height - faultStart.current.height} yeni blok üretildi`} />
+                    ) : (
+                      <strong>henüz yeni blok yok</strong>
+                    )}
+                    )
                   </>
                 ) : null}
               </p>
-              <p className="mt-0">Blok üretimi için işlem gerekir. Aşağıdaki düğmeyle deftere bir deneme işlemi (küme görüntüsü özeti) gönderin; durum birkaç saniyede güncellenir.</p>
-              <Button size="sm" loading={busy === "probe"} disabled={!!busy} onClick={() => void probe()}>
-                Deneme işlemi gönder
-              </Button>
-              {probeHeight !== null ? (
-                <p className="small">
-                  Gönderim öncesi yükseklik {formatNumber(probeHeight)} → şimdi {formatNumber(status.height)}{" "}
-                  {status.height > probeHeight ? <VerifyMark ok okText="çökme sırasında blok üretildi" /> : <Spinner label="Blok bekleniyor…" showLabel size="sm" />}
-                </p>
-              ) : null}
+              <p className="mt-0">
+                Bloklar yalnızca yeni işlem geldiğinde üretilir. Hata sürerken bir işlem oluşturun — ör. başka bir sekmede bir öneri tartışmasına mesaj
+                yazın ya da bir öneriye destek verin. Yükseklik artar; tablodaki sağlıklı düğümler ilerlerken hatalı düğüm geride kalır. Düğümü normale
+                döndürünce eksik blokları diğerlerinden alarak yetişir.
+              </p>
+              <LinkButton size="sm" to={routes.proposals()} target="_blank" rel="noopener">
+                Önerileri yeni sekmede aç
+              </LinkButton>
             </Alert>
           ) : null}
         </div>

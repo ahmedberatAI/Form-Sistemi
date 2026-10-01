@@ -54,7 +54,6 @@ function PeopleTab() {
   const [selected, setSelected] = useState<GraphVisNode | null>(null);
 
   const toggle = (t: EdgeType, on: boolean) => setTypes((xs) => (on ? FILTER_TYPES.filter((x) => xs.includes(x) || x === t) : xs.filter((x) => x !== t)));
-  const clusters = [...new Set((data?.nodes ?? []).map((n) => n.cluster ?? ""))].sort();
   const sel = selected && data?.nodes.find((n) => n.id === selected.id) ? selected : null;
 
   return (
@@ -78,17 +77,14 @@ function PeopleTab() {
             <PeopleGraph nodes={data.nodes} edges={data.edges} selectedId={sel?.id ?? null} meId={auth.user?.id ?? null} onSelect={setSelected} />
           </Suspense>
           <ul className="cm-legend" aria-label="Lejant">
-            {clusters.map((c) => (
-              <li key={c || "none"}>
-                <ClusterGlyph clusterId={c || null} /> {clusterLabel(c || null)}
-              </li>
-            ))}
-            <li>büyüklük = PageRank (etki)</li>
+            <li>
+              <span className="cm-dot cm-dot-node" aria-hidden="true" /> üye (büyüklük = PageRank, etki)
+            </li>
             <li>
               <svg width="14" height="14" aria-hidden="true">
                 <circle cx="7" cy="7" r="5.5" fill="none" stroke="var(--viz-ring)" strokeWidth="1.6" />
               </svg>
-              halka = bilirkişi
+              koyu halka = bilirkişi
             </li>
             <li>
               <svg width="14" height="14" aria-hidden="true">
@@ -96,6 +92,14 @@ function PeopleTab() {
               </svg>
               kesikli kırmızı halka = sahte hesap şüphesi
             </li>
+            {auth.user ? (
+              <li>
+                <svg width="14" height="14" aria-hidden="true">
+                  <circle cx="7" cy="7" r="5.5" fill="none" stroke="var(--primary)" strokeWidth="2" />
+                </svg>
+                mavi halka = siz
+              </li>
+            ) : null}
             <li>
               <span className="cm-swatch-line" /> takip / vekâlet (oklu)
             </li>
@@ -105,8 +109,12 @@ function PeopleTab() {
           </ul>
           <p className="small muted mt-0">
             {formatNumber(data.nodes.length)} düğüm, {formatNumber(data.edges.length)} kenar. Bir düğüme dokunarak ayrıntısını görün; sürükleyerek ve
-            iki parmakla yakınlaştırarak gezinin. Yakınlık (aile/iş/hane) beyanları gizlidir ve grafta gösterilmez.
+            iki parmakla yakınlaştırarak gezinin.
           </p>
+          <Alert tone="info" title="Gizlilik">
+            Siyasi görüş özel nitelikli kişisel veridir (KVKK md. 6): düğümler görüş kümesine göre renklendirilmez; kendi kümenizi yalnız siz görürsünüz.
+            Yakınlık (aile/iş/hane) beyanları da gizlidir ve grafta gösterilmez.
+          </Alert>
           {sel ? <NodeCard n={sel} isMe={sel.id === auth.user?.id} onClose={() => setSelected(null)} /> : null}
           <Details summary="Düğüm listesi (tablo görünümü)">
             <Table
@@ -114,10 +122,8 @@ function PeopleTab() {
               rows={[...data.nodes].sort((a, b) => b.pagerank - a.pagerank)}
               rowKey={(n) => n.id}
               columns={[
-                { key: "n", header: "Üye", render: (n) => <UserLink id={n.id} nickname={n.label} isExpert={n.isExpert} /> },
-                { key: "c", header: "Küme", render: (n) => <span className="row"><ClusterGlyph clusterId={n.cluster} /> {clusterLabel(n.cluster)}</span> },
+                { key: "n", header: "Üye", render: (n) => <span className="row"><UserLink id={n.id} nickname={n.label} isExpert={n.isExpert} />{n.id === auth.user?.id ? <Badge tone="info">siz</Badge> : null}</span> },
                 { key: "pr", header: "PageRank", align: "right", render: (n) => formatNumber(n.pagerank, 4) },
-                { key: "co", header: "Topluluk", align: "right", hideOnMobile: true, render: (n) => (n.community ?? "—") },
                 { key: "s", header: "İşaret", render: (n) => (n.sybilFlag ? <Badge tone="danger">şüpheli</Badge> : null) },
               ]}
             />
@@ -133,14 +139,14 @@ function NodeCard({ n, isMe, onClose }: { n: GraphVisNode; isMe: boolean; onClos
     <Card
       title={
         <span className="row">
-          <ClusterGlyph clusterId={n.cluster} /> @{n.label}
+          @{n.label}
           {isMe ? <Badge tone="info">siz</Badge> : null}
         </span>
       }
       actions={
         <div className="row">
-          <LinkButton size="sm" variant="primary" to={routes.user(n.id)}>
-            Profili aç
+          <LinkButton size="sm" variant="primary" to={isMe ? routes.profile() : routes.user(n.id)}>
+            {isMe ? "Profilim" : "Profili aç"}
           </LinkButton>
           <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>
             Kapat
@@ -152,10 +158,10 @@ function NodeCard({ n, isMe, onClose }: { n: GraphVisNode; isMe: boolean; onClos
       <KeyValue
         compact
         items={[
-          { label: "Görüş kümesi", value: clusterLabel(n.cluster) },
-          { label: "Topluluk (Louvain)", value: n.community ?? "—" },
           { label: "PageRank", value: formatNumber(n.pagerank, 4) },
           n.isExpert ? { label: "Bilirkişi", value: <Badge tone="accent">evet</Badge> } : null,
+          isMe && n.cluster ? { label: "Görüş kümeniz", value: <span className="row"><ClusterGlyph clusterId={n.cluster} /> {clusterLabel(n.cluster)}</span>, hint: "Yalnız size gösterilir." } : null,
+          isMe && n.community != null ? { label: "Topluluğunuz (Louvain)", value: n.community } : null,
           n.sybilFlag
             ? {
                 label: "Sahte hesap şüphesi",
@@ -211,9 +217,10 @@ function OpinionMap() {
             kümelenir. Eksenlerin kesin bir anlamı yoktur; yakın noktalar benzer oy veren üyelerdir. Hesap tohumlu ve belirlenimcidir; girdi özeti ve sonuç
             deftere yazılır.
           </p>
-          <p className="small muted mt-0">
-            Gizlilik: haritada diğer üyelerin takma adları gösterilmez. Kendi kümeniz Profil sayfanızda yalnızca size gösterilir.
-          </p>
+          <Alert tone="info" title="Gizlilik">
+            Siyasi görüş özel nitelikli kişisel veridir (KVKK md. 6); harita anonimdir, kendi konumunuzu yalnız siz görürsünüz.
+            {auth.user ? null : " Kendi konumunuzu görmek için giriş yapın."}
+          </Alert>
         </div>
       </Card>
     </div>

@@ -5,7 +5,7 @@ import { ROLE_LABELS, type AdminUserRow, type AuditLogEntry, type ClusterSnapsho
 import { adminListUsers, advanceClock, getAuditLog, recomputeClusters, runTick, setUserRoles } from "../../api/endpoints";
 import { useAuth } from "../../auth/AuthContext";
 import { formatDateTime, formatDuration, formatHours, formatNumber } from "../../lib/format";
-import { useDebounced } from "../../lib/hooks";
+import { useDebounced, useNow } from "../../lib/hooks";
 import { routes } from "../../lib/routes";
 import { useAsync } from "../../lib/useAsync";
 import { Alert, Badge, Button, Card, Checkbox, Details, EmptyState, ErrorView, HashText, Input, KeyValue, Select, Spinner, Table, Time, useConfirm, useToast, UserStatusBadge } from "../../ui";
@@ -19,6 +19,7 @@ export function ClockPanel() {
   const auth = useAuth();
   const toast = useToast();
   const sys = auth.system;
+  const now = useNow(1000);
   const [hours, setHours] = useState("12");
   const [busy, setBusy] = useState<string | null>(null);
   const [result, setResult] = useState<{ title: string; res: TickResponse } | null>(null);
@@ -81,7 +82,7 @@ export function ClockPanel() {
           {sys ? (
             <KeyValue
               items={[
-                { label: "Şu anki simüle zaman", value: <strong>{formatDateTime(auth.now())}</strong> },
+                { label: "Şu anki simüle zaman", value: <strong>{formatDateTime(now)}</strong> },
                 { label: "Zaman ölçeği (TIME_SCALE)", value: `${formatNumber(sys.timeScale)}×`, hint: sys.timeScale > 1 ? "Simüle zaman gerçek zamandan bu kat hızlı akar." : "Simüle zaman gerçek zamanla aynı hızda akar." },
                 { label: "Toplam ileri alma", value: formatDuration(sys.clockOffsetMs, false) },
               ]}

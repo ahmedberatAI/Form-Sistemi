@@ -55,6 +55,7 @@ export function MinorityReportForm({ proposalId, onAdded }: { proposalId: string
         showCount
         rows={6}
       />
+      <Alert tone="warning">Raporunuz takma adınızla yayımlanır; bu, ilk turda “red” oyu verdiğinizi gösterir.</Alert>
       <div className="form-actions">
         <Button variant="ghost" onClick={() => setOpen(false)}>
           Vazgeç

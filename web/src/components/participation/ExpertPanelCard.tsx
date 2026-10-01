@@ -173,7 +173,10 @@ export function ExpertPanelCard({ proposal: p, onUpdated }: { proposal: Proposal
     },
   });
 
-  const questions = [...(panel?.questions ?? []), ...extraQuestions.filter((q) => !panel?.questions.some((x) => x.id === q.id))];
+  const questions: ExpertQuestion[] = [];
+  for (const q of [...(p.expertQuestions ?? []), ...(panel?.questions ?? []), ...extraQuestions]) {
+    if (!questions.some((x) => x.id === q.id)) questions.push(q);
+  }
 
   return (
     <Card title="Bilirkişi görüşü" subtitle="Bilirkişi danışmandır; oy ağırlığı yoktur, oyu 1'dir. Hukuki nitelendirme yapmaz.">

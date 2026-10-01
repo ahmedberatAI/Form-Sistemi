@@ -47,13 +47,20 @@ export function ObjectionEvaluationView({ evaluation: ev }: { evaluation: Object
 
 export function ObjectionList({ objections }: { objections: ObjectionInfo[] }) {
   const { groundLabel } = useOntology();
+  const auth = useAuth();
   if (!objections.length) return <p className="small muted">Henüz itiraz imzası yok.</p>;
   return (
     <ul className="list">
       {objections.map((o) => (
         <li key={o.id} className="list-item stack-sm">
           <div className="row small">
-            <UserLink id={o.userId} nickname={o.nickname} />
+            {o.userId && auth.user?.id === o.userId ? (
+              <span>
+                <UserLink id={o.userId} nickname={o.nickname} /> <span className="muted">(sizin imzanız; başkalarına anonim görünür)</span>
+              </span>
+            ) : (
+              <span className="muted">{o.nickname || "Anonim imzacı"}</span>
+            )}
             <span className="muted">{clusterLabel(o.clusterId)}</span>
             <Badge tone="warning">{groundLabel(o.ground)}</Badge>
             <Time at={o.at} className="muted" />
@@ -128,7 +135,7 @@ export function ObjectionPanel({ proposal: p, onUpdated }: ObjectionPanelProps) 
               required
             />
             <Alert tone="info">
-              Her üye son 30 günde en çok <strong>2</strong> itiraz imzalayabilir. Bir öneri yalnızca bir kez itiraza uğrayabilir; azınlığın gücü erteleyicidir, kalıcı
+              İmzanız anonim gösterilir; yalnızca sayısı ve kümesi görünür. Her üye son 30 günde en çok <strong>2</strong> itiraz imzalayabilir. Bir öneri yalnızca bir kez itiraza uğrayabilir; azınlığın gücü erteleyicidir, kalıcı
               engel değildir.
             </Alert>
             <div className="form-actions">

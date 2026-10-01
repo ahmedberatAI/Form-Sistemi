@@ -91,9 +91,15 @@ export default function TopicsPage() {
               onChange={(e) => setCat(e.target.value)}
               options={[{ value: "", label: "Tüm kategoriler" }, ...flat.map((c) => ({ value: c.iri, label: `${"— ".repeat(c.depth)}${c.label}` }))]}
               hint="Alt kategoriler de dahil edilir."
+              fieldClassName="list-filter-wide"
             />
             {archivedCount ? (
-              <Checkbox label={`Arşivlenenleri göster (${archivedCount})`} checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
+              <Checkbox
+                label={`Arşivlenenleri göster (${archivedCount})`}
+                checked={showArchived}
+                onChange={(e) => setShowArchived(e.target.checked)}
+                fieldClassName="list-filter-wide"
+              />
             ) : null}
           </div>
 
