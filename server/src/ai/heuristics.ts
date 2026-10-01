@@ -20,7 +20,7 @@ import {
   THREAT_PHRASES,
 } from "./lexicons";
 import { detectPii, PseudonymMasker, redactPii } from "./pii";
-import { clamp01, contentTokens, f5, findPhrase, lowerTr, normalizeTr, round3, sentences, tokenize, truncate, type Token } from "./text";
+import { clamp01, contentTokens, f5, findPhrase, lowerTr, normalizeTr, round3, sentences, STOPWORDS, tokenize, truncate, type Token } from "./text";
 
 export interface ClassifyContext {
   categories: { iri: string; label: string; keywords: string[] }[];
@@ -136,8 +136,10 @@ export function analyzeContent(text: string): { hits: LabelHit[]; pii: PiiFindin
   }
 
   const urls = [...text.matchAll(/(?:https?:\/\/|www\.)[^\s<>"')]+/giu)];
-  const strong = phraseHits(tokens, text, SPAM_STRONG);
-  const weak = phraseHits(tokens, text, SPAM_WEAK);
+  const urlSpans = urls.map((u) => ({ start: u.index!, end: u.index! + u[0].length }));
+  const outsideUrls = tokens.filter((t) => !urlSpans.some((u) => t.start >= u.start && t.end <= u.end));
+  const strong = phraseHits(outsideUrls, text, SPAM_STRONG);
+  const weak = phraseHits(outsideUrls, text, SPAM_WEAK);
   let spamScore = urls.length + strong.spans.length + 0.5 * weak.spans.length;
   const urlSet = new Set(urls.map((u) => lowerTr(u[0])));
   if (urls.length > urlSet.size) spamScore += 1;
@@ -155,8 +157,8 @@ export function analyzeContent(text: string): { hits: LabelHit[]; pii: PiiFindin
       local: "Spam",
       confidence: round3(conf),
       severity: conf >= 0.7 ? 2 : 1,
-      spans: [...urls.map((u) => ({ start: u.index!, end: u.index! + u[0].length })), ...strong.spans, ...weak.spans],
-      evidence: [...urls.map((u) => u[0]), ...strong.quotes, ...weak.quotes],
+      spans: [...urlSpans, ...strong.spans, ...weak.spans],
+      evidence: [...new Set([...urls.map((u) => u[0]), ...strong.quotes, ...weak.quotes].map((q) => (/^(https?:|www\.)/i.test(q) ? q : lowerTr(q))))],
     });
   }
 
@@ -214,10 +216,14 @@ export function offlineModerate(text: string, ctx: ModerateContext): Offline<Mod
       spanMap.set(`${s.start}:${s.end}`, { start: s.start, end: s.end, quote: p ? p.masked : text.slice(s.start, s.end) });
     }
   }
-  const spans = [...spanMap.values()].sort((a, b) => a.start - b.start || a.end - b.end);
+  const all = [...spanMap.values()];
+  // Başka bir aralığın içinde kalan aralıklar atılır.
+  const spans = all
+    .filter((s) => !all.some((o) => o !== s && o.start <= s.start && o.end >= s.end && o.end - o.start > s.end - s.start))
+    .sort((a, b) => a.start - b.start || a.end - b.end);
   const locals = hits.map((h) => h.local);
   const rationale = hits.length
-    ? `Saptanan sinyaller: ${hits.map((h) => `${LABEL_NAMES[h.local] ?? h.local} (${h.evidence.slice(0, 3).map((e) => (h.local === "KisiselVeriIfsasi" ? e : `«${truncate(e, 60)}»`)).join(", ")})`).join("; ")}. Risk düzeyi: ${risk}/3 (${RISK_NAMES[risk]}). Bu değerlendirme çevrimdışı sezgisel yöntemle yapılmıştır; içerik gizlenmez, karar insanlara aittir.`
+    ? `Saptanan sinyaller: ${hits.map((h) => `${LABEL_NAMES[h.local] ?? h.local} (${(h.local === "KisiselVeriIfsasi" ? h.evidence : h.evidence.slice(0, 3)).map((e) => (h.local === "KisiselVeriIfsasi" ? e : `«${truncate(e, 60)}»`)).join(", ")})`).join("; ")}. Risk düzeyi: ${risk}/3 (${RISK_NAMES[risk]}). Bu değerlendirme çevrimdışı sezgisel yöntemle yapılmıştır; içerik gizlenmez, karar insanlara aittir.`
     : "Belirgin bir risk sinyali (tehdit, hakaret, nefret söylemi, spam, kişisel veri) saptanmadı. Risk düzeyi: 0/3. Bu değerlendirme çevrimdışı sezgisel yöntemle yapılmıştır.";
   return {
     risk,
@@ -238,8 +244,9 @@ function rightKeywords(r: { iri: string; label: string }): string[] {
 }
 
 export function offlineClassify(input: { title: string; body: string }, ctx: ClassifyContext): Offline<ClassificationResult> {
-  const titleTokens = tokenize(input.title ?? "");
-  const bodyTokens = tokenize(input.body ?? "");
+  // Kategori eşleştirmesinde durak sözcükler ("hatta", "ama" …) atlanır.
+  const titleTokens = tokenize(input.title ?? "").filter((t) => !STOPWORDS.has(t.norm));
+  const bodyTokens = tokenize(input.body ?? "").filter((t) => !STOPWORDS.has(t.norm));
   const all = tokenize(`${input.title ?? ""}\n${input.body ?? ""}`);
   const fullText = `${input.title ?? ""}\n${input.body ?? ""}`;
 
@@ -534,27 +541,27 @@ export function offlineBridging(input: { title: string; body: string; majorityPo
   const title = clean(input.title) || "Öneri";
   const maj = input.majorityPoints.map(clean).filter(Boolean);
   const min = input.minorityPoints.map(clean).filter(Boolean);
-  const M = (i: number) => (maj.length ? maj[i % maj.length] : "çoğunluğun temel beklentisi");
-  const m = (i: number) => (min.length ? min[i % min.length] : "azınlığın dile getirdiği kaygılar");
+  const M = (i: number) => (maj.length ? `«${maj[i % maj.length]}»` : "çoğunluğun temel beklentisi");
+  const m = (i: number) => (min.length ? `«${min[i % min.length]}»` : "azınlığın dile getirdiği kaygılar");
   const templates: ((i: number) => { title: string; body: string; rationale: string })[] = [
     (i) => ({
       title: `Pilot uygulama: ${title}`,
-      body: `Öneri önce sınırlı bir bölgede ve 3 aylık bir süre için pilot olarak uygulanır. Pilot süresince şu kaygı ölçülebilir göstergelerle izlenir: ${m(i)}. Pilot sonunda sonuçlar foruma raporlanır ve kalıcı uygulama yeniden oylanır.`,
+      body: `Öneri önce sınırlı bir bölgede ve 3 aylık bir süre için pilot olarak uygulanır. Pilot süresince azınlığın kaygısı ölçülebilir göstergelerle izlenir: ${m(i)}. Pilot sonunda sonuçlar foruma raporlanır ve kalıcı uygulama yeniden oylanır.`,
       rationale: `Çoğunluğun beklentisi (${M(i)}) gecikmeden denenirken azınlığın kaygısı (${m(i)}) gerçek verilerle sınanır.`,
     }),
     (i) => ({
       title: `Kademeli geçiş: ${title}`,
-      body: `Öneri tek seferde değil, üç aşamada uygulanır; her aşamadan önce etkiler değerlendirilir. İlk aşama ${M(i)} hedefine odaklanır; sonraki aşamalara geçmeden önce ${m(i)} konusundaki etkiler gözden geçirilir.`,
+      body: `Öneri tek seferde değil, üç aşamada uygulanır ve her aşamadan önce etkiler değerlendirilir. İlk aşama çoğunluğun önceliğine odaklanır (${M(i)}). Sonraki aşamaya geçmeden önce azınlığın kaygısına ilişkin etkiler gözden geçirilir (${m(i)}).`,
       rationale: "Kademeli geçiş, çoğunluğun hedefini korurken azınlığın uyum sağlaması için zaman tanır ve geri dönüşü kolaylaştırır.",
     }),
     (i) => ({
       title: `Muafiyet ve telafi: ${title}`,
-      body: `Öneri kabul edilir; ancak orantısız biçimde etkilenenler için muafiyet ya da telafi mekanizması tanımlanır. Özellikle şu kaygı dikkate alınır: ${m(i)}. Muafiyet başvuruları açık ölçütlerle değerlendirilir.`,
+      body: `Öneri kabul edilir; ancak orantısız biçimde etkilenenler için muafiyet ya da telafi mekanizması tanımlanır. Mekanizma özellikle şu kaygıyı gözetir: ${m(i)}. Muafiyet başvuruları önceden ilan edilen açık ölçütlerle değerlendirilir.`,
       rationale: `Kararın yükü azınlığa yığılmadan çoğunluğun amacı (${M(i)}) gerçekleştirilir.`,
     }),
     (i) => ({
       title: `Süreli karar ve gözden geçirme maddesi: ${title}`,
-      body: `Öneri 12 aylık bir süre için yürürlüğe girer. Sürenin sonunda karar kendiliğinden yeniden değerlendirmeye açılır; değerlendirmede ${m(i)} konusundaki gözlemler ve ${M(i)} hedefine ne ölçüde ulaşıldığı raporlanır.`,
+      body: `Öneri 12 aylık bir süre için yürürlüğe girer. Sürenin sonunda karar kendiliğinden yeniden değerlendirmeye açılır. Değerlendirme raporunda hem çoğunluğun hedefine ne ölçüde ulaşıldığı (${M(i)}) hem de azınlığın kaygısına ilişkin gözlemler (${m(i)}) yer alır.`,
       rationale: "Süreli karar, azınlığın endişelerinin kalıcı hâle gelmesini önler; çoğunluğa ise uygulamayı deneme olanağı verir.",
     }),
     (i) => ({
@@ -564,18 +571,18 @@ export function offlineBridging(input: { title: string; body: string; majorityPo
     }),
     (i) => ({
       title: `Kapsamı daraltılmış öneri: ${title}`,
-      body: `Öneri, tartışmada geniş destek gören çekirdek unsurla sınırlandırılır: ${M(i)}. Tartışmalı kalan unsurlar (${m(i)}) ayrı bir öneri olarak yeniden tartışmaya açılır.`,
+      body: `Öneri, tartışmada geniş destek gören çekirdek unsurla sınırlandırılır: ${M(i)}. Tartışmalı kalan unsurlar ayrı bir öneri olarak yeniden tartışmaya açılır; bu tartışmada azınlığın kaygısı öncelikle ele alınır: ${m(i)}.`,
       rationale: "Ortak zemin hemen hayata geçirilirken ayrışılan noktalar için ayrı ve odaklı bir karar süreci korunur.",
     }),
     (i) => ({
       title: `Azınlık temsilinin güvenceye alınması: ${title}`,
       body: `Öneri uygulanırken alınacak uygulama kararlarında azınlıktaki görüş grubundan en az bir temsilcinin görüşü alınır ve kayda geçirilir. Temsilci özellikle şu konuda söz sahibidir: ${m(i)}.`,
-      rationale: `Azınlığın sesi uygulama aşamasında da duyulur; çoğunluğun hedefi (${M(i)}) meşruiyet kazanır.`,
+      rationale: `Azınlığın sesi uygulama aşamasında da duyulur; çoğunluğun hedefi (${M(i)}) daha geniş meşruiyet kazanır.`,
     }),
     (i) => ({
-      title: `Seçmeli (gönüllü katılımlı) uygulama: ${title}`,
-      body: `Öneri, katılmak isteyen birimler/kişiler için gönüllülük esasına göre uygulanır. Katılmayanlar için mevcut durum korunur; ${m(i)} konusundaki kaygılar bu sayede zorlayıcı olmaktan çıkar.`,
-      rationale: `Çoğunluk ${M(i)} hedefini isteyenlerle gerçekleştirebilir; azınlık üzerinde zorlayıcı etki oluşmaz.`,
+      title: `Gönüllü katılımlı uygulama: ${title}`,
+      body: `Öneri, katılmak isteyen birimler ve kişiler için gönüllülük esasına göre uygulanır; katılmayanlar için mevcut durum korunur. Böylece azınlığın kaygısı zorlayıcı olmaktan çıkar: ${m(i)}.`,
+      rationale: `Çoğunluk hedefini (${M(i)}) isteyenlerle gerçekleştirebilir; azınlık üzerinde zorlayıcı bir etki oluşmaz.`,
     }),
   ];
   const n = Math.max(4, Math.min(8, 4 + Math.floor((maj.length + min.length) / 2)));

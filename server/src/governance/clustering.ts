@@ -12,7 +12,7 @@ const MIN_SILHOUETTE = 0.25;
 const MIN_USERS_FOR_SPLIT = 4;
 const EPS = 1e-12;
 
-type Point = [number, number];
+export type Point = [number, number];
 
 function cmp(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
@@ -184,9 +184,29 @@ function nonEmpty(labels: Int32Array, K: number): number {
 }
 
 /**
+ * §9.4: K ∈ 2..min(kMax, n−1) için k-means; en yüksek ortalama siluet (eşitlikte küçük K).
+ * n < 4 ya da en iyi siluet < 0,25 → K = 1 (tüm etiketler 0). `silhouette`: seçilen K'nın değeri;
+ * K = 1 sonucunda denenen en iyi değer (hiç denenmediyse 0).
+ */
+export function selectPartition(points: Point[], seed: string, kMax: number): { k: number; silhouette: number; labels: Int32Array } {
+  const n = points.length;
+  if (n < MIN_USERS_FOR_SPLIT) return { k: 1, silhouette: 0, labels: new Int32Array(n) };
+  let best: { k: number; silhouette: number; labels: Int32Array } | null = null;
+  for (let K = 2; K <= Math.min(kMax, n - 1); K++) {
+    const labels = kmeans(points, K, seed);
+    if (nonEmpty(labels, K) < 2) continue;
+    const sil = meanSilhouette(points, labels, K);
+    if (!best || sil > best.silhouette) best = { k: K, silhouette: sil, labels };
+  }
+  if (!best) return { k: 1, silhouette: 0, labels: new Int32Array(n) };
+  if (best.silhouette < MIN_SILHOUETTE) return { k: 1, silhouette: best.silhouette, labels: new Int32Array(n) };
+  return best;
+}
+
+/**
  * ALGORITMA.md §9.
  * - Aynı (kullanıcı, öneri) için birden çok girdi varsa hücre değeri bunların ortalamasıdır (sıradan bağımsız).
- * - `silhouette`: seçilen bölümlemenin ortalama siluet değeri; K=1 sonucunda denenen en iyi değer (n < 4 ise 0).
+ * - `silhouette`: bkz. selectPartition.
  * - `inputHash` tohumu içermez: aynı oy geçmişi aynı özeti verir (ClusterService yeniden kullanım için karşılaştırır).
  */
 export function computeClusters(
@@ -256,28 +276,8 @@ export function computeClusters(
   const v2 = powerIteration(deflated, m, pcaRng);
   const points: Point[] = X.map((row) => [dot(row, v1), dot(row, v2)]);
 
-  // k-means: K ∈ 2..K_max (K ≤ n−1), en yüksek ortalama siluet (eşitlikte küçük K).
-  const kMax = Math.min(opts.kMax ?? Math.min(5, 2 + Math.floor(n / 12)), n - 1);
-  let bestK = 1;
-  let bestSil = n >= MIN_USERS_FOR_SPLIT ? -Infinity : 0;
-  let bestLabels: Int32Array = new Int32Array(n);
-  if (n >= MIN_USERS_FOR_SPLIT) {
-    for (let K = 2; K <= kMax; K++) {
-      const labels = kmeans(points, K, seed);
-      if (nonEmpty(labels, K) < 2) continue;
-      const sil = meanSilhouette(points, labels, K);
-      if (sil > bestSil) {
-        bestSil = sil;
-        bestK = K;
-        bestLabels = labels;
-      }
-    }
-    if (!Number.isFinite(bestSil)) bestSil = 0;
-    if (bestSil < MIN_SILHOUETTE) {
-      bestK = 1;
-      bestLabels = new Int32Array(n);
-    }
-  }
+  const kMax = opts.kMax ?? Math.min(5, 2 + Math.floor(n / 12));
+  const { k: bestK, silhouette: bestSil, labels: bestLabels } = selectPartition(points, seed, kMax);
 
   // Yeniden numaralandırma: büyüklük ↓, merkez x ↑, merkez y ↑, ilk üye sırası ↑.
   const groups = new Map<number, number[]>();

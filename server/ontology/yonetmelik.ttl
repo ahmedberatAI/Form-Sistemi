@@ -1,0 +1,472 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  Forum Sistemi — FORUM YÖNETMELİĞİ: A-KUTUSU (sürüm 1)
+#  Maddeler (fıkra düzeyinde), kategori sınıf ağacı, temel haklar, gerekçeler,
+#  içerik etiketleri, katman ve genel parametreler, koruma sınırları ve kurallar.
+#  Bu dosya bylaw_versions tablosundaki 1. sürümün kaynağıdır; sonraki sürümler
+#  kabul edilen yönetmelik yamalarıyla üretilir (bkz. docs/YONETMELIK.md).
+# ═══════════════════════════════════════════════════════════════════════════
+@prefix fy:   <https://forumsistemi.org/ont#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+fy:Yonetmelik_ForumSistemi a fy:Yonetmelik ;
+    rdfs:label "Forum Yönetmeliği" ;
+    rdfs:comment "Katılımcı yönetişim forumunun konu, tartışma, oylama, karartma ve yönetmelik değişikliği usullerini düzenleyen yönetmelik." .
+
+# ═════════════════════════ Bölümler ═════════════════════════
+
+fy:Bolum1 a fy:Bolum ; rdfs:label "Birinci Bölüm — Genel Hükümler ve Temel İlkeler" ; fy:sira 1 .
+fy:Bolum2 a fy:Bolum ; rdfs:label "İkinci Bölüm — Öneriler ve Denetim" ; fy:sira 2 .
+fy:Bolum3 a fy:Bolum ; rdfs:label "Üçüncü Bölüm — Oylama ve Karar" ; fy:sira 3 .
+fy:Bolum4 a fy:Bolum ; rdfs:label "Dördüncü Bölüm — Tartışma ve Karartma" ; fy:sira 4 .
+fy:Bolum5 a fy:Bolum ; rdfs:label "Beşinci Bölüm — Kişisel Veriler ve Kayıtlar" ; fy:sira 5 .
+fy:Bolum6 a fy:Bolum ; rdfs:label "Altıncı Bölüm — Yönetmelik Değişikliği ve Kategoriye Özgü Kurallar" ; fy:sira 6 .
+
+# ═════════════════════════ Maddeler ═════════════════════════
+# ─── Birinci Bölüm ───
+
+fy:Madde_1_1 a fy:Madde ; fy:maddeNo "Madde 1 (1)" ; fy:baslik "Amaç ve kapsam" ; fy:bolum fy:Bolum1 ; fy:sira 101 ;
+    fy:korumaDuzeyi fy:Olagan ;
+    fy:metin "Bu Yönetmelik; Forum Sistemi'nde konu açma, alt konu önerme, düzenleme teklif etme, tartışma, oylama, tartışma içeriğinin karartılması ve Yönetmeliğin değiştirilmesi usul ve esaslarını düzenler." .
+fy:Madde_1_2 a fy:Madde ; fy:maddeNo "Madde 1 (2)" ; fy:baslik "Amaç ve kapsam" ; fy:bolum fy:Bolum1 ; fy:sira 102 ;
+    fy:korumaDuzeyi fy:Olagan ;
+    fy:metin "Yönetmelik makinece okunabilir bir ontoloji olarak tutulur. Her öneri, oylamaya sunulmadan önce bu ontolojiye göre otomatik olarak denetlenir; denetim, uygulanan kuralları ve dayandıkları maddeleri gösterir." .
+
+fy:Madde_2 a fy:Madde ; fy:maddeNo "Madde 2" ; fy:baslik "Tanımlar" ; fy:bolum fy:Bolum1 ; fy:sira 200 ;
+    fy:korumaDuzeyi fy:Olagan ;
+    fy:metin "Bu Yönetmelikte geçen; a) Üye: kimliği kayıt memurunca doğrulanmış gerçek kişiyi, b) Öneri: konu, alt konu, düzenleme, silme (karartma) veya Yönetmelik değişikliği teklifini, c) Katman: önerinin yeter sayı, eşik ve sürelerini belirleyen karar sınıfını (T0, T1, T2, T3, DEL), ç) Görüş kümesi: oylama açılışında dondurulan, geçmiş oylardan hesaplanmış görüş gruplarını, d) Köprü testi: anlamlı her görüş kümesinde asgari destek aranmasını, e) Karartma: bir mesajın silinmeden görünürlüğünün kaldırılmasını ifade eder." .
+
+fy:Madde_3_1 a fy:Madde ; fy:maddeNo "Madde 3 (1)" ; fy:baslik "Eşit oy" ; fy:bolum fy:Bolum1 ; fy:sira 301 ;
+    fy:korumaDuzeyi fy:Degistirilemez ;
+    fy:metin "Her üyenin bir ve yalnızca bir oyu vardır; bütün oylar eşit ağırlıktadır. Hiçbir kural, rol, itibar puanı veya vekâlet bir üyeye birden fazla oy kazandıramaz." .
+fy:Madde_3_2 a fy:Madde ; fy:maddeNo "Madde 3 (2)" ; fy:baslik "Eşit oy" ; fy:bolum fy:Bolum1 ; fy:sira 302 ;
+    fy:korumaDuzeyi fy:Degistirilemez ;
+    fy:metin "Vekâletle kullanılan oy vekâlet verenin kendi oyudur ve onun görüş kümesine sayılır. Bir delegenin taşıyabileceği başkasına ait oy sayısı ve vekâlet zincirinin uzunluğu sınırlıdır; bu sınırlar uygun seçmenlerin %10'unu ve beş adımı aşacak biçimde genişletilemez." .
+
+fy:Madde_4_1 a fy:Madde ; fy:maddeNo "Madde 4 (1)" ; fy:baslik "Temel haklar" ; fy:bolum fy:Bolum1 ; fy:sira 401 ;
+    fy:korumaDuzeyi fy:Degistirilemez ;
+    fy:metin "Eşitlik ve ayrımcılık yasağı ile katılım ve oy hakkının özü oylamaya konulamaz. Yazarın beyanına veya bilirkişi tespitine göre bu hakların özünü kısıtlayan öneri, oylamaya sunulmadan kural gereği geçersiz sayılır (T3)." .
+fy:Madde_4_2 a fy:Madde ; fy:maddeNo "Madde 4 (2)" ; fy:baslik "Temel haklar" ; fy:bolum fy:Bolum1 ; fy:sira 402 ;
+    fy:korumaDuzeyi fy:Degistirilemez ;
+    fy:metin "İfade özgürlüğü, özel hayatın gizliliği ve kişisel verilerin korunması, mülkiyet, toplanma ve örgütlenme, hizmetlere erişim ve sağlık hakları ancak ölçülü olarak ve en az nitelikli katmanda (T1) karara bağlanan önerilerle sınırlanabilir." .
+
+fy:Madde_5_1 a fy:Madde ; fy:maddeNo "Madde 5 (1)" ; fy:baslik "Azınlığın korunması" ; fy:bolum fy:Bolum1 ; fy:sira 501 ;
+    fy:korumaDuzeyi fy:Degistirilemez ;
+    fy:metin "Bir öneri, genel çoğunluğun yanında anlamlı her görüş kümesinden asgari destek almadıkça ilk oylamada kabul edilemez (köprü testi). Küme tabanı hiçbir katmanda 0,20'nin, silme kararlarında mesaj yazarının kendi kümesi için aranan taban 0,50'nin altına indirilemez; anlamlı küme payı 0,20'nin, anlamlı küme asgari üye sayısı 5'in, köprü testi için gereken asgari kümelenmiş üye sayısı 30'un üzerine çıkarılamaz." .
+fy:Madde_5_2 a fy:Madde ; fy:maddeNo "Madde 5 (2)" ; fy:baslik "Azınlığın korunması" ; fy:bolum fy:Bolum1 ; fy:sira 502 ;
+    fy:korumaDuzeyi fy:Degistirilemez ;
+    fy:metin "Köprü testini geçemeyen öneri için uzlaşma turu açılır. Yeniden oylamada aşma eşiği hiçbir katmanda 2/3'ün altına indirilemez; böylece azınlığın gücü erteleyicidir ve kararın yeniden düşünülmesini sağlar." .
+fy:Madde_5_3 a fy:Madde ; fy:maddeNo "Madde 5 (3)" ; fy:baslik "Azınlığın korunması" ; fy:bolum fy:Bolum1 ; fy:sira 503 ;
+    fy:korumaDuzeyi fy:Degistirilemez ;
+    fy:metin "İlk oylamada kabul edilen karara karşı red oyu veren üyelerin itiraz hakkı kaldırılamaz; T0, T1 ve T2 katmanlarında itiraz penceresi 24 saatten kısa olamaz." .
+
+fy:Madde_6_1 a fy:Madde ; fy:maddeNo "Madde 6 (1)" ; fy:baslik "Değiştirilemez hükümlerin korunması" ; fy:bolum fy:Bolum1 ; fy:sira 601 ;
+    fy:korumaDuzeyi fy:Degistirilemez ;
+    fy:metin "“Değiştirilemez” koruma düzeyindeki hükümler ile bunlara dayanan kural ve parametreler değiştirilemez, kaldırılamaz, koruma düzeyleri düşürülemez ve oylamaya sunulamaz. Bunları hedefleyen öneriler değiştirilemez katmandadır (T3) ve kural gereği geçersizdir." .
+fy:Madde_6_2 a fy:Madde ; fy:maddeNo "Madde 6 (2)" ; fy:baslik "Değiştirilemez hükümlerin korunması" ; fy:bolum fy:Bolum1 ; fy:sira 602 ;
+    fy:korumaDuzeyi fy:Degistirilemez ;
+    fy:metin "Hiçbir değişiklikle yeni bir “Değiştirilemez” hüküm üretilemez; bir kural değiştirilemez bir hükme dayandırılamaz ve bir hüküm, değiştirilemez bir hükmü önceliklendirme (overrides) yoluyla etkisizleştiremez. Çoğunluğun kendi politikasını kalıcılaştırmasını önlemek için hiçbir kural onay eşiğini, aşma eşiğini veya yeniden oylama eşiğini 3/4'ün, yeter sayıyı 0,60'ın, herhangi bir süreyi 720 saatin üzerine çıkaramaz ve bir öneri türünü değiştirilemez katmana bağlayamaz." .
+fy:Madde_6_3 a fy:Madde ; fy:maddeNo "Madde 6 (3)" ; fy:baslik "Değiştirilemez hükümlerin korunması" ; fy:bolum fy:Bolum1 ; fy:sira 603 ;
+    fy:korumaDuzeyi fy:Degistirilemez ;
+    fy:metin "Hükümler arasındaki önceliklendirme (overrides) ilişkileri döngü içeremez; önceliklendirilen hüküm Yönetmelikte bulunmalıdır." .
+
+# ─── İkinci Bölüm ───
+
+fy:Madde_7_1 a fy:Madde ; fy:maddeNo "Madde 7 (1)" ; fy:baslik "Öneri hakkı" ; fy:bolum fy:Bolum2 ; fy:sira 701 ;
+    fy:korumaDuzeyi fy:Olagan ;
+    fy:metin "Her üye konu açabilir, kabul edilmiş bir konuya alt konu önerebilir ve yürürlükteki bir konu için düzenleme teklif edebilir. Önerinin 3 ile 200 karakter arasında anlaşılır bir başlığı ve gerekçesi bulunur." .
+fy:Madde_7_2 a fy:Madde ; fy:maddeNo "Madde 7 (2)" ; fy:baslik "Öneri hakkı" ; fy:bolum fy:Bolum2 ; fy:sira 702 ;
+    fy:korumaDuzeyi fy:Olagan ;
+    fy:metin "Öneri, Madde 9 (3)'te belirtilen sayıda üyenin desteğini (eş imza) toplayınca denetime girer; destek toplama süresi dolan öneri düşer." .
+
+fy:Madde_8_1 a fy:Madde ; fy:maddeNo "Madde 8 (1)" ; fy:baslik "Kategoriler" ; fy:bolum fy:Bolum2 ; fy:sira 801 ;
+    fy:korumaDuzeyi fy:Olagan ;
+    fy:metin "Her öneri en az bir kategoriye bağlanır. Kategoriler bir sınıf ağacı oluşturur; bir alt kategoriye bağlanan öneri, üst kategorilerine de bağlı sayılır ve onların kurallarına tabidir." .
+fy:Madde_8_2 a fy:Madde ; fy:maddeNo "Madde 8 (2)" ; fy:baslik "Kategoriler" ; fy:bolum fy:Bolum2 ; fy:sira 802 ;
+    fy:korumaDuzeyi fy:Nitelikli ;
+    fy:metin "Kategori ve hak etkisi etiketleri yalnızca yükseltilebilir: her üye ve yapay zekâ etiket ekleyebilir; eklenen bir etiketi yalnızca bilirkişi kaldırabilir. Danışma niteliğindeki bu etiketler öneriyi en çok nitelikli katmana yükseltir, tek başına geçersiz kılmaz." .
+
+fy:Madde_9_1 a fy:Madde ; fy:maddeNo "Madde 9 (1)" ; fy:baslik "Katmanlar" ; fy:bolum fy:Bolum2 ; fy:sira 901 ;
+    fy:korumaDuzeyi fy:Nitelikli ;
+    fy:metin "Yeni konu ve alt konu önerileri olağan katmanda (T0); kabul edilmiş bir konunun düzenlenmesi nitelikli katmanda (T1); Yönetmelik değişiklikleri T2 katmanında; tartışma içeriğinin karartılması DEL katmanında karara bağlanır. Değiştirilemez hükümleri hedefleyen öneriler T3 katmanındadır ve oylanamaz." .
+fy:Madde_9_2 a fy:Madde ; fy:maddeNo "Madde 9 (2)" ; fy:baslik "Katmanlar" ; fy:bolum fy:Bolum2 ; fy:sira 902 ;
+    fy:korumaDuzeyi fy:Nitelikli ;
+    fy:metin "Her katmanın yeter sayısı, onay eşiği, küme tabanı, aşma ve yeniden oylama eşikleri ile süreleri, katman parametreleri ve genel parametrelerle belirlenir. Bir öneriye birden çok kural uygulanıyorsa her parametre için en koruyucu değer geçerlidir: eşiklerde ve tabanlarda en yükseği, sürelerde en uzunu." .
+fy:Madde_9_3 a fy:Madde ; fy:maddeNo "Madde 9 (3)" ; fy:baslik "Katmanlar" ; fy:bolum fy:Bolum2 ; fy:sira 903 ;
+    fy:korumaDuzeyi fy:Nitelikli ;
+    fy:metin "Gerekli destekçi sayısı, doğrulanmış üye sayısı |M| olmak üzere max(2, min(5, ⌈√|M|/2⌉)) olup silme taleplerinde talep edene ek olarak bir destekçidir." .
+fy:Madde_9_4 a fy:Madde ; fy:maddeNo "Madde 9 (4)" ; fy:baslik "Katmanlar" ; fy:bolum fy:Bolum2 ; fy:sira 904 ;
+    fy:korumaDuzeyi fy:Nitelikli ;
+    fy:metin "Oylama parametreleri oylama açıldığı anda öneriye sabitlenir; sonradan yapılan Yönetmelik değişiklikleri geriye etkili olmaz." .
+
+fy:Madde_10_1 a fy:Madde ; fy:maddeNo "Madde 10 (1)" ; fy:baslik "Alt konu ve düzenleme" ; fy:bolum fy:Bolum2 ; fy:sira 1001 ;
+    fy:korumaDuzeyi fy:Olagan ;
+    fy:metin "Alt konu yalnızca yürürlükte ve etkin olan bir konunun altında önerilebilir. Alt konu, üst konunun kategorilerini miras alır; yeni kategori eklenebilir." .
+fy:Madde_10_2 a fy:Madde ; fy:maddeNo "Madde 10 (2)" ; fy:baslik "Alt konu ve düzenleme" ; fy:bolum fy:Bolum2 ; fy:sira 1002 ;
+    fy:korumaDuzeyi fy:Olagan ;
+    fy:metin "Düzenleme teklifi, yürürlükteki bir konunun belirli bir sürümüne (taban sürüm) dayanır. Kabul anında konunun güncel sürümü taban sürümden farklıysa teklif sürüm çakışması gerekçesiyle reddedilir." .
+
+fy:Madde_11_1 a fy:Madde ; fy:maddeNo "Madde 11 (1)" ; fy:baslik "Ontoloji denetimi" ; fy:bolum fy:Bolum2 ; fy:sira 1101 ;
+    fy:korumaDuzeyi fy:Nitelikli ;
+    fy:metin "Yeterli desteği toplayan her öneri; kategori, hak etkisi, içerik etiketi ve usul bakımından otomatik denetimden geçer. İhlal içeren öneri oylamaya sunulmaz ve gerekçesiyle “kabul edilemez” olarak kaydedilir; uyarılar öneriyle birlikte gösterilir." .
+fy:Madde_11_2 a fy:Madde ; fy:maddeNo "Madde 11 (2)" ; fy:baslik "Ontoloji denetimi" ; fy:bolum fy:Bolum2 ; fy:sira 1102 ;
+    fy:korumaDuzeyi fy:Nitelikli ;
+    fy:metin "Her kural Yönetmelikteki bir maddeye dayanır. Denetim sonucu, uygulanan kurallar ve dayandıkları maddeler öneriye eklenir ve herkese açıktır." .
+
+fy:Madde_12_1 a fy:Madde ; fy:maddeNo "Madde 12 (1)" ; fy:baslik "İçerik ilkeleri" ; fy:bolum fy:Bolum2 ; fy:sira 1201 ;
+    fy:korumaDuzeyi fy:Olagan ;
+    fy:metin "Öneriler ve tartışma mesajları kişisel veri ifşası, tehdit, hakaret veya iftira, korunan gruplara yönelik nefret söylemi, spam veya reklam ve telif ihlali içeremez." .
+fy:Madde_12_2 a fy:Madde ; fy:maddeNo "Madde 12 (2)" ; fy:baslik "İçerik ilkeleri" ; fy:bolum fy:Bolum2 ; fy:sira 1202 ;
+    fy:korumaDuzeyi fy:Nitelikli ;
+    fy:metin "Otomatik içerik etiketlemesinde güveni yüksek güven eşiğine (0,70) ulaşan yasak içerik etiketi öneriyi kabul edilemez kılar; yazar metni düzelterek yeniden sunabilir. Güveni orta güven eşiği (0,40) ile yüksek güven eşiği arasında kalan etiketler uyarı olarak gösterilir ve bilirkişi incelemesi gerektirir." .
+
+fy:Madde_13_1 a fy:Madde ; fy:maddeNo "Madde 13 (1)" ; fy:baslik "Bilirkişi" ; fy:bolum fy:Bolum2 ; fy:sira 1301 ;
+    fy:korumaDuzeyi fy:Nitelikli ;
+    fy:metin "Bilirkişi gerektiren bir kategoriye ya da böyle bir kategorinin alt kategorisine bağlanan öneriler, yazarın veya uygun seçmenlerin en az %10'unun talep ettiği öneriler ve danışma kaynaklı temel hak bayrağı taşıyan öneriler için tohumlu ağırlıklı kura ile en az üç bilirkişiden oluşan panel çekilir." .
+fy:Madde_13_2 a fy:Madde ; fy:maddeNo "Madde 13 (2)" ; fy:baslik "Bilirkişi" ; fy:bolum fy:Bolum2 ; fy:sira 1302 ;
+    fy:korumaDuzeyi fy:Degistirilemez ;
+    fy:metin "Bilirkişi danışmandır: raporu oylamayı bağlamaz, hukuki nitelendirme yapamaz ve bilirkişinin oyu her üyeninki gibi birdir." .
+fy:Madde_13_3 a fy:Madde ; fy:maddeNo "Madde 13 (3)" ; fy:baslik "Bilirkişi" ; fy:bolum fy:Bolum2 ; fy:sira 1303 ;
+    fy:korumaDuzeyi fy:Olagan ;
+    fy:metin "Öneri yazarıyla aile, iş veya hane bağı bulunan ya da çıkar çatışması beyan eden bilirkişi panele alınmaz." .
+
+fy:Madde_14_1 a fy:Madde ; fy:maddeNo "Madde 14 (1)" ; fy:baslik "Yapay zekâ" ; fy:bolum fy:Bolum2 ; fy:sira 1401 ;
+    fy:korumaDuzeyi fy:Degistirilemez ;
+    fy:metin "Yapay zekâ yalnızca danışmandır: oy veremez, bir önerinin veya mesajın durumunu değiştiremez ve içerik gizleyemez. Ürettiği her çıktı “Yapay zekâ ile üretildi” etiketi, model adı ve tarihle gösterilir." .
+fy:Madde_14_2 a fy:Madde ; fy:maddeNo "Madde 14 (2)" ; fy:baslik "Yapay zekâ" ; fy:bolum fy:Bolum2 ; fy:sira 1402 ;
+    fy:korumaDuzeyi fy:Degistirilemez ;
+    fy:metin "Yapay zekânın veya bir üyenin eklediği temel hak bayrağı öneriyi yalnızca nitelikli katmana (T1) yükseltir ve özü oylanamaz bir hakla ilgiliyse bilirkişi incelemesi gerektirir; bu bayrak tek başına öneriyi değiştirilemez hükme aykırı sayıp geçersiz kılamaz." .
+
+# ─── Üçüncü Bölüm ───
+
+fy:Madde_15_1 a fy:Madde ; fy:maddeNo "Madde 15 (1)" ; fy:baslik "Gizli oy" ; fy:bolum fy:Bolum3 ; fy:sira 1501 ;
+    fy:korumaDuzeyi fy:Degistirilemez ;
+    fy:metin "Oylar gizlidir. Oylama sürerken ara sonuçlar açıklanmaz; yalnızca katılım gösterilir." .
+fy:Madde_15_2 a fy:Madde ; fy:maddeNo "Madde 15 (2)" ; fy:baslik "Gizli oy" ; fy:bolum fy:Bolum3 ; fy:sira 1502 ;
+    fy:korumaDuzeyi fy:Degistirilemez ;
+    fy:metin "Oy ile oy verenin kimliği arasındaki bağ hiçbir kamuya açık kayıtta tutulmaz; dağıtık defterde yalnızca oylamaya özgü oy pusulası kimlikleri, taahhütler ve oylama sonunda açıklanan pusulalar yer alır." .
+
+fy:Madde_16_1 a fy:Madde ; fy:maddeNo "Madde 16 (1)" ; fy:baslik "Karar kuralı" ; fy:bolum fy:Bolum3 ; fy:sira 1601 ;
+    fy:korumaDuzeyi fy:Nitelikli ;
+    fy:metin "Bir öneri; katılım yeter sayısına ulaşılması, onay oranının katman eşiğini sağlaması ve köprü testinin geçilmesiyle kabul edilir. Çekimser oylar katılıma sayılır, onay oranına sayılmaz." .
+fy:Madde_16_2 a fy:Madde ; fy:maddeNo "Madde 16 (2)" ; fy:baslik "Karar kuralı" ; fy:bolum fy:Bolum3 ; fy:sira 1602 ;
+    fy:korumaDuzeyi fy:Nitelikli ;
+    fy:metin "Yeterli görüş verisi yoksa köprü testi uygulanmaz; bu durumda onay eşiği soğuk başlangıç artışı kadar (en fazla 2/3'e) yükseltilir." .
+fy:Madde_16_3 a fy:Madde ; fy:maddeNo "Madde 16 (3)" ; fy:baslik "Karar kuralı" ; fy:bolum fy:Bolum3 ; fy:sira 1603 ;
+    fy:korumaDuzeyi fy:Olagan ;
+    fy:metin "Katılım ya da anlamlı bir kümedeki oy sayısı yetersizse oylama bir kez uzatılır." .
+
+fy:Madde_17_1 a fy:Madde ; fy:maddeNo "Madde 17 (1)" ; fy:baslik "Uzlaşma ve itiraz" ; fy:bolum fy:Bolum3 ; fy:sira 1701 ;
+    fy:korumaDuzeyi fy:Nitelikli ;
+    fy:metin "Köprü testini geçemeyen ya da geçerli bir itiraza uğrayan öneri için uzlaşma turu açılır; bu turda azınlık raporu yazılabilir ve metin revize edilebilir. Uzlaşmadan sonraki yeniden oylamanın sonucu kesindir." .
+fy:Madde_17_2 a fy:Madde ; fy:maddeNo "Madde 17 (2)" ; fy:baslik "Uzlaşma ve itiraz" ; fy:bolum fy:Bolum3 ; fy:sira 1702 ;
+    fy:korumaDuzeyi fy:Olagan ;
+    fy:metin "Bir öneri en fazla bir uzlaşma turu yaşar. Her üye 30 günde en fazla iki itiraz imzalayabilir." .
+
+fy:Madde_18_1 a fy:Madde ; fy:maddeNo "Madde 18 (1)" ; fy:baslik "Vekâlet" ; fy:bolum fy:Bolum3 ; fy:sira 1801 ;
+    fy:korumaDuzeyi fy:Olagan ;
+    fy:metin "Üye oyunu kategori kapsamlı ya da genel olarak başka bir üyeye devredebilir; doğrudan oy her zaman vekâletten önce gelir. Kapsamlar en özel kategoriden genele doğru aranır." .
+fy:Madde_18_2 a fy:Madde ; fy:maddeNo "Madde 18 (2)" ; fy:baslik "Vekâlet" ; fy:bolum fy:Bolum3 ; fy:sira 1802 ;
+    fy:korumaDuzeyi fy:Nitelikli ;
+    fy:metin "Vekâlet zinciri en fazla vekâlet azami adım sayısı kadar izlenir; bir delegenin taşıyabileceği başkasına ait oy sayısı, uygun seçmenlerin vekâlet sınırı oranı kadarını (en az 2) aşamaz." .
+
+# ─── Dördüncü Bölüm ───
+
+fy:Madde_19_1 a fy:Madde ; fy:maddeNo "Madde 19 (1)" ; fy:baslik "Tartışma kayıtlarının korunması" ; fy:bolum fy:Bolum4 ; fy:sira 1901 ;
+    fy:korumaDuzeyi fy:Degistirilemez ;
+    fy:metin "Tartışma kayıtları silinmez. Bir mesaj ancak silme (karartma) kararıyla görünmez kılınabilir; yerinde karar numarasını ve gerekçeyi gösteren bir iz kalır, mesajın eski sürümleri ve içerik özeti saklanır." .
+fy:Madde_19_2 a fy:Madde ; fy:maddeNo "Madde 19 (2)" ; fy:baslik "Tartışma kayıtlarının korunması" ; fy:bolum fy:Bolum4 ; fy:sira 1902 ;
+    fy:korumaDuzeyi fy:Degistirilemez ;
+    fy:metin "Karartılan mesajın yazarı, karartılamayan bir cevap ekleme hakkına sahiptir." .
+
+fy:Madde_20_1 a fy:Madde ; fy:maddeNo "Madde 20 (1)" ; fy:baslik "Silme (karartma)" ; fy:bolum fy:Bolum4 ; fy:sira 2001 ;
+    fy:korumaDuzeyi fy:Nitelikli ;
+    fy:metin "Silme talebi en az bir hedef mesajı ve şu gerekçelerden tam olarak birini içerir: kişisel veri ifşası, tehdit, hakaret veya iftira, korunan gruba nefret söylemi, spam veya reklam, telif ihlali." .
+fy:Madde_20_2 a fy:Madde ; fy:maddeNo "Madde 20 (2)" ; fy:baslik "Silme (karartma)" ; fy:bolum fy:Bolum4 ; fy:sira 2002 ;
+    fy:korumaDuzeyi fy:Degistirilemez ;
+    fy:metin "Görüş ayrılığı, bir görüşe katılmamak veya bir görüşü yanlış bulmak silme gerekçesi olamaz." .
+fy:Madde_20_3 a fy:Madde ; fy:maddeNo "Madde 20 (3)" ; fy:baslik "Silme (karartma)" ; fy:bolum fy:Bolum4 ; fy:sira 2003 ;
+    fy:korumaDuzeyi fy:Olagan ;
+    fy:metin "Kişisel veri ifşası ve tehdit gerekçeli taleplerde ilgili mesaj karar beklenirken daraltılır; kişisel veri ifşası gerekçesiyle karartılan mesaj mühürlenir." .
+fy:Madde_20_4 a fy:Madde ; fy:maddeNo "Madde 20 (4)" ; fy:baslik "Silme (karartma)" ; fy:bolum fy:Bolum4 ; fy:sira 2004 ;
+    fy:korumaDuzeyi fy:Nitelikli ;
+    fy:metin "Silme kararı DEL katmanında; 2/3 onay, köprü testi ve mesaj yazarının kendi görüş kümesinde en az yazar kümesi tabanı kadar destekle alınır. Mesajın yazarı bu oylamada seçmen değildir." .
+
+# ─── Beşinci Bölüm ───
+
+fy:Madde_21_1 a fy:Madde ; fy:maddeNo "Madde 21 (1)" ; fy:baslik "Kişisel veriler" ; fy:bolum fy:Bolum5 ; fy:sira 2101 ;
+    fy:korumaDuzeyi fy:Degistirilemez ;
+    fy:metin "Ad, soyad, T.C. kimlik numarası, adres, doğum tarihi, e-posta ve telefon gibi kişisel veriler, şifreli halleri dahil, dağıtık defterde tutulmaz; defterde yalnızca özetler, taahhütler ve kimlik içermeyen sayılar bulunur." .
+fy:Madde_21_2 a fy:Madde ; fy:maddeNo "Madde 21 (2)" ; fy:baslik "Kişisel veriler" ; fy:bolum fy:Bolum5 ; fy:sira 2102 ;
+    fy:korumaDuzeyi fy:Nitelikli ;
+    fy:metin "Kimlik verileri alan bazında şifreli kasada saklanır; bunlara yalnızca yetkili kayıt memuru veya denetçi, amacını belirterek ve erişim kaydı bırakarak ulaşabilir." .
+fy:Madde_21_3 a fy:Madde ; fy:maddeNo "Madde 21 (3)" ; fy:baslik "Kişisel veriler" ; fy:bolum fy:Bolum5 ; fy:sira 2103 ;
+    fy:korumaDuzeyi fy:Degistirilemez ;
+    fy:metin "Üyenin kendi kişisel verilerinin silinmesi talebi oylamaya konulmaz; kripto-imha yoluyla yerine getirilir." .
+
+fy:Madde_22 a fy:Madde ; fy:maddeNo "Madde 22" ; fy:baslik "Şeffaflık ve dağıtık defter" ; fy:bolum fy:Bolum5 ; fy:sira 2200 ;
+    fy:korumaDuzeyi fy:Olagan ;
+    fy:metin "Faz geçişleri, sayım sonuçları ve girdileri, bilirkişi kuraları, yapay zekâ çıktı özetleri ve Yönetmelik sürümleri dağıtık deftere yazılır. Her üye sayımı defterdeki bültenden bağımsız olarak yeniden hesaplayabilir." .
+
+# ─── Altıncı Bölüm ───
+
+fy:Madde_23_1 a fy:Madde ; fy:maddeNo "Madde 23 (1)" ; fy:baslik "Değişiklik usulü" ; fy:bolum fy:Bolum6 ; fy:sira 2301 ;
+    fy:korumaDuzeyi fy:Nitelikli ;
+    fy:metin "Yönetmelik değişikliği yapılandırılmış bir yama olarak önerilir ve T2 katmanında karara bağlanır. “Nitelikli” koruma düzeyindeki bir hükmü ya da ona dayanan bir kural veya parametreyi değiştiren önerilerde onay eşiği en az 3/4, yeter sayı en az 0,50'dir." .
+fy:Madde_23_2 a fy:Madde ; fy:maddeNo "Madde 23 (2)" ; fy:baslik "Değişiklik usulü" ; fy:bolum fy:Bolum6 ; fy:sira 2302 ;
+    fy:korumaDuzeyi fy:Nitelikli ;
+    fy:metin "Hiçbir değişiklik yeter sayıyı 0 veya altına ya da 1'in üzerine, onay eşiğini 0,50'nin altına ya da 1'in üzerine çekemez; diğer oranlar 0 ile 1, süreler 0 ile 8760 saat arasında olur." .
+fy:Madde_23_3 a fy:Madde ; fy:maddeNo "Madde 23 (3)" ; fy:baslik "Değişiklik usulü" ; fy:bolum fy:Bolum6 ; fy:sira 2303 ;
+    fy:korumaDuzeyi fy:Olagan ;
+    fy:metin "Kabul edilen her değişiklik yeni bir Yönetmelik sürümü üretir. Sürümün özeti dağıtık deftere yazılır; eski sürümler saklanır ve görüntülenebilir." .
+
+fy:Madde_24_1 a fy:Madde ; fy:maddeNo "Madde 24 (1)" ; fy:baslik "Kategoriye özgü kurallar" ; fy:bolum fy:Bolum6 ; fy:sira 2401 ;
+    fy:korumaDuzeyi fy:Olagan ;
+    fy:metin "Bütçe ve mali işler kategorisindeki önerilerde yeter sayı en az 0,30, tartışma süresi en az 96 saattir." .
+fy:Madde_24_2 a fy:Madde ; fy:maddeNo "Madde 24 (2)" ; fy:baslik "Kategoriye özgü kurallar" ; fy:bolum fy:Bolum6 ; fy:sira 2402 ;
+    fy:korumaDuzeyi fy:Olagan ;
+    fy:metin "İmar ve kentsel dönüşüm kategorisindeki (deprem güvenliği dahil) önerilerde tartışma süresi en az 120 saattir." .
+fy:Madde_24_3 a fy:Madde ; fy:maddeNo "Madde 24 (3)" ; fy:baslik "Kategoriye özgü kurallar" ; fy:bolum fy:Bolum6 ; fy:sira 2403 ;
+    fy:korumaDuzeyi fy:Olagan ;
+    fy:metin "Kişisel verilerin korunması kategorisindeki önerilerde küme tabanı en az 0,40, onay eşiği en az 0,60'tır." .
+fy:Madde_24_4 a fy:Madde ; fy:maddeNo "Madde 24 (4)" ; fy:baslik "Kategoriye özgü kurallar" ; fy:bolum fy:Bolum6 ; fy:sira 2404 ;
+    fy:korumaDuzeyi fy:Olagan ;
+    fy:metin "Sağlık kategorisindeki önerilerde oylama süresi en az 96 saattir." .
+
+# ═════════════════════════ Kategori sınıf ağacı ═════════════════════════
+# Kökler fy:Kategori'nin alt sınıfıdır. fy:bilirkisiGerekli tüm alt kategorilere miras kalır (N3 kuralı).
+
+fy:Ulasim rdfs:subClassOf fy:Kategori ; rdfs:label "Ulaşım" ;
+    fy:anahtarKelime "ulaşım", "trafik", "yol", "durak", "araç" .
+fy:TopluTasima rdfs:subClassOf fy:Ulasim ; rdfs:label "Toplu taşıma" ;
+    fy:anahtarKelime "otobüs", "metro", "tramvay", "minibüs", "dolmuş", "sefer", "toplu taşıma", "hat" .
+fy:BisikletYaya rdfs:subClassOf fy:Ulasim ; rdfs:label "Bisiklet ve yaya" ;
+    fy:anahtarKelime "bisiklet", "yaya", "kaldırım", "scooter", "yürüyüş" .
+fy:OtoparkTrafik rdfs:subClassOf fy:Ulasim ; rdfs:label "Otopark ve trafik düzeni" ;
+    fy:anahtarKelime "otopark", "park yeri", "kavşak", "sinyalizasyon", "hız" .
+
+fy:Cevre rdfs:subClassOf fy:Kategori ; rdfs:label "Çevre" ;
+    fy:anahtarKelime "çevre", "doğa", "kirlilik", "iklim" .
+fy:YesilAlan rdfs:subClassOf fy:Cevre ; rdfs:label "Parklar ve yeşil alanlar" ;
+    fy:anahtarKelime "park", "ağaç", "yeşil alan", "bahçe", "fidan", "oyun alanı" .
+fy:AtikGeriDonusum rdfs:subClassOf fy:Cevre ; rdfs:label "Atık ve geri dönüşüm" ;
+    fy:anahtarKelime "çöp", "atık", "geri dönüşüm", "kompost", "konteyner", "plastik" .
+fy:Enerji rdfs:subClassOf fy:Cevre ; rdfs:label "Enerji" ; fy:bilirkisiGerekli true ;
+    fy:anahtarKelime "enerji", "güneş paneli", "elektrik", "aydınlatma", "verimlilik", "yenilenebilir" .
+fy:HavaKalitesi rdfs:subClassOf fy:Cevre ; rdfs:label "Hava kalitesi" ;
+    fy:anahtarKelime "hava kalitesi", "egzoz", "toz", "duman", "emisyon" .
+
+fy:Egitim rdfs:subClassOf fy:Kategori ; rdfs:label "Eğitim" ;
+    fy:anahtarKelime "eğitim", "öğrenci", "öğretmen", "ders" .
+fy:Okullar rdfs:subClassOf fy:Egitim ; rdfs:label "Okullar" ;
+    fy:anahtarKelime "okul", "sınıf", "veli", "teneffüs", "servis" .
+fy:Kutuphane rdfs:subClassOf fy:Egitim ; rdfs:label "Kütüphane ve yaşam boyu öğrenme" ;
+    fy:anahtarKelime "kütüphane", "kitap", "kurs", "atölye", "yetişkin eğitimi" .
+
+fy:Saglik rdfs:subClassOf fy:Kategori ; rdfs:label "Sağlık" ; fy:bilirkisiGerekli true ;
+    fy:anahtarKelime "sağlık", "hastane", "doktor", "aşı", "hasta" .
+fy:HalkSagligi rdfs:subClassOf fy:Saglik ; rdfs:label "Halk sağlığı" ; fy:bilirkisiGerekli true ;
+    fy:anahtarKelime "halk sağlığı", "salgın", "hijyen", "su kalitesi", "ilaçlama" .
+fy:PsikolojikDestek rdfs:subClassOf fy:Saglik ; rdfs:label "Psikolojik destek" ; fy:bilirkisiGerekli true ;
+    fy:anahtarKelime "psikolojik", "ruh sağlığı", "danışmanlık", "stres", "terapi" .
+
+fy:Imar rdfs:subClassOf fy:Kategori ; rdfs:label "İmar ve kentsel dönüşüm" ; fy:bilirkisiGerekli true ;
+    fy:anahtarKelime "imar", "yapı", "bina", "kentsel dönüşüm", "ruhsat" .
+fy:Konut rdfs:subClassOf fy:Imar ; rdfs:label "Konut" ;
+    fy:anahtarKelime "konut", "kira", "ev", "sosyal konut", "barınma" .
+fy:DepremGuvenligi rdfs:subClassOf fy:Imar ; rdfs:label "Deprem güvenliği" ; fy:bilirkisiGerekli true ;
+    fy:anahtarKelime "deprem", "güçlendirme", "toplanma alanı", "zemin", "afet" .
+
+fy:Butce rdfs:subClassOf fy:Kategori ; rdfs:label "Bütçe ve mali işler" ; fy:bilirkisiGerekli true ;
+    fy:anahtarKelime "bütçe", "harcama", "gelir", "maliyet", "ödenek", "kaynak" .
+fy:KatilimciButce rdfs:subClassOf fy:Butce ; rdfs:label "Katılımcı bütçe" ;
+    fy:anahtarKelime "katılımcı bütçe", "proje bütçesi", "mahalle bütçesi", "öncelik" .
+fy:VergiHarc rdfs:subClassOf fy:Butce ; rdfs:label "Vergi, harç ve ücretler" ; fy:bilirkisiGerekli true ;
+    fy:anahtarKelime "vergi", "harç", "ücret", "tarife", "zam", "abonelik" .
+
+fy:SosyalHizmet rdfs:subClassOf fy:Kategori ; rdfs:label "Sosyal hizmetler" ;
+    fy:anahtarKelime "sosyal yardım", "dayanışma", "gönüllü", "aşevi" .
+fy:EngelliErisimi rdfs:subClassOf fy:SosyalHizmet ; rdfs:label "Engelli erişimi" ;
+    fy:anahtarKelime "engelli", "erişilebilirlik", "rampa", "asansör", "işaret dili", "tekerlekli sandalye" .
+fy:YasliBakim rdfs:subClassOf fy:SosyalHizmet ; rdfs:label "Yaşlı bakımı" ;
+    fy:anahtarKelime "yaşlı", "huzurevi", "evde bakım", "emekli" .
+fy:CocukGenclik rdfs:subClassOf fy:SosyalHizmet ; rdfs:label "Çocuk ve gençlik" ;
+    fy:anahtarKelime "çocuk", "genç", "kreş", "gençlik merkezi" .
+
+fy:KulturSpor rdfs:subClassOf fy:Kategori ; rdfs:label "Kültür, sanat ve spor" ;
+    fy:anahtarKelime "kültür", "sanat", "festival", "konser" .
+fy:Etkinlik rdfs:subClassOf fy:KulturSpor ; rdfs:label "Etkinlikler" ;
+    fy:anahtarKelime "etkinlik", "şenlik", "tiyatro", "sinema", "sergi" .
+fy:Spor rdfs:subClassOf fy:KulturSpor ; rdfs:label "Spor" ;
+    fy:anahtarKelime "spor", "saha", "spor salonu", "yüzme", "turnuva" .
+
+fy:KamuGuvenligi rdfs:subClassOf fy:Kategori ; rdfs:label "Kamu güvenliği" ;
+    fy:anahtarKelime "güvenlik", "kamera", "devriye", "zabıta" .
+fy:AcilDurum rdfs:subClassOf fy:KamuGuvenligi ; rdfs:label "Acil durum ve afet hazırlığı" ; fy:bilirkisiGerekli true ;
+    fy:anahtarKelime "acil", "yangın", "tahliye", "sel", "afet planı" .
+
+fy:Yonetisim rdfs:subClassOf fy:Kategori ; rdfs:label "Yönetişim ve şeffaflık" ;
+    fy:anahtarKelime "yönetişim", "katılım", "karar", "forum" .
+fy:ForumYonetmeligi rdfs:subClassOf fy:Yonetisim ; rdfs:label "Forum yönetmeliği" ;
+    fy:anahtarKelime "yönetmelik", "madde", "eşik", "yeter sayı", "oylama kuralı", "usul" .
+fy:Seffaflik rdfs:subClassOf fy:Yonetisim ; rdfs:label "Şeffaflık ve hesap verebilirlik" ;
+    fy:anahtarKelime "şeffaflık", "açık veri", "hesap verebilirlik", "rapor", "denetim" .
+fy:VeriKoruma rdfs:subClassOf fy:Yonetisim ; rdfs:label "Kişisel verilerin korunması" ; fy:bilirkisiGerekli true ;
+    fy:anahtarKelime "kişisel veri", "kvkk", "gizlilik", "kamera kaydı", "veri paylaşımı", "fişleme" .
+
+# ═════════════════════════ Temel haklar ═════════════════════════
+
+fy:IfadeOzgurlugu a fy:TemelHak ; rdfs:label "İfade özgürlüğü" ; fy:dayanak fy:Madde_4_2 ;
+    rdfs:comment "Düşünce ve kanaatlerini söz, yazı veya başka yollarla açıklama ve yayma hakkı; eleştiri dahil." ;
+    fy:anahtarKelime "ifade", "eleştiri", "yasaklansın", "susturulsun", "konuşma yasağı" .
+fy:EsitlikAyrimcilikYasagi a fy:TemelHak ; rdfs:label "Eşitlik ve ayrımcılık yasağı" ; fy:dayanak fy:Madde_4_1 ;
+    fy:cekirdekDegistirilemez true ;
+    rdfs:comment "Herkesin dil, ırk, renk, cinsiyet, engellilik, siyasi düşünce, din, mezhep ve benzeri sebeplerle ayrım gözetilmeksizin eşit muamele görme hakkı. Özü oylanamaz." ;
+    fy:anahtarKelime "yalnızca", "sadece", "hariç tutulsun", "giremesin", "ayrı tutulsun", "yabancılar", "kadınlar", "erkekler" .
+fy:OzelHayatinGizliligi a fy:TemelHak ; rdfs:label "Özel hayatın gizliliği ve kişisel verilerin korunması" ; fy:dayanak fy:Madde_4_2 ;
+    rdfs:comment "Özel ve aile hayatına saygı ile kişisel verilerin rızasız işlenmemesi hakkı." ;
+    fy:anahtarKelime "kamera", "izlensin", "kayıt altına alınsın", "fişlensin", "kimlik bilgisi", "kişisel veri" .
+fy:KatilimHakki a fy:TemelHak ; rdfs:label "Katılım ve oy hakkı" ; fy:dayanak fy:Madde_4_1 ;
+    fy:cekirdekDegistirilemez true ;
+    rdfs:comment "Her üyenin öneri verme, tartışmaya katılma ve eşit oy kullanma hakkı. Özü oylanamaz." ;
+    fy:anahtarKelime "oy hakkı", "oy kullanamasın", "üyelikten çıkarılsın", "katılamasın" .
+fy:MulkiyetHakki a fy:TemelHak ; rdfs:label "Mülkiyet hakkı" ; fy:dayanak fy:Madde_4_2 ;
+    rdfs:comment "Mülk edinme, kullanma ve ondan yararlanma hakkı." ;
+    fy:anahtarKelime "kamulaştırma", "el konulsun", "yıkılsın", "mülk" .
+fy:ToplanmaHakki a fy:TemelHak ; rdfs:label "Toplanma ve örgütlenme hakkı" ; fy:dayanak fy:Madde_4_2 ;
+    rdfs:comment "Barışçıl toplantı ve gösteri düzenleme, dernek kurma ve üye olma hakkı." ;
+    fy:anahtarKelime "toplantı yasağı", "gösteri", "eylem", "dernek" .
+fy:ErisimHakki a fy:TemelHak ; rdfs:label "Hizmetlere erişim hakkı" ; fy:dayanak fy:Madde_4_2 ;
+    rdfs:comment "Kamusal hizmet ve alanlardan eşit ve engelsiz yararlanma hakkı." ;
+    fy:anahtarKelime "kapatılsın", "kaldırılsın", "ücretli olsun", "erişim", "hizmet durdurulsun" .
+fy:SaglikHakki a fy:TemelHak ; rdfs:label "Sağlık hakkı" ; fy:dayanak fy:Madde_4_2 ;
+    rdfs:comment "Sağlık hizmetlerine erişim ve bedensel bütünlüğün korunması hakkı." ;
+    fy:anahtarKelime "sağlık hizmeti", "aşı zorunlu", "tedavi" .
+
+# ═════════════════════════ Silme gerekçeleri ve içerik etiketleri ═════════════════════════
+# İçerik etiketleri silme gerekçeleriyle aynı IRI'yi paylaşır (fy:IcerikEtiketi ve fy:SilmeGerekcesi).
+
+fy:KisiselVeriIfsasi a fy:SilmeGerekcesi, fy:IcerikEtiketi ; rdfs:label "Kişisel veri ifşası" ; fy:icerikEtiketiAdi "Kişisel veri ifşası" ;
+    rdfs:comment "Bir kişinin kimlik, adres, telefon, sağlık vb. verilerinin rızası dışında paylaşılması." ;
+    fy:acil true ; fy:muhurlu true ; fy:dayanak fy:Madde_20_1 .
+fy:Tehdit a fy:SilmeGerekcesi, fy:IcerikEtiketi ; rdfs:label "Tehdit" ; fy:icerikEtiketiAdi "Tehdit" ;
+    rdfs:comment "Bir kişiye ya da gruba yönelik şiddet veya zarar tehdidi." ;
+    fy:acil true ; fy:dayanak fy:Madde_20_1 .
+fy:HakaretIftira a fy:SilmeGerekcesi, fy:IcerikEtiketi ; rdfs:label "Hakaret / iftira" ; fy:icerikEtiketiAdi "Hakaret / iftira" ;
+    rdfs:comment "Kişilik haklarına saldırı, asılsız suçlama." ;
+    fy:dayanak fy:Madde_20_1 .
+fy:NefretSoylemi a fy:SilmeGerekcesi, fy:IcerikEtiketi ; rdfs:label "Korunan gruba nefret söylemi" ; fy:icerikEtiketiAdi "Nefret söylemi" ;
+    rdfs:comment "Etnik köken, din, cinsiyet, engellilik vb. nedeniyle aşağılama veya düşmanlık." ;
+    fy:dayanak fy:Madde_20_1 .
+fy:Spam a fy:SilmeGerekcesi, fy:IcerikEtiketi ; rdfs:label "Spam / reklam" ; fy:icerikEtiketiAdi "Spam / reklam" ;
+    rdfs:comment "Konu dışı tekrarlayan içerik veya ticari reklam." ;
+    fy:dayanak fy:Madde_20_1 .
+fy:TelifIhlali a fy:SilmeGerekcesi, fy:IcerikEtiketi ; rdfs:label "Telif ihlali" ; fy:icerikEtiketiAdi "Telif ihlali" ;
+    rdfs:comment "Hak sahibinin izni olmadan eser paylaşımı." ;
+    fy:dayanak fy:Madde_20_1 .
+fy:GorusAyriligi a fy:SilmeGerekcesi, fy:GecersizGerekce ; rdfs:label "Görüş ayrılığı" ;
+    rdfs:comment "Bir görüşe katılmamak silme gerekçesi OLAMAZ (değiştirilemez madde)." ;
+    fy:dayanak fy:Madde_20_2 .
+
+# ═════════════════════════ İtiraz gerekçeleri ═════════════════════════
+
+fy:TemelHakIhlali a fy:ItirazGerekcesi ; rdfs:label "Temel hak ihlali" ; fy:dayanak fy:Madde_17_1 ;
+    rdfs:comment "Karar bir temel hakkı ölçüsüzce kısıtlıyor." .
+fy:OrantisizAzinlikEtkisi a fy:ItirazGerekcesi ; rdfs:label "Azınlığa orantısız etki" ; fy:dayanak fy:Madde_17_1 ;
+    rdfs:comment "Kararın yükü ağırlıklı olarak belirli bir gruba düşüyor." .
+fy:UsulHatasi a fy:ItirazGerekcesi ; rdfs:label "Usul hatası" ; fy:dayanak fy:Madde_17_1 ;
+    rdfs:comment "Tartışma, bilgilendirme veya oylama usulüne uyulmadı." .
+fy:BilgiEksikligi a fy:ItirazGerekcesi ; rdfs:label "Bilgi / bilirkişi eksikliği" ; fy:dayanak fy:Madde_17_1 ;
+    rdfs:comment "Karar için gerekli uzman görüşü veya veri eksik." .
+fy:YeniBilgi a fy:ItirazGerekcesi ; rdfs:label "Yeni bilgi ortaya çıktı" ; fy:dayanak fy:Madde_17_1 ;
+    rdfs:comment "Oylamadan sonra kararı etkileyebilecek yeni bilgi ortaya çıktı." .
+
+# ═════════════════════════ Katmanlar (docs/ALGORITMA.md §2 ile birebir) ═════════════════════════
+
+fy:KatmanT0 a fy:Katman ; fy:katmanKodu "T0" ; fy:katmanSirasi 0 ; fy:oylanabilir true ;
+    rdfs:label "Olağan karar" ; rdfs:comment "Yeni konu ve alt konu (hak kısıtlamıyorsa)." ; fy:dayanak fy:Madde_9_2 ;
+    fy:yeterSayi 0.20 ; fy:esik 0.50 ; fy:esikKesin true ; fy:kumeTabani 0.30 ; fy:asmaEsigi 0.6667 ; fy:yenidenOyEsigi 0.60 ;
+    fy:sureDestek 168 ; fy:sureTartisma 72 ; fy:sureOylama 72 ; fy:sureUzatma 24 ; fy:sureItiraz 48 ; fy:sureUzlasma 72 .
+
+fy:KatmanT1 a fy:Katman ; fy:katmanKodu "T1" ; fy:katmanSirasi 1 ; fy:oylanabilir true ;
+    rdfs:label "Nitelikli karar" ; rdfs:comment "Kabul edilmiş konunun düzenlenmesi; bir temel hakkı kısıtlayan öneri." ; fy:dayanak fy:Madde_9_2 ;
+    fy:yeterSayi 0.30 ; fy:esik 0.60 ; fy:esikKesin false ; fy:kumeTabani 0.40 ; fy:asmaEsigi 0.6667 ; fy:yenidenOyEsigi 0.60 ;
+    fy:sureDestek 168 ; fy:sureTartisma 96 ; fy:sureOylama 96 ; fy:sureUzatma 24 ; fy:sureItiraz 72 ; fy:sureUzlasma 120 .
+
+fy:KatmanT2 a fy:Katman ; fy:katmanKodu "T2" ; fy:katmanSirasi 2 ; fy:oylanabilir true ;
+    rdfs:label "Yönetmelik değişikliği" ; rdfs:comment "Değiştirilemez olmayan madde veya parametrenin değiştirilmesi." ; fy:dayanak fy:Madde_9_2 ;
+    fy:yeterSayi 0.40 ; fy:esik 0.6667 ; fy:esikKesin false ; fy:kumeTabani 0.40 ; fy:asmaEsigi 0.75 ; fy:yenidenOyEsigi 0.6667 ;
+    fy:sureDestek 168 ; fy:sureTartisma 168 ; fy:sureOylama 120 ; fy:sureUzatma 48 ; fy:sureItiraz 72 ; fy:sureUzlasma 168 .
+
+fy:KatmanT3 a fy:Katman ; fy:katmanKodu "T3" ; fy:katmanSirasi 3 ; fy:oylanabilir false ;
+    rdfs:label "Değiştirilemez hüküm" ; rdfs:comment "Değiştirilemez maddeyi hedefleyen öneri: oylanamaz, kural gereği geçersizdir." ; fy:dayanak fy:Madde_6_1 .
+
+fy:KatmanDEL a fy:Katman ; fy:katmanKodu "DEL" ; fy:katmanSirasi 10 ; fy:oylanabilir true ;
+    rdfs:label "Silme (karartma) kararı" ; rdfs:comment "Tartışma parçasının gizlenmesi (karartma); yazarın kümesi korunur." ; fy:dayanak fy:Madde_9_2 ;
+    fy:yeterSayi 0.30 ; fy:esik 0.6667 ; fy:esikKesin false ; fy:kumeTabani 0.30 ; fy:yazarKumesiTabani 0.50 ; fy:asmaEsigi 0.75 ; fy:yenidenOyEsigi 0.75 ;
+    fy:sureDestek 72 ; fy:sureTartisma 24 ; fy:sureOylama 48 ; fy:sureUzatma 24 ; fy:sureItiraz 0 ; fy:sureUzlasma 0 .
+
+# ═════════════════════════ Genel parametreler ═════════════════════════
+
+fy:GenelParametreler a fy:ParametreKumesi ; rdfs:label "Genel parametreler" ; fy:dayanak fy:Madde_9_2 ;
+    fy:anlamliKumePayi 0.10 ; fy:anlamliKumeAsgariUye 3 ; fy:kumeBasinaAsgariOy 2 ; fy:kopruIcinAsgariKumelenmis 12 ;
+    fy:sogukBaslangicArtisi 0.10 ; fy:vekaletSiniriOrani 0.05 ; fy:vekaletAzamiAdim 3 ; fy:bilirkisiSayisi 3 .
+
+# ═════════════════════════ Koruma sınırları (değiştirilemez maddelere dayanır) ═════════════════════════
+
+fy:EsitOySinirlari a fy:ParametreKumesi ; rdfs:label "Eşit oy sınırları" ; fy:dayanak fy:Madde_3_2 ;
+    fy:oyAgirligi 1 ; fy:vekaletSiniriOraniAzami 0.10 ; fy:vekaletAzamiAdimAzami 5 .
+
+fy:AzinlikKorumaSinirlari a fy:ParametreKumesi ; rdfs:label "Azınlık koruması sınırları" ; fy:dayanak fy:Madde_5_1 ;
+    fy:kumeTabaniAsgari 0.20 ; fy:yazarKumesiTabaniAsgari 0.50 ; fy:asmaEsigiAsgari 0.6667 ; fy:sureItirazAsgari 24 ;
+    fy:anlamliKumePayiAzami 0.20 ; fy:anlamliKumeAsgariUyeAzami 5 ; fy:kopruIcinAsgariKumelenmisAzami 30 .
+
+fy:KalicilastirmaSinirlari a fy:ParametreKumesi ; rdfs:label "Kalıcılaştırma yasağı sınırları" ; fy:dayanak fy:Madde_6_2 ;
+    fy:yeterSayiAzami 0.60 ; fy:esikAzami 0.75 ; fy:asmaEsigiAzami 0.75 ; fy:yenidenOyEsigiAzami 0.75 ; fy:sureAzami 720 .
+
+# ═════════════════════════ Kurallar ═════════════════════════
+# Her kural bir maddeye dayanır (fy:dayanak). fy:uygulanirSinif taşıyan kurallar, öneri o sınıfın
+# (kategori dahil) üyesiyse uygulanır; diğerleri N3 kurallarıyla (yonetmelik-kurallar.n3) tetiklenir.
+
+fy:KuralKonuOnerisi a fy:Kural ; rdfs:label "Konu önerisi olağan katmandadır" ; fy:dayanak fy:Madde_9_1 ;
+    fy:uygulanirSinif fy:KonuOnerisi ; fy:asgariKatman fy:KatmanT0 .
+fy:KuralAltKonuOnerisi a fy:Kural ; rdfs:label "Alt konu önerisi olağan katmandadır" ; fy:dayanak fy:Madde_9_1 ;
+    fy:uygulanirSinif fy:AltKonuOnerisi ; fy:asgariKatman fy:KatmanT0 .
+fy:KuralDuzenlemeOnerisi a fy:Kural ; rdfs:label "Düzenleme teklifi nitelikli katmandadır" ; fy:dayanak fy:Madde_9_1 ;
+    fy:uygulanirSinif fy:DuzenlemeOnerisi ; fy:asgariKatman fy:KatmanT1 .
+fy:KuralYonetmelikOnerisi a fy:Kural ; rdfs:label "Yönetmelik değişikliği T2 katmanındadır" ; fy:dayanak fy:Madde_9_1 ;
+    fy:uygulanirSinif fy:YonetmelikOnerisi ; fy:asgariKatman fy:KatmanT2 .
+fy:KuralSilmeOnerisi a fy:Kural ; rdfs:label "Silme (karartma) talebi DEL katmanındadır" ; fy:dayanak fy:Madde_9_1 ;
+    fy:uygulanirSinif fy:SilmeOnerisi ; fy:asgariKatman fy:KatmanDEL .
+
+fy:KuralHakKisitlamasi a fy:Kural ; rdfs:label "Temel hak kısıtlayan öneri en az T1'dir" ; fy:dayanak fy:Madde_4_2 ;
+    fy:uygulanirSinif fy:HakKisitlayanOneri ; fy:asgariKatman fy:KatmanT1 .
+fy:KuralCekirdekHak a fy:Kural ; rdfs:label "Özü oylanamaz hakkın kısıtlanması geçersizdir (T3)" ; fy:dayanak fy:Madde_4_1 ;
+    fy:asgariKatman fy:KatmanT3 .
+fy:KuralDanismaYukseltmesi a fy:Kural ; rdfs:label "Danışma kaynaklı hak bayrağı yalnızca yükseltir (T1 + bilirkişi)" ; fy:dayanak fy:Madde_14_2 ;
+    fy:asgariKatman fy:KatmanT1 ; fy:bilirkisiGerekli true .
+fy:KuralBilirkisiKategorisi a fy:Kural ; rdfs:label "Bilirkişi gerektiren kategori (üst kategoriden miras)" ; fy:dayanak fy:Madde_13_1 ;
+    fy:bilirkisiGerekli true .
+fy:KuralIcerikEtiketi a fy:Kural ; rdfs:label "Yasak içerik etiketi güven eşikleri" ; fy:dayanak fy:Madde_12_2 ;
+    fy:yuksekGuvenEsigi 0.70 ; fy:ortaGuvenEsigi 0.40 .
+fy:KuralGorusAyriligi a fy:Kural ; rdfs:label "Görüş ayrılığı silme gerekçesi olamaz" ; fy:dayanak fy:Madde_20_2 .
+fy:KuralAcilSilme a fy:Kural ; rdfs:label "Acil gerekçeli talepte mesaj daraltılır" ; fy:dayanak fy:Madde_20_3 ;
+    fy:uygulanirSinif fy:AcilSilmeTalebi .
+fy:KuralDegistirilemezHedef a fy:Kural ; rdfs:label "Değiştirilemez hükmü hedefleyen öneri geçersizdir (T3)" ; fy:dayanak fy:Madde_6_1 ;
+    fy:asgariKatman fy:KatmanT3 .
+fy:KuralYeniDegistirilemez a fy:Kural ; rdfs:label "Yeni değiştirilemez hüküm üretilemez" ; fy:dayanak fy:Madde_6_2 ;
+    fy:asgariKatman fy:KatmanT3 .
+fy:KuralDegistirilemezAtlatma a fy:Kural ; rdfs:label "Değiştirilemez hüküm dolaylı yoldan aşılamaz" ; fy:dayanak fy:Madde_6_2 ;
+    fy:asgariKatman fy:KatmanT3 .
+fy:KuralNitelikliDegisiklik a fy:Kural ; rdfs:label "Nitelikli hüküm değişikliğinde 3/4 eşik ve 0,50 yeter sayı" ; fy:dayanak fy:Madde_23_1 ;
+    fy:uygulanirSinif fy:NitelikliHukumDegisikligi ; fy:esik 0.75 ; fy:yeterSayi 0.50 .
+
+fy:KuralButce a fy:Kural ; rdfs:label "Bütçe önerilerinde yükseltilmiş yeter sayı ve uzun tartışma" ; fy:dayanak fy:Madde_24_1 ;
+    fy:uygulanirSinif fy:Butce ; fy:yeterSayi 0.30 ; fy:sureTartisma 96 .
+fy:KuralImar a fy:Kural ; rdfs:label "İmar önerilerinde uzun tartışma" ; fy:dayanak fy:Madde_24_2 ;
+    fy:uygulanirSinif fy:Imar ; fy:sureTartisma 120 .
+fy:KuralVeriKoruma a fy:Kural ; rdfs:label "Kişisel veri önerilerinde yükseltilmiş taban ve eşik" ; fy:dayanak fy:Madde_24_3 ;
+    fy:uygulanirSinif fy:VeriKoruma ; fy:kumeTabani 0.40 ; fy:esik 0.60 .
+fy:KuralSaglik a fy:Kural ; rdfs:label "Sağlık önerilerinde uzun oylama" ; fy:dayanak fy:Madde_24_4 ;
+    fy:uygulanirSinif fy:Saglik ; fy:sureOylama 96 .

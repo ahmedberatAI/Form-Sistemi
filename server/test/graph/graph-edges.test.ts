@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { describe, it, expect, beforeEach } from "vitest";
 import { sha256Hex, fy } from "@forum/shared";
 import { createGraphService } from "../../src/graph";
@@ -167,6 +168,7 @@ describe("graf: vekâlet", () => {
     const first = graph.delegate(a, b, "*", 1);
     ctx.clock.advance(1000);
     const second = graph.delegate(a, c, "*", 1);
+    ctx.clock.advance(1000);
     const third = graph.delegate(a, d, "*", 2);
     expect(graph.delegations(a).map((x) => x.id)).toEqual([second.id, third.id]);
     const old = graph.listEdges({ src: a, type: "DELEGATES_TO", includeRevoked: true }).find((e) => e.id === first.id);
@@ -210,15 +212,19 @@ describe("graf: vekâlet", () => {
     expect(graph.delegations().map((x) => x.id)).toEqual([v1.id, ...sameTime]);
   });
 
-  it("DELEGATION defter yükünde ham kullanıcı kimliği yok, yalnız taahhüt", () => {
+  it("DELEGATION defter yükünde ham kullanıcı kimliği yok; taahhüt sunucu sırrıyla HMAC", () => {
     const v = graph.delegate(a, b, fy("Ulasim"), 2);
     graph.revokeDelegation(v.id, a);
     const txs = ledger.txs.filter((t) => t.type === "DELEGATION");
     expect(txs).toHaveLength(2);
-    const expected = sha256Hex(`${a}|${b}|${fy("Ulasim")}|2|${v.id}`);
+    const preimage = `${a}|${b}|${fy("Ulasim")}|2|${v.id}`;
+    const expected = createHmac("sha256", ctx.config.voteKey).update(preimage, "utf8").digest("hex");
     for (const t of txs) {
       expect(Object.keys(t.payload).sort()).toEqual(["action", "commitment", "edgeId"]);
       expect(t.payload.commitment).toBe(expected);
+      // Sırrı bilmeyen, defterdeki edgeId ve aday üye çiftleriyle düz SHA-256 hesaplayarak eşleştiremez
+      expect(t.payload.commitment).not.toBe(sha256Hex(preimage));
+      expect(t.payload.commitment).toMatch(/^[0-9a-f]{64}$/);
       const raw = JSON.stringify(t.payload);
       expect(raw).not.toContain(a);
       expect(raw).not.toContain(b);

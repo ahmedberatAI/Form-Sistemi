@@ -1,6 +1,7 @@
 // İnsanlar grafı: takip, kefalet, yakınlık (çıkar çatışması), vekâlet (likit demokrasi) ve graf analizleri.
 // Kalıcılık graph_edges tablosundadır (kenarlar silinmez, revoked_at doldurulur); bellek içi graphology grafı
 // yalnızca aktif kenarları tutar ve her yazımda güncellenir. Ağır hesaplar sürüm sayacına bağlı önbellektedir.
+import { createHmac } from "node:crypto";
 import { DirectedGraph, MultiDirectedGraph, UndirectedGraph } from "graphology";
 import louvain from "graphology-communities-louvain";
 import pagerankMetric from "graphology-metrics/centrality/pagerank.js";
@@ -9,7 +10,6 @@ import {
   createRng,
   expandIri,
   hashCanonical,
-  sha256Hex,
   type DecisionResult,
   type DelegationView,
   type EdgeType,
@@ -44,6 +44,8 @@ const RELATION_LABELS: Record<string, string> = { family: "aile", business: "iş
 /** Yumuşak çıkar çatışması ve aracılık hesaplarında kullanılan sosyal kenarlar. */
 const SOCIAL_TYPES: ReadonlySet<EdgeType> = new Set(["FOLLOWS", "DELEGATES_TO", "VOUCHES"]);
 const DEFAULT_VIS_TYPES: EdgeType[] = ["FOLLOWS", "VOUCHES", "DELEGATES_TO"];
+/** Görselleştirmede herkese açık kenar tipleri (RELATED_TO özel, AGREES hiçbir zaman). */
+const VIS_PUBLIC_TYPES: ReadonlySet<EdgeType> = new Set(["FOLLOWS", "VOUCHES", "DELEGATES_TO", "REPLIED_TO", "ENDORSED", "AUTHORED", "EXPERT_IN"]);
 const PRIVILEGED_ROLES = new Set(["admin", "registrar", "auditor"]);
 
 export const AGREEMENT_ALGO = "louvain-agreement";
@@ -104,6 +106,14 @@ interface SnapshotRow {
   seed: string;
   assignments: string;
   coords: string;
+}
+
+/** DELEGATION taahhüdü: HMAC-SHA256(voteKey, from|to|scope|rank|edgeId), hex. */
+export function delegationCommitment(
+  voteKey: string,
+  e: { id: string; src: string; dst: string; scope: string | null; rank: number | null },
+): string {
+  return createHmac("sha256", voteKey).update(`${bareUser(e.src)}|${bareUser(e.dst)}|${e.scope}|${e.rank}|${e.id}`, "utf8").digest("hex");
 }
 
 interface CommunityResult {
@@ -252,11 +262,13 @@ export function createGraphService(ctx: CoreContext, deps: { ledger: LedgerServi
 
   // ───────────── Vekâlet ─────────────
 
-  /** Defterde ham kullanıcı kimliği yok: yalnızca kenar kimliği ve taahhüt. */
+  /**
+   * Defterde ham kullanıcı kimliği yok: yalnızca kenar kimliği ve sunucu sırrıyla (voteKey) anahtarlı taahhüt.
+   * Anahtarsız özet, üye çiftleri denenerek kaba kuvvetle çözülebilirdi; sunucu taahhüdü yine doğrulayabilir.
+   */
   function recordDelegation(r: EdgeRow, action: "create" | "revoke"): string | null {
     if (!deps.ledger) return null;
-    const commitment = sha256Hex(`${bareUser(r.src)}|${bareUser(r.dst)}|${r.scope}|${r.rank}|${r.id}`);
-    return deps.ledger.submit("DELEGATION", { edgeId: r.id, action, commitment }).txHash;
+    return deps.ledger.submit("DELEGATION", { edgeId: r.id, action, commitment: delegationCommitment(ctx.config.voteKey, r) }).txHash;
   }
 
   function normalizeScope(scope: string): string {
@@ -444,7 +456,7 @@ export function createGraphService(ctx: CoreContext, deps: { ledger: LedgerServi
       const iterations = Math.max(1, Math.ceil(Math.log2(Math.max(2, nodes.length))));
       const trust = propagateTrust(nodes, pairs, seeds, iterations);
       const values = [...trust.values()];
-      const max = Math.max(0, ...values);
+      const max = values.reduce((m, v) => (v > m ? v : m), 0);
       const reference = median(values.filter((v) => v > 0));
       const scores: Record<string, number> = {};
       const flagged: string[] = [];
@@ -488,10 +500,7 @@ export function createGraphService(ctx: CoreContext, deps: { ledger: LedgerServi
         votes.push({ proposal, user: b.user_id, choice: b.choice });
       }
     }
-    const pairs = agreementPairs(votes, AGREEMENT_PARAMS.minCommon)
-      .filter((p) => p.same * 2 > p.common)
-      .map(({ a, b, same, common }) => ({ a, b, same, common }));
-    return { pairs };
+    return { pairs: agreementPairs(votes, AGREEMENT_PARAMS.minCommon).filter((p) => p.same * 2 > p.common) };
   }
 
   function agreementDataKey(): string {
@@ -887,7 +896,10 @@ export function createGraphService(ctx: CoreContext, deps: { ledger: LedgerServi
     },
 
     visualization(opts): { nodes: GraphVisNode[]; edges: GraphVisEdge[] } {
-      const types = new Set<EdgeType>(opts.includeEdgeTypes?.length ? opts.includeEdgeTypes : DEFAULT_VIS_TYPES);
+      // İzin listesi: AGREES (oy gizliliği) hiç verilmez; RELATED_TO (aile/iş/hane) yalnız includePrivate === true iken.
+      const includePrivate = (opts as { includePrivate?: boolean }).includePrivate === true;
+      const requested = opts.includeEdgeTypes?.length ? opts.includeEdgeTypes : DEFAULT_VIS_TYPES;
+      const types = new Set<EdgeType>(requested.filter((t) => VIS_PUBLIC_TYPES.has(t) || (t === "RELATED_TO" && includePrivate)));
       const limit = Math.min(5000, Math.max(1, Math.floor(opts.limit ?? 500)));
       const users = verifiedUsers();
       const pr = computePagerank();

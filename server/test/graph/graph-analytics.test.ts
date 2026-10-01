@@ -59,7 +59,7 @@ describe("graf analizi: uzlaşı toplulukları (Louvain)", () => {
     const ctx = makeCtx();
     const ledger = new FakeLedger(ctx.clock);
     const graph = createGraphService(ctx, { ledger });
-    const { blocA, blocB } = twoBlocs(ctx);
+    const { blocA, blocB } = twoBlocs(ctx, "üye-");
     const r = graph.agreementCommunities("tohum-1");
     expect(r.count).toBe(2);
     expect(r.modularity).toBeGreaterThan(0.3);
@@ -289,7 +289,7 @@ describe("graf analizi: istatistik ve görselleştirme", () => {
     const { graph, ledger, blocA, blocB } = scene();
     const s = graph.stats();
     expect(s.nodes).toBe(10); // yalnız doğrulanmış üyeler
-    expect(s.edges).toBe(10); // aktif, user-user (doğrulanmamış uçlu takip dahil)
+    expect(s.edges).toBe(9); // aktif, user-user (doğrulanmamış uçlu takip dahil)
     expect(s.communities).toBe(2);
     expect(s.modularity).toBeGreaterThan(0.3);
     expect(s.maxDelegationLoad).toBe(2);
@@ -302,8 +302,8 @@ describe("graf analizi: istatistik ve görselleştirme", () => {
       expect(b.nickname).toBe(nicknames.get(b.userId));
       expect(b.score).toBeGreaterThan(0);
     }
-    // a3 ve b1 köprü konumunda
-    expect(s.brokers.slice(0, 2).map((b) => b.userId).sort()).toEqual([blocA[2], blocB[0]].sort());
+    // b1, b2'yi geri kalanlara bağlayan tek düğüm; a2, a1–a3 arasındaki iki en kısa yoldan birinde
+    expect(s.brokers.map((b) => b.userId)).toEqual([blocB[0], blocA[1]]);
     expect(typeof s.sybilFlagged).toBe("number");
     expect(s.permanentLoser.map((p) => p.clusterId)).toEqual(["g0", "g1"]);
     // Louvain, son anlık görüntünün tohumuyla bir kez çalışır
@@ -329,16 +329,23 @@ describe("graf analizi: istatistik ve görselleştirme", () => {
     const ca = byId.get(blocA[0])!.community;
     expect(ca).not.toBeNull();
     expect(byId.get(blocB[0])!.community).not.toBe(ca);
-    // b1 en çok bağlantı alan düğüm → pagerank sıralamasında ilk
-    expect(v.nodes[0].id).toBe(blocB[0]);
+    // düğümler pagerank'e göre azalan sırada; bağlantı alan b1, yalıtılmış a5'ten önde
+    for (let i = 1; i < v.nodes.length; i++) expect(v.nodes[i - 1].pagerank).toBeGreaterThanOrEqual(v.nodes[i].pagerank);
+    expect(byId.get(blocB[0])!.pagerank).toBeGreaterThan(byId.get(blocA[4])!.pagerank);
 
     const types = new Set(v.edges.map((e) => e.type));
     expect([...types].sort()).toEqual(["DELEGATES_TO", "FOLLOWS", "VOUCHES"]);
     expect(v.edges).toHaveLength(7);
     expect(v.edges).toContainEqual({ source: blocA[0], target: blocB[0], type: "VOUCHES", weight: 0.7 });
 
-    const rel = graph.visualization({ includeEdgeTypes: ["RELATED_TO"] });
+    // İzin listesi: RELATED_TO yalnız includePrivate === true iken; AGREES hiçbir zaman
+    expect(graph.visualization({ includeEdgeTypes: ["RELATED_TO"] }).edges).toEqual([]);
+    expect(graph.visualization({ includeEdgeTypes: ["RELATED_TO", "FOLLOWS"] }).edges.some((e) => e.type === "RELATED_TO")).toBe(false);
+    const rel = graph.visualization({ includeEdgeTypes: ["RELATED_TO"], includePrivate: true } as Parameters<typeof graph.visualization>[0]);
     expect(rel.edges).toEqual([{ source: blocA[0], target: blocA[1], type: "RELATED_TO", weight: 1 }]);
+    graph.addEdge({ src: blocA[0], dst: blocB[0], type: "AGREES", weight: 1 });
+    const agrees = graph.visualization({ includeEdgeTypes: ["AGREES"], includePrivate: true } as Parameters<typeof graph.visualization>[0]);
+    expect(agrees.edges).toEqual([]);
 
     const top = graph.visualization({ limit: 2 });
     expect(top.nodes).toHaveLength(2);

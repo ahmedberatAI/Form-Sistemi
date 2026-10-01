@@ -41,6 +41,11 @@ export interface IdentityServiceImpl extends IdentityService {
   changePassword(userId: string, oldPw: string, newPw: string, keepToken?: string): Promise<void>;
   /** Doğrulama sonrası 18 yaşını dolduran üyelerin is_adult alanını günceller; güncellenen sayıyı döndürür. */
   refreshAdulthood(): number;
+  /**
+   * Periyodik imha: maxAgeMs'den uzun süredir doğrulanmamış başvuruları reddedilmiş sayar ve kasalarını kripto-imha eder.
+   * Varsayılan 180 gün. İmha edilen başvuru sayısını döndürür.
+   */
+  purgeStalePending(maxAgeMs?: number): number;
   /** Defterdeki takma üye referansı (HMAC). Kişisel veri içermez. */
   memberRef(userId: string): string;
 }
@@ -74,6 +79,7 @@ interface DecryptedPii {
 const STAFF_REGISTRAR: Role[] = ["registrar", "admin"];
 const STAFF_PII: Role[] = ["registrar", "auditor", "admin"];
 const LOGIN_FAILED = "Takma ad/e-posta veya şifre hatalı.";
+const STALE_PENDING_MS = 180 * 24 * 3_600_000;
 
 const dupNickname = () => conflict("duplicate_nickname", "Bu takma ad zaten kullanılıyor.", { nickname: "Bu takma ad zaten kullanılıyor." });
 const dupTckn = () =>
@@ -473,7 +479,8 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
       return db.get<{ household_bidx: string | null }>("SELECT household_bidx FROM identity_vault WHERE user_id = ?", userId)?.household_bidx ?? null;
     },
 
-    setConsents(userId, c) {
+    setConsents(userId, consents) {
+      const c = consents ?? {};
       const row = requireRow(userId);
       if (isClosed(row)) throw closedAccount();
       const details: Record<string, string> = {};
@@ -678,12 +685,29 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
         "SELECT u.id FROM users u JOIN identity_vault v ON v.user_id = u.id WHERE u.is_adult = 0 AND u.status IN ('pending', 'verified', 'suspended') AND v.wrapped_dek IS NOT NULL",
       );
       for (const { id } of candidates) {
-        if (ageOn(readPii(id).birthDate, now) >= 18) {
+        let birthDate: string;
+        try {
+          birthDate = readPii(id).birthDate;
+        } catch {
+          continue; // bütünlük hatası zaten denetim günlüğüne yazıldı
+        }
+        if (ageOn(birthDate, now) >= 18) {
           db.run("UPDATE users SET is_adult = 1 WHERE id = ?", id);
           n++;
         }
       }
       return n;
+    },
+
+    purgeStalePending(maxAgeMs = STALE_PENDING_MS) {
+      const cutoff = clock.now() - maxAgeMs;
+      const stale = db.all<{ id: string }>("SELECT id FROM users WHERE status = 'pending' AND created_at < ?", cutoff);
+      for (const { id } of stale) {
+        shred(id, "rejected");
+        submitLedger("MEMBER_ERASED", { memberRef: vault.memberRef(id) });
+        deps.audit.log(null, "identity.purge_stale", id, { method: "crypto-shredding" });
+      }
+      return stale.length;
     },
 
     memberRef(userId) {

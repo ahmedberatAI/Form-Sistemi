@@ -262,7 +262,14 @@ export interface IdentityService {
   exportOwnData(userId: string): Record<string, unknown>;
   /** KVKK: kripto-imha. Oylamaya konmaz. */
   eraseSelf(userId: string): Promise<void>;
-  changePassword(userId: string, oldPw: string, newPw: string): Promise<void>;
+  /** keepToken: verilen oturum açık kalır, diğerleri iptal edilir. */
+  changePassword(userId: string, oldPw: string, newPw: string, keepToken?: string): Promise<void>;
+  /** Silme gibi geri dönüşsüz işlemlerden önce şifre teyidi. */
+  verifyPassword(userId: string, password: string): Promise<boolean>;
+  /** Sonradan 18 yaşını dolduranların bayrağını günceller (zamanlayıcı çağırır). */
+  refreshAdulthood(): number;
+  /** Süresi geçmiş bekleyen başvuruları kripto-imha eder (zamanlayıcı çağırır). */
+  purgeStalePending(maxAgeMs?: number): number;
 }
 
 // ═════════════════════════ Yapay zekâ ═════════════════════════

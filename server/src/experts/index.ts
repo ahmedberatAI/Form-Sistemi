@@ -701,7 +701,8 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
         const soft = clamp01(c.soft);
         let reason: string | undefined;
         if (c.hard) {
-          reason = "Yazarla kesin çıkar çatışması" + (c.reasons.length ? ` (${c.reasons.join("; ")})` : " (aile, iş ya da hane bağı)");
+          const why = c.reasons.map((r) => r.trim().replace(/\.$/, "")).filter(Boolean);
+          reason = "Yazarla kesin çıkar çatışması" + (why.length ? ` (${why.join("; ")})` : " (aile, iş ya da hane bağı)");
         } else if (recused.has(id)) {
           reason = "Bu öneride daha önce çekinme beyan etti";
         } else if (priorPanelists.has(id)) {

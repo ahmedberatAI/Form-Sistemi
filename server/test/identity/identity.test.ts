@@ -266,6 +266,19 @@ describe("doğrulama akışı", () => {
     await identity.register(regInput({ tckn: inp.tckn, email: inp.email, nickname: "reddedilecek" }));
   });
 
+  it("periyodik imha: süresi geçen bekleyen başvurular kripto-imha edilir", async () => {
+    const { identity, registrarId, ctx } = setup();
+    const old = (await identity.register(regInput())).user;
+    ctx.clock.advance(100 * DAY);
+    const fresh = (await identity.register(regInput())).user;
+    ctx.clock.advance(81 * DAY);
+    expect(identity.purgeStalePending()).toBe(1);
+    expect(identity.me(old.id).status).toBe("rejected");
+    expect(identity.me(fresh.id).status).toBe("pending");
+    await expectAppError(() => identity.getPii(registrarId, old.id, "Kontrol amaçlı"), 409, "pii_erased");
+    expect(identity.purgeStalePending()).toBe(0);
+  });
+
   it("kayıt memuru üyeyi doğrudan doğrulanmış olarak girer", async () => {
     const { identity, registrarId, memberId, ledger } = setup();
     await expectAppError(identity.createByRegistrar(memberId, regInput()), 403, "forbidden");

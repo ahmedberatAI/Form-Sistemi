@@ -42,7 +42,7 @@ export const STOPWORDS: ReadonlySet<string> = new Set([
   "olsun", "olur", "on", "ona", "onlar", "onları", "onların", "onu", "onun", "orada", "öyle", "önce", "sanki", "sen",
   "senin", "siz", "sizin", "sonra", "şey", "şeyler", "şimdi", "şu", "şuna", "şunu", "tabii", "tüm", "ve", "veya", "ya",
   "yani", "yine", "zaten", "çünki", "üzere", "hâlâ", "hala", "ayrıca", "dahi", "bile", "gerek", "var", "yok", "the",
-  "olacak", "edilsin", "edilmeli", "yapılsın", "yapılmalı", "bunlara", "şöyle", "lütfen", "iyi", "kötü",
+  "olacak", "edilsin", "edilmeli", "yapılsın", "yapılmalı", "bunlara", "şöyle", "lütfen", "iyi", "kötü", "hatta",
 ]);
 
 /** Kısa (≤3 harf) anahtar kelimelerde izin verilen ekler — "hat" ↔ "hata" gibi yanlış eşleşmeleri önler. */

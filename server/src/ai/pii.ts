@@ -74,7 +74,12 @@ function addressCandidates(text: string): Candidate[] {
     let start = g[0].start;
     const before = text.slice(Math.max(0, start - 40), start);
     const bw = /((?:[\p{Lu}\p{N}][\p{L}\p{N}]*\.?\s+){1,2})$/u.exec(before) ?? /([\p{L}\p{N}]+\.?\s+)$/u.exec(before);
-    if (bw) start -= bw[1].length;
+    if (bw) {
+      let name = bw[1];
+      const first = /^([\p{L}\p{N}]+)\.?\s+/u.exec(name);
+      if (first && /^(adres\p{L}*|ev|evim|evimiz|ikamet\p{L}*|konum\p{L}*)$/u.test(first[1].toLocaleLowerCase("tr-TR"))) name = name.slice(first[0].length);
+      start -= name.length;
+    }
     let end = g[g.length - 1].end;
     const tail = /^\s*:?\s*\d+(?:\s*[/\-]\s*\d+)?(?:\s*(?:daire|d\.|kat)\s*:?\s*\d+)?/iu.exec(text.slice(end));
     if (tail) end += tail[0].length;
