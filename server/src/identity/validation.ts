@@ -59,7 +59,8 @@ const requiredText = (label: string, min: number, max: number) =>
     .pipe(
       z
         .string()
-        .min(min, { error: min <= 1 ? `${label} boş bırakılamaz.` : `${label} en az ${min} karakter olmalıdır.` })
+        .min(1, { error: `${label} boş bırakılamaz.` })
+        .min(min, { error: `${label} en az ${min} karakter olmalıdır.` })
         .max(max, { error: `${label} en fazla ${max} karakter olabilir.` }),
     );
 

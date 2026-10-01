@@ -1,0 +1,628 @@
+// Çevrimdışı sezgisel mod: anahtar yokken (ya da Claude başarısız olunca) tam işlevsel, belirlenimci çıktılar.
+import { clusterLabel, compactIri, fy, RIGHT_VOCAB, type DiscussionSummary, type AiCitedPoint } from "@forum/shared";
+import type { ClassificationResult, ModerationResult, PiiFinding, SummaryInputMessage } from "../core/contracts";
+import {
+  ACCUSATION_WORDS,
+  COPYRIGHT_CUES,
+  EXPAND_CUES,
+  HATE_CUES,
+  INSULT_WORDS,
+  LABEL_ARTICLE_KEYWORDS,
+  LABEL_SEVERITY,
+  LEGAL_MESSAGE,
+  LEGAL_QUALIFICATION_PATTERNS,
+  OVERCLAIM_MESSAGE,
+  OVERCLAIM_PATTERNS,
+  PROTECTED_GROUPS,
+  RESTRICT_CUES,
+  SPAM_STRONG,
+  SPAM_WEAK,
+  THREAT_PHRASES,
+} from "./lexicons";
+import { detectPii, PseudonymMasker, redactPii } from "./pii";
+import { clamp01, contentTokens, f5, findPhrase, lowerTr, normalizeTr, round3, sentences, tokenize, truncate, type Token } from "./text";
+
+export interface ClassifyContext {
+  categories: { iri: string; label: string; keywords: string[] }[];
+  rights: { iri: string; label: string }[];
+  contentLabels: { iri: string; label: string }[];
+}
+
+export interface ModerateContext {
+  articles: { iri: string; number: string; title: string }[];
+  contentLabels: { iri: string; label: string }[];
+}
+
+export type Offline<T> = Omit<T, "offline" | "model">;
+
+/** IRI'nin yerel adı ("https://…#Tehdit" / "fy:Tehdit" → "Tehdit"). */
+export function localOf(iri: string): string {
+  const c = compactIri(iri);
+  if (c.startsWith("fy:")) return c.slice(3);
+  const i = Math.max(iri.lastIndexOf("#"), iri.lastIndexOf("/"));
+  return i >= 0 ? iri.slice(i + 1) : iri;
+}
+
+export function labelIri(local: string, contentLabels: { iri: string }[]): string {
+  return contentLabels.find((c) => localOf(c.iri) === local)?.iri ?? fy(local);
+}
+
+const LABEL_NAMES: Record<string, string> = {
+  Tehdit: "Tehdit",
+  NefretSoylemi: "Nefret söylemi",
+  KisiselVeriIfsasi: "Kişisel veri ifşası",
+  HakaretIftira: "Hakaret / iftira",
+  Spam: "Spam / reklam",
+  TelifIhlali: "Telif ihlali",
+};
+
+const PII_NAMES: Record<PiiFinding["kind"], string> = {
+  tckn: "T.C. kimlik numarası",
+  iban: "IBAN",
+  phone: "telefon numarası",
+  email: "e-posta adresi",
+  address: "açık adres",
+};
+
+const RISK_NAMES = ["yok", "düşük", "orta", "yüksek"] as const;
+
+// ───────────────────────── İçerik sinyalleri (moderasyon + sınıflandırma) ─────────────────────────
+
+interface Span {
+  start: number;
+  end: number;
+}
+
+export interface LabelHit {
+  local: string;
+  confidence: number;
+  severity: 0 | 1 | 2 | 3;
+  spans: Span[];
+  evidence: string[];
+}
+
+function phraseHits(tokens: Token[], text: string, phrases: string[], strict = false): { spans: Span[]; quotes: string[] } {
+  const spans: Span[] = [];
+  const quotes: string[] = [];
+  for (const p of phrases) {
+    for (const [a, b] of findPhrase(tokens, p, { strict })) {
+      const s = { start: tokens[a].start, end: tokens[b].end };
+      if (spans.some((x) => x.start === s.start && x.end === s.end)) continue;
+      spans.push(s);
+      quotes.push(text.slice(s.start, s.end));
+    }
+  }
+  return { spans, quotes };
+}
+
+export function analyzeContent(text: string): { hits: LabelHit[]; pii: PiiFinding[] } {
+  const hits: LabelHit[] = [];
+  const tokens = tokenize(text);
+
+  const threat = phraseHits(tokens, text, THREAT_PHRASES);
+  if (threat.spans.length) {
+    hits.push({ local: "Tehdit", confidence: threat.spans.length > 1 ? 0.95 : 0.9, severity: 3, spans: threat.spans, evidence: threat.quotes });
+  }
+
+  const sents = sentences(text);
+  const hateSpans: Span[] = [];
+  const hateEvidence: string[] = [];
+  let hateCueMax = 0;
+  for (const s of sents) {
+    const st = tokens.filter((t) => t.start >= s.start && t.end <= s.end);
+    const groups = phraseHits(st, text, PROTECTED_GROUPS, true);
+    if (!groups.spans.length) continue;
+    const cues = phraseHits(st, text, HATE_CUES, true);
+    if (!cues.spans.length) continue;
+    hateSpans.push({ start: s.start, end: s.end });
+    hateEvidence.push(`${groups.quotes[0]} … ${cues.quotes[0]}`);
+    hateCueMax = Math.max(hateCueMax, cues.spans.length);
+  }
+  if (hateSpans.length) {
+    hits.push({ local: "NefretSoylemi", confidence: hateCueMax > 1 || hateSpans.length > 1 ? 0.85 : 0.75, severity: 3, spans: hateSpans, evidence: hateEvidence });
+  }
+
+  const insult = phraseHits(tokens, text, INSULT_WORDS);
+  const accusation = phraseHits(tokens, text, ACCUSATION_WORDS);
+  if (insult.spans.length || accusation.spans.length) {
+    const conf = insult.spans.length ? (insult.spans.length > 1 ? 0.9 : 0.8) : 0.5;
+    hits.push({
+      local: "HakaretIftira",
+      confidence: conf,
+      severity: conf >= 0.7 ? 2 : 1,
+      spans: [...insult.spans, ...accusation.spans],
+      evidence: [...insult.quotes, ...accusation.quotes],
+    });
+  }
+
+  const urls = [...text.matchAll(/(?:https?:\/\/|www\.)[^\s<>"')]+/giu)];
+  const strong = phraseHits(tokens, text, SPAM_STRONG);
+  const weak = phraseHits(tokens, text, SPAM_WEAK);
+  let spamScore = urls.length + strong.spans.length + 0.5 * weak.spans.length;
+  const urlSet = new Set(urls.map((u) => lowerTr(u[0])));
+  if (urls.length > urlSet.size) spamScore += 1;
+  const words = tokens.map((t) => t.norm).filter((t) => t.length > 2);
+  if (words.length >= 6) {
+    const freq = new Map<string, number>();
+    for (const w of words) freq.set(w, (freq.get(w) ?? 0) + 1);
+    const top = Math.max(...freq.values());
+    if (top / words.length >= 0.4) spamScore += 1.5;
+  }
+  if (/!{3,}/.test(text)) spamScore += 0.5;
+  if (spamScore >= 2) {
+    const conf = Math.min(0.9, 0.4 + 0.15 * spamScore);
+    hits.push({
+      local: "Spam",
+      confidence: round3(conf),
+      severity: conf >= 0.7 ? 2 : 1,
+      spans: [...urls.map((u) => ({ start: u.index!, end: u.index! + u[0].length })), ...strong.spans, ...weak.spans],
+      evidence: [...urls.map((u) => u[0]), ...strong.quotes, ...weak.quotes],
+    });
+  }
+
+  const copy = phraseHits(tokens, text, COPYRIGHT_CUES);
+  const copyrightSign = text.indexOf("©");
+  if (copy.spans.length || copyrightSign >= 0) {
+    const spans = [...copy.spans];
+    if (copyrightSign >= 0) spans.push({ start: copyrightSign, end: copyrightSign + 1 });
+    hits.push({ local: "TelifIhlali", confidence: spans.length > 1 ? 0.65 : 0.5, severity: 1, spans, evidence: [...copy.quotes, ...(copyrightSign >= 0 ? ["©"] : [])] });
+  }
+
+  const pii = detectPii(text);
+  if (pii.length) {
+    const hard = pii.some((p) => p.kind === "tckn" || p.kind === "iban" || p.kind === "address");
+    const conf = Math.max(...pii.map((p) => (p.kind === "tckn" || p.kind === "iban" ? 0.95 : p.kind === "address" ? 0.7 : 0.85)));
+    hits.push({
+      local: "KisiselVeriIfsasi",
+      confidence: conf,
+      severity: hard ? 3 : 2,
+      spans: pii.map((p) => ({ start: p.start, end: p.end })),
+      evidence: [...new Set(pii.map((p) => PII_NAMES[p.kind]))],
+    });
+  }
+
+  hits.sort((a, b) => b.severity - a.severity || b.confidence - a.confidence || a.local.localeCompare(b.local));
+  return { hits, pii };
+}
+
+function matchArticles(labels: string[], text: string, articles: ModerateContext["articles"]): string[] {
+  const out = new Set<string>();
+  for (const local of labels) {
+    const kws = (LABEL_ARTICLE_KEYWORDS[local] ?? []).map(normalizeTr);
+    for (const a of articles) {
+      const title = normalizeTr(a.title);
+      if (kws.some((k) => title.includes(k))) out.add(a.iri);
+    }
+  }
+  for (const m of text.matchAll(/madde\s*(\d+)/giu)) {
+    const n = m[1];
+    for (const a of articles) {
+      if (new RegExp(`^madde\\s*${n}(?!\\d)`, "iu").test(a.number.trim())) out.add(a.iri);
+    }
+  }
+  return articles.filter((a) => out.has(a.iri)).map((a) => a.iri);
+}
+
+export function offlineModerate(text: string, ctx: ModerateContext): Offline<ModerationResult> {
+  const { hits, pii } = analyzeContent(text);
+  const risk = hits.reduce<0 | 1 | 2 | 3>((r, h) => (h.severity > r ? h.severity : r), 0);
+  const piiByStart = new Map(pii.map((p) => [p.start, p]));
+  const spanMap = new Map<string, { start: number; end: number; quote: string }>();
+  for (const h of hits) {
+    for (const s of h.spans) {
+      const p = h.local === "KisiselVeriIfsasi" ? piiByStart.get(s.start) : undefined;
+      spanMap.set(`${s.start}:${s.end}`, { start: s.start, end: s.end, quote: p ? p.masked : text.slice(s.start, s.end) });
+    }
+  }
+  const spans = [...spanMap.values()].sort((a, b) => a.start - b.start || a.end - b.end);
+  const locals = hits.map((h) => h.local);
+  const rationale = hits.length
+    ? `Saptanan sinyaller: ${hits.map((h) => `${LABEL_NAMES[h.local] ?? h.local} (${h.evidence.slice(0, 3).map((e) => (h.local === "KisiselVeriIfsasi" ? e : `«${truncate(e, 60)}»`)).join(", ")})`).join("; ")}. Risk düzeyi: ${risk}/3 (${RISK_NAMES[risk]}). Bu değerlendirme çevrimdışı sezgisel yöntemle yapılmıştır; içerik gizlenmez, karar insanlara aittir.`
+    : "Belirgin bir risk sinyali (tehdit, hakaret, nefret söylemi, spam, kişisel veri) saptanmadı. Risk düzeyi: 0/3. Bu değerlendirme çevrimdışı sezgisel yöntemle yapılmıştır.";
+  return {
+    risk,
+    labels: locals.map((l) => labelIri(l, ctx.contentLabels)),
+    articleIds: matchArticles(locals, text, ctx.articles),
+    spans,
+    pii,
+    rationale,
+  };
+}
+
+// ───────────────────────── Sınıflandırma ─────────────────────────
+
+function rightKeywords(r: { iri: string; label: string }): string[] {
+  const v = RIGHT_VOCAB.find((x) => x.local === localOf(r.iri));
+  if (v) return v.keywords;
+  return contentTokens(r.label).filter((t) => t.length >= 5);
+}
+
+export function offlineClassify(input: { title: string; body: string }, ctx: ClassifyContext): Offline<ClassificationResult> {
+  const titleTokens = tokenize(input.title ?? "");
+  const bodyTokens = tokenize(input.body ?? "");
+  const all = tokenize(`${input.title ?? ""}\n${input.body ?? ""}`);
+  const fullText = `${input.title ?? ""}\n${input.body ?? ""}`;
+
+  const scored = ctx.categories
+    .map((c) => {
+      let score = 0;
+      const matched: string[] = [];
+      for (const kw of c.keywords) {
+        const th = findPhrase(titleTokens, kw).length;
+        const bh = Math.min(3, findPhrase(bodyTokens, kw).length);
+        if (th + bh === 0) continue;
+        matched.push(kw);
+        score += (th > 0 ? 2 : 0) + bh + (kw.includes(" ") ? 0.5 : 0);
+      }
+      return { c, score, matched };
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score || a.c.iri.localeCompare(b.c.iri));
+  const best = scored[0]?.score ?? 0;
+  const chosen = scored.filter((x) => x.score >= Math.max(1, best * 0.5)).slice(0, 3);
+  const categories = chosen.map((x) => ({ iri: x.c.iri, confidence: round3(Math.min(0.9, 0.25 + 0.12 * x.score)) }));
+
+  const restrictCues = phraseHits(all, fullText, RESTRICT_CUES).quotes;
+  const expandCues = phraseHits(all, fullText, EXPAND_CUES).quotes;
+  const restrictSet = new Set(RESTRICT_CUES.map(normalizeTr));
+  const rightsAffected: ClassificationResult["rightsAffected"] = [];
+  const rightNotes: string[] = [];
+  for (const r of ctx.rights) {
+    const kws = rightKeywords(r).filter((k) => findPhrase(all, k).length > 0);
+    if (!kws.length) continue;
+    let direction: "restrict" | "expand" | null = null;
+    if (restrictCues.length || kws.some((k) => restrictSet.has(normalizeTr(k)))) direction = "restrict";
+    else if (expandCues.length) direction = "expand";
+    if (!direction) continue;
+    const cue = direction === "restrict" ? restrictCues.length > 0 : expandCues.length > 0;
+    rightsAffected.push({ right: r.iri, direction, confidence: round3(Math.min(0.9, 0.4 + 0.15 * kws.length + (cue ? 0.1 : 0))) });
+    rightNotes.push(`«${r.label}» (${direction === "restrict" ? "kısıtlama" : "genişletme"}; ${kws.map((k) => `«${k}»`).join(", ")})`);
+  }
+  rightsAffected.sort((a, b) => b.confidence - a.confidence || a.right.localeCompare(b.right));
+
+  const { hits } = analyzeContent(fullText);
+  const contentLabels = hits.map((h) => ({ label: labelIri(h.local, ctx.contentLabels), confidence: h.confidence }));
+
+  const parts: string[] = [];
+  if (chosen.length) {
+    parts.push(`Anahtar kelime eşleşmeleri: ${chosen.map((x) => `${x.c.label} (${x.matched.map((m) => `«${m}»`).join(", ")})`).join("; ")}.`);
+  } else {
+    parts.push("Kategori anahtar kelimeleriyle eşleşme bulunamadı; kategoriyi yazar seçmelidir.");
+  }
+  if (rightNotes.length) {
+    const cues = [...new Set((restrictCues.length ? restrictCues : expandCues).map(lowerTr))];
+    parts.push(`Hak etkisi ipuçları${cues.length ? ` (${cues.map((c) => `«${c}»`).join(", ")})` : ""}: ${rightNotes.join("; ")}.`);
+  }
+  if (hits.length) parts.push(`İçerik uyarıları: ${hits.map((h) => LABEL_NAMES[h.local] ?? h.local).join(", ")}.`);
+  parts.push("Bu sınıflandırma çevrimdışı sezgisel yöntemle yapılmıştır ve yalnızca öneri niteliğindedir; etiketler yalnızca yükseltilebilir.");
+  return { categories, rightsAffected, contentLabels, rationale: parts.join(" ") };
+}
+
+// ───────────────────────── Benzerlik (TF-IDF kosinüs) ─────────────────────────
+
+function termsOf(title: string, body: string): Map<string, number> {
+  const tf = new Map<string, number>();
+  const add = (t: string, w: number) => tf.set(t, (tf.get(t) ?? 0) + w);
+  for (const t of contentTokens(title ?? "")) add(f5(t), 2);
+  for (const t of contentTokens(body ?? "")) add(f5(t), 1);
+  return tf;
+}
+
+export function offlineSimilar(
+  input: { title: string; body: string },
+  corpus: { id: string; title: string; body: string }[],
+  limit = 5,
+  minScore = 0.15,
+): { id: string; score: number }[] {
+  if (!corpus.length) return [];
+  const q = termsOf(input.title, input.body);
+  const docs = corpus.map((d) => ({ id: d.id, tf: termsOf(d.title, d.body) }));
+  const n = docs.length + 1;
+  const df = new Map<string, number>();
+  for (const tf of [q, ...docs.map((d) => d.tf)]) for (const t of tf.keys()) df.set(t, (df.get(t) ?? 0) + 1);
+  const idf = (t: string) => Math.log((n + 1) / ((df.get(t) ?? 0) + 1)) + 1;
+  const vec = (tf: Map<string, number>) => {
+    const v = new Map<string, number>();
+    let norm = 0;
+    for (const [t, c] of tf) {
+      const w = (1 + Math.log(c)) * idf(t);
+      v.set(t, w);
+      norm += w * w;
+    }
+    return { v, norm: Math.sqrt(norm) };
+  };
+  const qv = vec(q);
+  if (qv.norm === 0) return [];
+  return docs
+    .map((d) => {
+      const dv = vec(d.tf);
+      if (dv.norm === 0) return { id: d.id, score: 0 };
+      let dot = 0;
+      for (const [t, w] of qv.v) dot += w * (dv.v.get(t) ?? 0);
+      return { id: d.id, score: Math.round((dot / (qv.norm * dv.norm)) * 10_000) / 10_000 };
+    })
+    .filter((x) => x.score >= minScore)
+    .sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    .slice(0, Math.max(0, limit));
+}
+
+// ───────────────────────── Tartışma özeti (çıkarımsal) ─────────────────────────
+
+interface SMsg extends SummaryInputMessage {
+  stems: Set<string>;
+  surfaces: Map<string, string>;
+}
+
+function maxPseudonymIndex(msgs: SummaryInputMessage[]): number {
+  let max = 0;
+  for (const m of msgs) {
+    const r = /^K(\d+)$/.exec(m.pseudonym);
+    if (r) max = Math.max(max, Number(r[1]));
+  }
+  return max;
+}
+
+const uniq = <T>(xs: T[]): T[] => [...new Set(xs)];
+const listAuthors = (ms: SMsg[], max = 4): string => {
+  const a = uniq(ms.map((m) => m.pseudonym));
+  return a.length > max ? `${a.slice(0, max).join(", ")} ve ${a.length - max} kişi daha` : a.join(", ");
+};
+
+export function offlineSummarize(input: { topicTitle: string; messages: SummaryInputMessage[] }): DiscussionSummary {
+  const masker = new PseudonymMasker(maxPseudonymIndex(input.messages) + 1);
+  const safe = (s: string, max = 140) => truncate(masker.mask(redactPii(s)), max);
+  const firstSentence = (body: string, stem?: string) => {
+    const ss = sentences(body);
+    const hit = stem ? ss.find((s) => contentTokens(s.text).some((t) => f5(t) === stem)) : undefined;
+    return safe((hit ?? ss[0])?.text ?? body);
+  };
+
+  const titleStems = new Set(contentTokens(input.topicTitle ?? "").map(f5));
+  const msgs: SMsg[] = input.messages.map((m) => {
+    const stems = new Set<string>();
+    const surfaces = new Map<string, string>();
+    for (const t of contentTokens(m.body ?? "")) {
+      if (t.length < 4) continue;
+      const s = f5(t);
+      if (titleStems.has(s)) continue;
+      stems.add(s);
+      const prev = surfaces.get(s);
+      if (!prev || t.length < prev.length) surfaces.set(s, t);
+    }
+    return { ...m, stems, surfaces };
+  });
+
+  const clusterIds = uniq(msgs.map((m) => m.clusterId).filter((c): c is string => !!c)).sort();
+  const multiCluster = clusterIds.length >= 2;
+
+  interface Theme {
+    stems: string[];
+    msgs: SMsg[];
+    clusters: Set<string>;
+    authors: Set<string>;
+  }
+  const byStem = new Map<string, SMsg[]>();
+  for (const m of msgs) for (const s of m.stems) byStem.set(s, [...(byStem.get(s) ?? []), m]);
+  let themes: Theme[] = [...byStem.entries()]
+    .filter(([, ms]) => ms.length >= 2)
+    .map(([s, ms]) => ({
+      stems: [s],
+      msgs: ms,
+      clusters: new Set(ms.map((m) => m.clusterId).filter((c): c is string => !!c)),
+      authors: new Set(ms.map((m) => m.pseudonym)),
+    }))
+    .sort((a, b) => b.clusters.size - a.clusters.size || b.authors.size - a.authors.size || b.msgs.length - a.msgs.length || (a.stems[0] < b.stems[0] ? -1 : 1));
+  // Aynı mesaj kümesini kapsayan temaları birleştir.
+  const merged: Theme[] = [];
+  for (const t of themes) {
+    const ids = new Set(t.msgs.map((m) => m.id));
+    const same = merged.find((x) => {
+      const xi = new Set(x.msgs.map((m) => m.id));
+      const inter = [...ids].filter((i) => xi.has(i)).length;
+      return inter / (ids.size + xi.size - inter) >= 0.8;
+    });
+    if (same) {
+      if (same.stems.length < 3) same.stems.push(...t.stems);
+    } else merged.push({ ...t, stems: [...t.stems] });
+  }
+  themes = merged;
+  const themeWords = (t: Theme) =>
+    t.stems.map((s) => t.msgs.find((m) => m.surfaces.has(s))?.surfaces.get(s) ?? s).join(", ");
+
+  // Tartışmalı: hem lehte hem aleyhte mesajlarda geçen temalar.
+  const contested: AiCitedPoint[] = [];
+  const usedThemes = new Set<Theme>();
+  const contestedThemes = themes
+    .map((t) => ({ t, pro: t.msgs.filter((m) => m.stance === "pro"), con: t.msgs.filter((m) => m.stance === "con") }))
+    .filter((x) => x.pro.length && x.con.length)
+    .sort((a, b) => Math.min(b.pro.length, b.con.length) - Math.min(a.pro.length, a.con.length) || b.t.msgs.length - a.t.msgs.length)
+    .slice(0, 3);
+  for (const { t, pro, con } of contestedThemes) {
+    usedThemes.add(t);
+    contested.push({
+      text: `«${themeWords(t)}» konusunda görüşler ayrışıyor: lehte (${listAuthors(pro)}) ve aleyhte (${listAuthors(con)}) değerlendirmeler var.`,
+      cites: uniq([...pro.slice(0, 3), ...con.slice(0, 3)].map((m) => m.id)),
+    });
+  }
+  const allPro = msgs.filter((m) => m.stance === "pro");
+  const allCon = msgs.filter((m) => m.stance === "con");
+  if (!contested.length && allPro.length && allCon.length) {
+    contested.push({
+      text: `Öneri genel olarak tartışmalı: ${allPro.length} lehte ve ${allCon.length} aleyhte mesaj var. Örneğin ${allCon[0].pseudonym}: "${firstSentence(allCon[0].body)}"`,
+      cites: uniq([...allPro.slice(0, 3), ...allCon.slice(0, 3)].map((m) => m.id)),
+    });
+  }
+
+  // Ortak zemin: birden çok kümede (küme yoksa birden çok kişide) tekrar eden temalar.
+  const commonGround: AiCitedPoint[] = [];
+  for (const t of themes) {
+    if (commonGround.length >= 3) break;
+    if (usedThemes.has(t)) continue;
+    if (multiCluster ? t.clusters.size < 2 : t.authors.size < 2) continue;
+    const ex = t.msgs[0];
+    commonGround.push({
+      text: multiCluster
+        ? `«${themeWords(t)}» konusu ${t.clusters.size} farklı görüş grubunda dile getirildi (${listAuthors(t.msgs)}). Örnek: "${firstSentence(ex.body, t.stems[0])}"`
+        : `«${themeWords(t)}» konusu birden çok katılımcı tarafından dile getirildi (${listAuthors(t.msgs)}). Örnek: "${firstSentence(ex.body, t.stems[0])}"`,
+      cites: t.msgs.slice(0, 5).map((m) => m.id),
+    });
+  }
+
+  // Azınlık görüşleri: en küçük küme(ler); küme yoksa sayıca az olan tutum.
+  const minorityViews: AiCitedPoint[] = [];
+  let minorityMsgs: { m: SMsg; why: string }[] = [];
+  if (multiCluster) {
+    const sizes = clusterIds.map((c) => ({ c, n: new Set(msgs.filter((m) => m.clusterId === c).map((m) => m.pseudonym)).size }));
+    const min = Math.min(...sizes.map((s) => s.n));
+    const max = Math.max(...sizes.map((s) => s.n));
+    if (min < max) {
+      const small = new Set(sizes.filter((s) => s.n === min).map((s) => s.c));
+      minorityMsgs = msgs
+        .filter((m) => m.clusterId && small.has(m.clusterId) && m.stance !== "question")
+        .map((m) => ({ m, why: `${clusterLabel(m.clusterId)} (azınlıktaki görüş grubu)` }));
+    }
+  }
+  if (!minorityMsgs.length && allPro.length && allCon.length && allPro.length !== allCon.length) {
+    const side = allPro.length < allCon.length ? allPro : allCon;
+    const label = side === allPro ? "lehte" : "aleyhte";
+    minorityMsgs = side.map((m) => ({ m, why: `Sayıca az olan ${label} görüş` }));
+  }
+  for (const { m, why } of minorityMsgs.slice(0, 4)) {
+    minorityViews.push({ text: `${why} — ${m.pseudonym}: "${firstSentence(m.body)}"`, cites: [m.id] });
+  }
+  if (!minorityViews.length) {
+    minorityViews.push({
+      text: msgs.length
+        ? "Bu tartışmada belirgin bir azınlık görüşü saptanmadı: mesajlar tek bir görüş grubunda toplanıyor ya da gruplar eşit büyüklükte. Azınlık görüşleri ayrıca gözetilmelidir."
+        : "Henüz mesaj olmadığı için azınlık görüşü özetlenemedi.",
+      cites: [],
+    });
+  }
+
+  // Açık sorular: soru tutumundaki mesajlar, ardından soru işaretli cümleler.
+  const openQuestions: AiCitedPoint[] = [];
+  for (const m of msgs.filter((x) => x.stance === "question")) {
+    if (openQuestions.length >= 5) break;
+    const q = sentences(m.body).find((s) => s.text.endsWith("?"));
+    openQuestions.push({ text: `${m.pseudonym} soruyor: "${safe(q?.text ?? m.body)}"`, cites: [m.id] });
+  }
+  for (const m of msgs.filter((x) => x.stance !== "question")) {
+    if (openQuestions.length >= 5) break;
+    const q = sentences(m.body).find((s) => s.text.endsWith("?"));
+    if (q) openQuestions.push({ text: `${m.pseudonym} soruyor: "${safe(q.text)}"`, cites: [m.id] });
+  }
+
+  const summary: DiscussionSummary = { commonGround, contested, minorityViews, openQuestions, coverage: 0 };
+  return { ...summary, coverage: computeCoverage(summary, input.messages) };
+}
+
+export function computeCoverage(s: Omit<DiscussionSummary, "coverage">, messages: { id: string }[]): number {
+  if (!messages.length) return 0;
+  const ids = new Set(messages.map((m) => m.id));
+  const cited = new Set<string>();
+  for (const p of [...s.commonGround, ...s.contested, ...s.minorityViews, ...s.openQuestions]) for (const c of p.cites) if (ids.has(c)) cited.add(c);
+  return round3(clamp01(cited.size / ids.size));
+}
+
+// ───────────────────────── Köprü taslakları ─────────────────────────
+
+export function offlineBridging(input: { title: string; body: string; majorityPoints: string[]; minorityPoints: string[] }): {
+  drafts: { title: string; body: string; rationale: string }[];
+} {
+  const masker = new PseudonymMasker();
+  const clean = (s: string) => truncate(masker.mask(redactPii(s ?? "")), 160).replace(/[.!?…]+$/u, "");
+  const title = clean(input.title) || "Öneri";
+  const maj = input.majorityPoints.map(clean).filter(Boolean);
+  const min = input.minorityPoints.map(clean).filter(Boolean);
+  const M = (i: number) => (maj.length ? maj[i % maj.length] : "çoğunluğun temel beklentisi");
+  const m = (i: number) => (min.length ? min[i % min.length] : "azınlığın dile getirdiği kaygılar");
+  const templates: ((i: number) => { title: string; body: string; rationale: string })[] = [
+    (i) => ({
+      title: `Pilot uygulama: ${title}`,
+      body: `Öneri önce sınırlı bir bölgede ve 3 aylık bir süre için pilot olarak uygulanır. Pilot süresince şu kaygı ölçülebilir göstergelerle izlenir: ${m(i)}. Pilot sonunda sonuçlar foruma raporlanır ve kalıcı uygulama yeniden oylanır.`,
+      rationale: `Çoğunluğun beklentisi (${M(i)}) gecikmeden denenirken azınlığın kaygısı (${m(i)}) gerçek verilerle sınanır.`,
+    }),
+    (i) => ({
+      title: `Kademeli geçiş: ${title}`,
+      body: `Öneri tek seferde değil, üç aşamada uygulanır; her aşamadan önce etkiler değerlendirilir. İlk aşama ${M(i)} hedefine odaklanır; sonraki aşamalara geçmeden önce ${m(i)} konusundaki etkiler gözden geçirilir.`,
+      rationale: "Kademeli geçiş, çoğunluğun hedefini korurken azınlığın uyum sağlaması için zaman tanır ve geri dönüşü kolaylaştırır.",
+    }),
+    (i) => ({
+      title: `Muafiyet ve telafi: ${title}`,
+      body: `Öneri kabul edilir; ancak orantısız biçimde etkilenenler için muafiyet ya da telafi mekanizması tanımlanır. Özellikle şu kaygı dikkate alınır: ${m(i)}. Muafiyet başvuruları açık ölçütlerle değerlendirilir.`,
+      rationale: `Kararın yükü azınlığa yığılmadan çoğunluğun amacı (${M(i)}) gerçekleştirilir.`,
+    }),
+    (i) => ({
+      title: `Süreli karar ve gözden geçirme maddesi: ${title}`,
+      body: `Öneri 12 aylık bir süre için yürürlüğe girer. Sürenin sonunda karar kendiliğinden yeniden değerlendirmeye açılır; değerlendirmede ${m(i)} konusundaki gözlemler ve ${M(i)} hedefine ne ölçüde ulaşıldığı raporlanır.`,
+      rationale: "Süreli karar, azınlığın endişelerinin kalıcı hâle gelmesini önler; çoğunluğa ise uygulamayı deneme olanağı verir.",
+    }),
+    (i) => ({
+      title: `Bağımsız izleme kurulu: ${title}`,
+      body: `Uygulamayı, farklı görüş gruplarından üyelerin yer aldığı bağımsız bir izleme kurulu takip eder. Kurul üç ayda bir herkese açık rapor yayımlar ve şu konudaki gelişmeleri ayrıca izler: ${m(i)}.`,
+      rationale: `İzleme kurulu, çoğunluğun hedefi (${M(i)}) ile azınlığın kaygıları arasında güven köprüsü kurar ve şeffaflık sağlar.`,
+    }),
+    (i) => ({
+      title: `Kapsamı daraltılmış öneri: ${title}`,
+      body: `Öneri, tartışmada geniş destek gören çekirdek unsurla sınırlandırılır: ${M(i)}. Tartışmalı kalan unsurlar (${m(i)}) ayrı bir öneri olarak yeniden tartışmaya açılır.`,
+      rationale: "Ortak zemin hemen hayata geçirilirken ayrışılan noktalar için ayrı ve odaklı bir karar süreci korunur.",
+    }),
+    (i) => ({
+      title: `Azınlık temsilinin güvenceye alınması: ${title}`,
+      body: `Öneri uygulanırken alınacak uygulama kararlarında azınlıktaki görüş grubundan en az bir temsilcinin görüşü alınır ve kayda geçirilir. Temsilci özellikle şu konuda söz sahibidir: ${m(i)}.`,
+      rationale: `Azınlığın sesi uygulama aşamasında da duyulur; çoğunluğun hedefi (${M(i)}) meşruiyet kazanır.`,
+    }),
+    (i) => ({
+      title: `Seçmeli (gönüllü katılımlı) uygulama: ${title}`,
+      body: `Öneri, katılmak isteyen birimler/kişiler için gönüllülük esasına göre uygulanır. Katılmayanlar için mevcut durum korunur; ${m(i)} konusundaki kaygılar bu sayede zorlayıcı olmaktan çıkar.`,
+      rationale: `Çoğunluk ${M(i)} hedefini isteyenlerle gerçekleştirebilir; azınlık üzerinde zorlayıcı etki oluşmaz.`,
+    }),
+  ];
+  const n = Math.max(4, Math.min(8, 4 + Math.floor((maj.length + min.length) / 2)));
+  return { drafts: templates.slice(0, n).map((t, i) => t(i)) };
+}
+
+// ───────────────────────── Bilirkişi raporu denetimi ─────────────────────────
+
+export function offlineLint(text: string): { issues: { quote: string; kind: string; message: string }[] } {
+  const issues: { quote: string; kind: string; message: string }[] = [];
+  const seen = new Set<string>();
+  for (const s of sentences(text ?? "")) {
+    const low = lowerTr(s.text).replace(/\s+/g, " ");
+    const quote = truncate(s.text, 220);
+    const legal = LEGAL_QUALIFICATION_PATTERNS.filter((p) => low.includes(p));
+    if (legal.length && !seen.has(`L:${quote}`)) {
+      seen.add(`L:${quote}`);
+      issues.push({ quote, kind: "legal_qualification", message: `${LEGAL_MESSAGE} (Saptanan ifade: «${legal[0]}».)` });
+    }
+    const over = OVERCLAIM_PATTERNS.filter((p) => low.includes(p));
+    if (over.length && !seen.has(`O:${quote}`)) {
+      seen.add(`O:${quote}`);
+      issues.push({ quote, kind: "overclaim", message: `${OVERCLAIM_MESSAGE} (Saptanan ifade: «${over[0]}».)` });
+    }
+  }
+  return { issues };
+}
+
+// ───────────────────────── Karar açıklaması (şablon) ─────────────────────────
+
+export function explainDecision(checks: { label: string; passed: boolean; value: string; required: string }[], outcomeLabel: string): string {
+  if (!checks.length) return `Sonuç: ${outcomeLabel}. Bu sonuç için değerlendirilen bir koşul listesi bulunmuyor.`;
+  const passed = checks.filter((c) => c.passed);
+  const failed = checks.filter((c) => !c.passed);
+  const parts = [`Sonuç: ${outcomeLabel}.`];
+  parts.push(
+    failed.length === 0
+      ? `Değerlendirilen ${checks.length} koşulun tamamı sağlandı.`
+      : `Değerlendirilen koşul sayısı ${checks.length}; sağlanan ${passed.length}, sağlanamayan ${failed.length}.`,
+  );
+  for (const c of checks) {
+    parts.push(
+      c.passed
+        ? `${c.label} koşulu sağlandı (gerçekleşen: ${c.value}; gerekli: ${c.required}).`
+        : `${c.label} koşulu sağlanamadı (gerçekleşen: ${c.value}; gerekli: ${c.required}).`,
+    );
+  }
+  parts.push("Bu açıklama karar kontrol listesinden şablonla üretilmiştir; kararı yapay zekâ vermez, sonuç yönetmelikteki kurallara göre hesaplanır.");
+  return parts.join(" ");
+}
