@@ -222,6 +222,14 @@ export class ValidatorNode {
   }
 
   private restore(): void {
+    const mp = this.store.getState("mempool");
+    if (mp) {
+      try {
+        for (const tx of JSON.parse(mp) as SignedTx[]) this.addTx(tx);
+      } catch {
+        // kalıcı havuz okunamadı: işlemler kaybolur (belgelenmiş sınırlama)
+      }
+    }
     const raw = this.store.getState("consensus");
     if (raw) {
       try {
@@ -242,14 +250,6 @@ export class ValidatorNode {
         }
       } catch {
         // bozuk durum kaydı: kilitsiz devam (yalnız canlılık etkilenir; imzalı oylar yoksa güvenlik etkilenmez)
-      }
-    }
-    const mp = this.store.getState("mempool");
-    if (mp) {
-      try {
-        for (const tx of JSON.parse(mp) as SignedTx[]) this.addTx(tx);
-      } catch {
-        // kalıcı havuz okunamadı: işlemler kaybolur (belgelenmiş sınırlama)
       }
     }
   }
@@ -667,6 +667,13 @@ export class ValidatorNode {
     if (v.type !== "prevote" && v.type !== "precommit") return;
     const pk = this.params.validators.get(v.validator);
     if (!pk || !(v.blockHash === null || isHash(v.blockHash))) return;
+    if (v.type === "precommit" && v.height === this.h - 1) {
+      const prev = this.logs.get(v.height)?.get(v.round)?.precommits.get(v.validator);
+      if (prev && prev.blockHash !== v.blockHash && verifySig(v.sig, voteSignBytes(v.type, v.height, v.round, v.blockHash), pk)) {
+        this.reportEquivocation(prev, v);
+      }
+      return;
+    }
     if (!this.acceptHeightRound(from, v.height, v.round)) return;
     const rs = this.rs(v.height, v.round);
     const map = v.type === "prevote" ? rs.prevotes : rs.precommits;
@@ -712,7 +719,8 @@ export class ValidatorNode {
     this.lockedRound = this.validRound = -1;
     this.flags.clear();
     this.signed.clear();
-    for (const k of [...this.logs.keys()]) if (k < next) this.logs.delete(k);
+    // Bir önceki yüksekliğin kaydı yalnız geç gelen çelişkili precommit'leri (çift imza) yakalamak için tutulur.
+    for (const k of [...this.logs.keys()]) if (k < next - 1) this.logs.delete(k);
     this.persistState();
     this.scheduleHeightStart(this.opts.blockIntervalMs);
   }

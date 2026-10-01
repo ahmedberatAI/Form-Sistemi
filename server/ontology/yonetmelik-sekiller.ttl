@@ -1,0 +1,267 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  Forum Sistemi — SHACL şekilleri
+#  Birleştirilmiş veri kümesi (T-kutusu + yönetmelik A-kutusu + öneri alt grafı +
+#  N3 çıkarımları) üzerinde çalışır. Her şekil bir maddeye dayanır (fy:dayanak) ve
+#  bir bulgu kodu taşır (fy:bulguKodu); sh:message Türkçedir ve maddeye atıf yapar.
+#  "Meta-şekiller" (en altta) yönetmeliğin kendisini denetler: yama uygulandıktan
+#  sonra ortaya çıkan yönetmelik de bu şekillere uymak zorundadır.
+# ═══════════════════════════════════════════════════════════════════════════
+@prefix fy:   <https://forumsistemi.org/ont#> .
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+# ═════════════════════════ Tüm öneriler ═════════════════════════
+
+fy:OneriSekli a sh:NodeShape ;
+    sh:targetClass fy:Oneri ;
+    sh:property [
+        sh:path fy:baslik ; sh:minCount 1 ; sh:maxCount 1 ; sh:minLength 3 ; sh:maxLength 200 ;
+        sh:severity sh:Violation ; fy:bulguKodu "title_length" ; fy:dayanak fy:Madde_7_1 ;
+        sh:message "Madde 7 (1): Öneri başlığı 3 ile 200 karakter arasında olmalıdır."
+    ] ;
+    sh:property [
+        sh:path fy:metin ; sh:minLength 10 ;
+        sh:severity sh:Warning ; fy:bulguKodu "body_short" ; fy:dayanak fy:Madde_7_1 ;
+        sh:message "Madde 7 (1): Gerekçe metni çok kısa; önerinin ne istediğini ve nedenini açıklayın."
+    ] ;
+    sh:property [
+        sh:path fy:kisitlananCekirdekHak ; sh:maxCount 0 ;
+        sh:severity sh:Violation ; fy:bulguKodu "core_right_restricted" ; fy:dayanak fy:Madde_4_1 ;
+        sh:message "Madde 4 (1): Özü oylanamaz bir temel hak kısıtlanıyor. Bu öneri değiştirilemez hükme aykırıdır (T3) ve oylamaya sunulamaz."
+    ] ;
+    sh:property [
+        sh:path fy:danismaCekirdekHakUyarisi ; sh:maxCount 0 ;
+        sh:severity sh:Warning ; fy:bulguKodu "advisory_core_right_flag" ; fy:dayanak fy:Madde_14_2 ;
+        sh:message "Madde 14 (2): Yapay zekâ ya da bir üye, bu önerinin özü oylanamaz bir temel hakkı kısıtlayabileceğini işaretledi. Danışma kaynaklı bayrak öneriyi geçersiz kılamaz; öneri nitelikli katmana (T1) yükseltildi ve bilirkişi incelemesi gerekiyor."
+    ] ;
+    sh:property [
+        sh:path fy:yuksekGuvenliEtiket ; sh:maxCount 0 ;
+        sh:severity sh:Violation ; fy:bulguKodu "content_label_high" ; fy:dayanak fy:Madde_12_2 ;
+        sh:message "Madde 12 (2): Öneri, yüksek güven eşiğini aşan yasak içerik etiketi taşıyor; bu haliyle oylamaya sunulamaz. Metni düzelterek yeniden gönderebilirsiniz."
+    ] ;
+    sh:property [
+        sh:path fy:ortaGuvenliEtiket ; sh:maxCount 0 ;
+        sh:severity sh:Warning ; fy:bulguKodu "content_label_medium" ; fy:dayanak fy:Madde_12_2 ;
+        sh:message "Madde 12 (2): Öneri, orta güvenle yasak içerik etiketi taşıyor; bilirkişi incelemesi gerekiyor."
+    ] .
+
+fy:KategoriSekli a sh:NodeShape ;
+    sh:targetClass fy:KonuOnerisi, fy:AltKonuOnerisi, fy:DuzenlemeOnerisi ;
+    sh:property [
+        sh:path fy:kategori ; sh:minCount 1 ;
+        sh:severity sh:Warning ; fy:bulguKodu "no_category" ; fy:dayanak fy:Madde_8_1 ;
+        sh:message "Madde 8 (1): Öneri hiçbir kategoriye bağlanmadı; vekâlet kapsamı ve bilirkişi seçimi için en az bir kategori seçin."
+    ] .
+
+# ═════════════════════════ Alt konu ═════════════════════════
+
+fy:AltKonuSekli a sh:NodeShape ;
+    sh:targetClass fy:AltKonuOnerisi ;
+    sh:property [
+        sh:path fy:ustKonu ; sh:minCount 1 ; sh:maxCount 1 ;
+        sh:severity sh:Violation ; fy:bulguKodu "parent_missing" ; fy:dayanak fy:Madde_10_1 ;
+        sh:message "Madde 10 (1): Alt konu, yürürlükteki bir üst konuya bağlanmalıdır; üst konu belirtilmedi."
+    ] ;
+    sh:property [
+        sh:path fy:ustKonu ; sh:class fy:EtkinKonu ;
+        sh:severity sh:Violation ; fy:bulguKodu "parent_inactive" ; fy:dayanak fy:Madde_10_1 ;
+        sh:message "Madde 10 (1): Üst konu yürürlükte ve etkin değil; alt konu yalnızca etkin bir konunun altında önerilebilir."
+    ] .
+
+# ═════════════════════════ Düzenleme teklifi ═════════════════════════
+
+fy:DuzenlemeSekli a sh:NodeShape ;
+    sh:targetClass fy:DuzenlemeOnerisi ;
+    sh:property [
+        sh:path fy:tabanSurum ; sh:minCount 1 ; sh:maxCount 1 ;
+        sh:severity sh:Violation ; fy:bulguKodu "amendment_base_missing" ; fy:dayanak fy:Madde_10_2 ;
+        sh:message "Madde 10 (2): Düzenleme teklifi, hedef konunun dayandığı sürümü (taban sürüm) belirtmelidir."
+    ] ;
+    sh:property [
+        sh:path fy:tabanSurum ; sh:equals fy:guncelSurum ;
+        sh:severity sh:Warning ; fy:bulguKodu "version_conflict" ; fy:dayanak fy:Madde_10_2 ;
+        sh:message "Madde 10 (2): Teklifin dayandığı taban sürüm konunun güncel sürümünden farklı; teklif kabul edilse bile yürürlüğe girişte sürüm çakışması nedeniyle reddedilir. Teklifi güncel sürüme göre yenileyin."
+    ] ;
+    sh:property [
+        sh:path fy:hedefKonu ; sh:minCount 1 ;
+        sh:severity sh:Warning ; fy:bulguKodu "amendment_target_missing" ; fy:dayanak fy:Madde_10_2 ;
+        sh:message "Madde 10 (2): Düzenleme teklifinin hedef konusu belirtilmedi."
+    ] ;
+    sh:property [
+        sh:path fy:hedefKonu ; sh:class fy:EtkinKonu ;
+        sh:severity sh:Violation ; fy:bulguKodu "amendment_target_inactive" ; fy:dayanak fy:Madde_10_2 ;
+        sh:message "Madde 10 (2): Düzenleme teklifi yalnızca yürürlükteki ve etkin bir konuyu hedefleyebilir."
+    ] .
+
+# ═════════════════════════ Silme (karartma) talebi ═════════════════════════
+
+fy:SilmeSekli a sh:NodeShape ;
+    sh:targetClass fy:SilmeOnerisi ;
+    sh:property [
+        sh:path fy:silmeGerekcesi ; sh:minCount 1 ; sh:maxCount 1 ;
+        sh:severity sh:Violation ; fy:bulguKodu "deletion_ground_count" ; fy:dayanak fy:Madde_20_1 ;
+        sh:message "Madde 20 (1): Silme talebi tam olarak bir silme gerekçesi içermelidir."
+    ] ;
+    sh:property [
+        sh:path fy:silmeGerekcesi ; sh:class fy:SilmeGerekcesi ;
+        sh:severity sh:Violation ; fy:bulguKodu "deletion_ground_unknown" ; fy:dayanak fy:Madde_20_1 ;
+        sh:message "Madde 20 (1): Belirtilen gerekçe Yönetmelikte tanımlı bir silme gerekçesi değil."
+    ] ;
+    sh:property [
+        sh:path fy:gecersizSilmeGerekcesi ; sh:maxCount 0 ;
+        sh:severity sh:Violation ; fy:bulguKodu "deletion_ground_invalid" ; fy:dayanak fy:Madde_20_2 ;
+        sh:message "Madde 20 (2): “Görüş ayrılığı” bir silme gerekçesi olamaz (değiştirilemez hüküm). Bir görüşe katılmıyorsanız tartışmada yanıt yazabilirsiniz."
+    ] ;
+    sh:property [
+        sh:path fy:hedefMesajSayisi ; sh:minCount 1 ; sh:minInclusive 1 ;
+        sh:severity sh:Violation ; fy:bulguKodu "deletion_no_messages" ; fy:dayanak fy:Madde_20_1 ;
+        sh:message "Madde 20 (1): Silme talebi en az bir hedef mesaj içermelidir."
+    ] .
+
+# ═════════════════════════ Yönetmelik değişikliği ═════════════════════════
+
+fy:YonetmelikDegisikligiSekli a sh:NodeShape ;
+    sh:targetClass fy:YonetmelikOnerisi ;
+    sh:property [
+        sh:path fy:yamaIslemi ; sh:minCount 1 ;
+        sh:severity sh:Violation ; fy:bulguKodu "patch_empty" ; fy:dayanak fy:Madde_23_1 ;
+        sh:message "Madde 23 (1): Yönetmelik değişikliği en az bir işlem içeren yapılandırılmış bir yama olmalıdır."
+    ] ;
+    sh:property [
+        sh:path fy:degistirilemezHedef ; sh:maxCount 0 ;
+        sh:severity sh:Violation ; fy:bulguKodu "immutable_target" ; fy:dayanak fy:Madde_6_1 ;
+        sh:message "Madde 6 (1): Değiştirilemez bir hüküm ya da ona dayanan bir kural/parametre hedefleniyor; bu öneri oylanamaz (T3) ve kural gereği geçersizdir."
+    ] ;
+    sh:property [
+        sh:path fy:yeniDegistirilemez ; sh:maxCount 0 ;
+        sh:severity sh:Violation ; fy:bulguKodu "new_immutable" ; fy:dayanak fy:Madde_6_2 ;
+        sh:message "Madde 6 (2): Yeni bir “Değiştirilemez” hüküm üretilemez; bir kural değiştirilemez hükme dayandırılamaz ve bir öneri türü değiştirilemez katmana bağlanamaz. Çoğunluk kendi politikasını bu yolla kalıcılaştıramaz."
+    ] ;
+    sh:property [
+        sh:path fy:degistirilemezAtlatma ; sh:maxCount 0 ;
+        sh:severity sh:Violation ; fy:bulguKodu "immutable_bypass" ; fy:dayanak fy:Madde_6_2 ;
+        sh:message "Madde 6 (2): Değiştirilemez bir hükmü önceliklendirme (overrides) yoluyla etkisizleştiren bağlantı kurulamaz."
+    ] .
+
+# ═════════════════════════ Meta-şekiller: yönetmeliğin kendisi ═════════════════════════
+
+fy:MaddeSekli a sh:NodeShape ;
+    sh:targetClass fy:Madde ;
+    sh:property [
+        sh:path fy:maddeNo ; sh:minCount 1 ; sh:maxCount 1 ; sh:pattern "^Madde [0-9]+( \\([0-9]+\\))?( [a-zçğışöü]\\))?$" ;
+        sh:severity sh:Violation ; fy:bulguKodu "article_number" ; fy:dayanak fy:Madde_11_2 ;
+        sh:message "Madde 11 (2): Her maddenin \"Madde 9 (2)\" biçiminde tek bir numarası olmalıdır."
+    ] ;
+    sh:property [
+        sh:path fy:metin ; sh:minCount 1 ; sh:maxCount 1 ; sh:minLength 10 ;
+        sh:severity sh:Violation ; fy:bulguKodu "article_text" ; fy:dayanak fy:Madde_11_2 ;
+        sh:message "Madde 11 (2): Her maddenin en az 10 karakterlik tek bir metni olmalıdır."
+    ] ;
+    sh:property [
+        sh:path fy:korumaDuzeyi ; sh:minCount 1 ; sh:maxCount 1 ; sh:in ( fy:Degistirilemez fy:Nitelikli fy:Olagan ) ;
+        sh:severity sh:Violation ; fy:bulguKodu "article_protection" ; fy:dayanak fy:Madde_6_1 ;
+        sh:message "Madde 6 (1): Her maddenin tek bir koruma düzeyi (Değiştirilemez, Nitelikli, Olağan) olmalıdır."
+    ] .
+
+fy:KuralSekli a sh:NodeShape ;
+    sh:targetClass fy:Kural ;
+    sh:property [
+        sh:path fy:dayanak ; sh:minCount 1 ; sh:maxCount 1 ; sh:class fy:Madde ;
+        sh:severity sh:Violation ; fy:bulguKodu "rule_without_article" ; fy:dayanak fy:Madde_11_2 ;
+        sh:message "Madde 11 (2): Her kural Yönetmelikteki tek bir maddeye dayanmalıdır (fy:dayanak)."
+    ] ;
+    sh:property [
+        sh:path fy:asgariKatman ; sh:maxCount 1 ; sh:class fy:Katman ;
+        sh:severity sh:Violation ; fy:bulguKodu "rule_tier" ; fy:dayanak fy:Madde_9_1 ;
+        sh:message "Madde 9 (1): Kuralın asgari katmanı tanımlı bir katman olmalıdır."
+    ] ;
+    sh:property [
+        sh:path fy:overrides ; sh:or ( [ sh:class fy:Kural ] [ sh:class fy:Madde ] ) ;
+        sh:severity sh:Violation ; fy:bulguKodu "overrides_target" ; fy:dayanak fy:Madde_6_3 ;
+        sh:message "Madde 6 (3): Önceliklendirilen (overrides) hüküm Yönetmelikte tanımlı bir kural ya da madde olmalıdır."
+    ] .
+
+fy:TemelHakSekli a sh:NodeShape ;
+    sh:targetClass fy:TemelHak ;
+    sh:property [
+        sh:path rdfs:label ; sh:minCount 1 ;
+        sh:severity sh:Violation ; fy:bulguKodu "right_label" ; fy:dayanak fy:Madde_4_2 ;
+        sh:message "Madde 4 (2): Her temel hakkın bir adı olmalıdır."
+    ] .
+
+fy:GerekceSekli a sh:NodeShape ;
+    sh:targetClass fy:Gerekce ;
+    sh:property [
+        sh:path rdfs:label ; sh:minCount 1 ;
+        sh:severity sh:Violation ; fy:bulguKodu "ground_label" ; fy:dayanak fy:Madde_20_1 ;
+        sh:message "Madde 20 (1): Her gerekçenin bir adı olmalıdır."
+    ] .
+
+# Parametre aralıkları (Madde 23 (2)). Yeter sayı 0 < q ≤ 1; eşik 0,5 ≤ τ ≤ 1; oranlar [0, 1]; süreler [0, 8760].
+fy:YeterSayiSekli a sh:NodeShape ;
+    sh:targetSubjectsOf fy:yeterSayi ;
+    sh:property [
+        sh:path fy:yeterSayi ; sh:maxCount 1 ; sh:minExclusive 0 ; sh:maxInclusive 1 ;
+        sh:severity sh:Violation ; fy:bulguKodu "param_range" ; fy:dayanak fy:Madde_23_2 ;
+        sh:message "Madde 23 (2): Yeter sayı 0'dan büyük ve en fazla 1 olmalıdır."
+    ] .
+fy:EsikSekli a sh:NodeShape ;
+    sh:targetSubjectsOf fy:esik ;
+    sh:property [
+        sh:path fy:esik ; sh:maxCount 1 ; sh:minInclusive 0.5 ; sh:maxInclusive 1 ;
+        sh:severity sh:Violation ; fy:bulguKodu "param_range" ; fy:dayanak fy:Madde_23_2 ;
+        sh:message "Madde 23 (2): Onay eşiği 0,50 ile 1 arasında olmalıdır."
+    ] .
+fy:OranSekli a sh:NodeShape ;
+    sh:targetSubjectsOf fy:kumeTabani, fy:yazarKumesiTabani, fy:asmaEsigi, fy:yenidenOyEsigi, fy:anlamliKumePayi,
+        fy:sogukBaslangicArtisi, fy:vekaletSiniriOrani, fy:yuksekGuvenEsigi, fy:ortaGuvenEsigi ;
+    sh:property [ sh:path fy:kumeTabani ; sh:maxCount 1 ; sh:minInclusive 0 ; sh:maxInclusive 1 ; fy:bulguKodu "param_range" ; fy:dayanak fy:Madde_23_2 ;
+        sh:message "Madde 23 (2): Küme tabanı 0 ile 1 arasında olmalıdır." ] ;
+    sh:property [ sh:path fy:yazarKumesiTabani ; sh:maxCount 1 ; sh:minInclusive 0 ; sh:maxInclusive 1 ; fy:bulguKodu "param_range" ; fy:dayanak fy:Madde_23_2 ;
+        sh:message "Madde 23 (2): Yazar kümesi tabanı 0 ile 1 arasında olmalıdır." ] ;
+    sh:property [ sh:path fy:asmaEsigi ; sh:maxCount 1 ; sh:minInclusive 0.5 ; sh:maxInclusive 1 ; fy:bulguKodu "param_range" ; fy:dayanak fy:Madde_23_2 ;
+        sh:message "Madde 23 (2): Aşma eşiği 0,50 ile 1 arasında olmalıdır." ] ;
+    sh:property [ sh:path fy:yenidenOyEsigi ; sh:maxCount 1 ; sh:minInclusive 0.5 ; sh:maxInclusive 1 ; fy:bulguKodu "param_range" ; fy:dayanak fy:Madde_23_2 ;
+        sh:message "Madde 23 (2): Yeniden oylama eşiği 0,50 ile 1 arasında olmalıdır." ] ;
+    sh:property [ sh:path fy:anlamliKumePayi ; sh:maxCount 1 ; sh:minExclusive 0 ; sh:maxInclusive 1 ; fy:bulguKodu "param_range" ; fy:dayanak fy:Madde_23_2 ;
+        sh:message "Madde 23 (2): Anlamlı küme payı 0'dan büyük ve en fazla 1 olmalıdır." ] ;
+    sh:property [ sh:path fy:sogukBaslangicArtisi ; sh:maxCount 1 ; sh:minInclusive 0 ; sh:maxInclusive 1 ; fy:bulguKodu "param_range" ; fy:dayanak fy:Madde_23_2 ;
+        sh:message "Madde 23 (2): Soğuk başlangıç artışı 0 ile 1 arasında olmalıdır." ] ;
+    sh:property [ sh:path fy:vekaletSiniriOrani ; sh:maxCount 1 ; sh:minExclusive 0 ; sh:maxInclusive 1 ; fy:bulguKodu "param_range" ; fy:dayanak fy:Madde_23_2 ;
+        sh:message "Madde 23 (2): Vekâlet sınırı oranı 0'dan büyük ve en fazla 1 olmalıdır." ] ;
+    sh:property [ sh:path fy:yuksekGuvenEsigi ; sh:maxCount 1 ; sh:minExclusive 0 ; sh:maxInclusive 1 ; fy:bulguKodu "param_range" ; fy:dayanak fy:Madde_23_2 ;
+        sh:message "Madde 23 (2): Yüksek güven eşiği 0'dan büyük ve en fazla 1 olmalıdır." ] ;
+    sh:property [ sh:path fy:ortaGuvenEsigi ; sh:maxCount 1 ; sh:minExclusive 0 ; sh:maxInclusive 1 ; sh:lessThan fy:yuksekGuvenEsigi ; fy:bulguKodu "param_range" ; fy:dayanak fy:Madde_23_2 ;
+        sh:message "Madde 23 (2): Orta güven eşiği 0'dan büyük olmalı ve yüksek güven eşiğinden küçük kalmalıdır." ] .
+fy:SureSekli a sh:NodeShape ;
+    sh:targetSubjectsOf fy:sureDestek, fy:sureTartisma, fy:sureOylama, fy:sureUzatma, fy:sureItiraz, fy:sureUzlasma ;
+    sh:property [ sh:path fy:sureDestek ; sh:maxCount 1 ; sh:datatype xsd:integer ; sh:minInclusive 1 ; sh:maxInclusive 8760 ; fy:bulguKodu "param_range" ; fy:dayanak fy:Madde_23_2 ;
+        sh:message "Madde 23 (2): Destekçi toplama süresi 1 ile 8760 saat arasında bir tamsayı olmalıdır." ] ;
+    sh:property [ sh:path fy:sureTartisma ; sh:maxCount 1 ; sh:datatype xsd:integer ; sh:minInclusive 0 ; sh:maxInclusive 8760 ; fy:bulguKodu "param_range" ; fy:dayanak fy:Madde_23_2 ;
+        sh:message "Madde 23 (2): Tartışma süresi 0 ile 8760 saat arasında bir tamsayı olmalıdır." ] ;
+    sh:property [ sh:path fy:sureOylama ; sh:maxCount 1 ; sh:datatype xsd:integer ; sh:minInclusive 1 ; sh:maxInclusive 8760 ; fy:bulguKodu "param_range" ; fy:dayanak fy:Madde_23_2 ;
+        sh:message "Madde 23 (2): Oylama süresi 1 ile 8760 saat arasında bir tamsayı olmalıdır." ] ;
+    sh:property [ sh:path fy:sureUzatma ; sh:maxCount 1 ; sh:datatype xsd:integer ; sh:minInclusive 0 ; sh:maxInclusive 8760 ; fy:bulguKodu "param_range" ; fy:dayanak fy:Madde_23_2 ;
+        sh:message "Madde 23 (2): Uzatma süresi 0 ile 8760 saat arasında bir tamsayı olmalıdır." ] ;
+    sh:property [ sh:path fy:sureItiraz ; sh:maxCount 1 ; sh:datatype xsd:integer ; sh:minInclusive 0 ; sh:maxInclusive 8760 ; fy:bulguKodu "param_range" ; fy:dayanak fy:Madde_23_2 ;
+        sh:message "Madde 23 (2): İtiraz penceresi 0 ile 8760 saat arasında bir tamsayı olmalıdır." ] ;
+    sh:property [ sh:path fy:sureUzlasma ; sh:maxCount 1 ; sh:datatype xsd:integer ; sh:minInclusive 0 ; sh:maxInclusive 8760 ; fy:bulguKodu "param_range" ; fy:dayanak fy:Madde_23_2 ;
+        sh:message "Madde 23 (2): Uzlaşma süresi 0 ile 8760 saat arasında bir tamsayı olmalıdır." ] .
+fy:SayiSekli a sh:NodeShape ;
+    sh:targetSubjectsOf fy:anlamliKumeAsgariUye, fy:kumeBasinaAsgariOy, fy:kopruIcinAsgariKumelenmis, fy:vekaletAzamiAdim, fy:bilirkisiSayisi ;
+    sh:property [ sh:path fy:anlamliKumeAsgariUye ; sh:maxCount 1 ; sh:datatype xsd:integer ; sh:minInclusive 1 ; fy:bulguKodu "param_range" ; fy:dayanak fy:Madde_23_2 ;
+        sh:message "Madde 23 (2): Anlamlı küme asgari üye sayısı pozitif bir tamsayı olmalıdır." ] ;
+    sh:property [ sh:path fy:kumeBasinaAsgariOy ; sh:maxCount 1 ; sh:datatype xsd:integer ; sh:minInclusive 1 ; fy:bulguKodu "param_range" ; fy:dayanak fy:Madde_23_2 ;
+        sh:message "Madde 23 (2): Küme başına asgari oy pozitif bir tamsayı olmalıdır." ] ;
+    sh:property [ sh:path fy:kopruIcinAsgariKumelenmis ; sh:maxCount 1 ; sh:datatype xsd:integer ; sh:minInclusive 1 ; fy:bulguKodu "param_range" ; fy:dayanak fy:Madde_23_2 ;
+        sh:message "Madde 23 (2): Köprü testi için asgari kümelenmiş üye sayısı pozitif bir tamsayı olmalıdır." ] ;
+    sh:property [ sh:path fy:vekaletAzamiAdim ; sh:maxCount 1 ; sh:datatype xsd:integer ; sh:minInclusive 1 ; fy:bulguKodu "param_range" ; fy:dayanak fy:Madde_23_2 ;
+        sh:message "Madde 23 (2): Vekâlet zinciri azami adım sayısı pozitif bir tamsayı olmalıdır." ] ;
+    sh:property [ sh:path fy:bilirkisiSayisi ; sh:maxCount 1 ; sh:datatype xsd:integer ; sh:minInclusive 1 ; sh:maxInclusive 9 ; fy:bulguKodu "param_range" ; fy:dayanak fy:Madde_23_2 ;
+        sh:message "Madde 23 (2): Panel bilirkişi sayısı 1 ile 9 arasında bir tamsayı olmalıdır." ] .
+fy:MantiksalSekli a sh:NodeShape ;
+    sh:targetSubjectsOf fy:esikKesin ;
+    sh:property [ sh:path fy:esikKesin ; sh:maxCount 1 ; sh:datatype xsd:boolean ; fy:bulguKodu "param_range" ; fy:dayanak fy:Madde_23_2 ;
+        sh:message "Madde 23 (2): \"Eşik kesin mi\" parametresi doğru/yanlış değerinde olmalıdır." ] .
