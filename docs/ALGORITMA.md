@@ -1,8 +1,9 @@
-# Karar Algoritması Spesifikasyonu — "Köprülü Çoğunluk" (KÇ-1.0)
+# Karar Algoritması Spesifikasyonu — "Köprülü Çoğunluk" (KÇ-1.0, revizyon r2)
 
 > Bu belge sistemin **bağlayıcı** algoritma tanımıdır. Kod (`server/src/governance/*`) bu belgeye uymak zorundadır.
 > Araştırma gerekçeleri için bkz. [ARASTIRMA.md](ARASTIRMA.md) (özellikle Bölüm 11–13).
 > Algoritma sürümü: `KC-1.0`. Sürüm değişirse defterdeki `TALLY` kayıtlarında `algoVersion` alanı değişir.
+> **Revizyon r2 (2026-10):** §4.1 nötr küme kuralı, §4.4 soğuk başlangıç formülü, §4.2 gösterim tutarlılığı, §5 vekâlet çözüm ayrıntıları, §9 permütasyon sıfır modeli ve yeniden üretim ayrıntıları; değişiklik listesi §12'de (madde 13–19). Bu değişiklikler yalnızca sınır durumlarında sonucu etkiler; `algoVersion` bilinçli olarak `KC-1.0` bırakılmıştır (geliştirme aşaması). Kümeleme algoritmasının kimliği `pca2-kmeans-silhouette-null/2` olur. Simülasyon kanıtları: [SIMULASYON.md](SIMULASYON.md).
 
 ## 0. Tasarım ilkeleri
 
@@ -30,7 +31,7 @@
 
 **Anlamlı küme:** `n_g / n_C ≥ σ_share` (varsayılan 0,10) **ve** `n_g ≥ σ_min` (varsayılan 3).
 
-**Grup bilgili uzlaşı (GAC, yalnızca gösterge):** `GAC = (∏_{g anlamlı} P_g)^(1/K)`. Bu, anlamlı kümelerin `P_g` değerlerinin geometrik ortalamasıdır.
+**Grup bilgili uzlaşı (GAC, yalnızca gösterge):** `GAC = (∏_{g ∈ S} P_g)^(1/|S|)`. Burada `S` anlamlı kümeler kümesi, `|S|` **anlamlı küme sayısıdır** (anlık görüntünün `K` değeri değil). Bu, anlamlı kümelerin `P_g` değerlerinin geometrik ortalamasıdır.
 
 ## 2. Katmanlar (Tier) ve parametreler
 
@@ -52,7 +53,7 @@ Ek parametreler (ontolojide `fy:GenelParametreler`):
 | `σ_min` | 3 | Anlamlı küme için asgari üye sayısı |
 | `μ_votes` | 2 | Anlamlı kümede beklenen asgari oy sayısı (altındaysa bir kez uzatma yapılır) |
 | `n_C,min` | 12 | Köprü testinin uygulanması için asgari kümelenmiş üye sayısı (soğuk başlangıç) |
-| `δ_cold` | +0,10 | Soğuk başlangıçta eşiğe eklenen artış (en fazla 2/3) |
+| `δ_cold` | +0,10 | Soğuk başlangıçta eşiğe eklenen artış: `τ' = max(τ, min(τ+δ_cold, 2/3))` (§4.4) |
 | `floor_abs` | `⌈1,5·√|E|⌉` | Mutlak asgari katılım (Debian benzeri). `q·|E|` ile birlikte büyük olanı geçerlidir. |
 | `K_max` | `min(5, 2+⌊n/12⌋)` | Küme sayısı üst sınırı |
 | Vekâlet sınırı `cap` | `max(2, ⌈0,05·|E|⌉)` | Bir delegenin taşıyabileceği en fazla **başkasına ait** oy |
@@ -109,27 +110,30 @@ girdi: params, E, etkin oylar v(u), küme anlık görüntüsü C, round=1, autho
    quorumMet = P ≥ max(⌈q·|E|⌉, floor_abs)
 2. Onay:
    a = Y/(Y+N)
-   τ' = τ  (soğuk başlangıçta τ' = min(τ+δ_cold, 2/3); §4.4)
+   τ' = τ  (soğuk başlangıçta τ' = max(τ, min(τ+δ_cold, 2/3)); §4.4)
    thresholdMet = (strict ? Y·den > N·num... : ...)  // tamsayı karşılaştırması, §4.5
 3. Köprü (bridgeApplicable ise):
    anlamlı kümeler S = {g : n_g/n_C ≥ σ_share ∧ n_g ≥ σ_min}
    her g ∈ S için P_g = (1+Y_g)/(2+Y_g+N_g)
-   bridgeMet = ∀ g ∈ S : P_g ≥ φ
+   eksik(g) = (Y_g+N_g) < μ_votes
+   muaf(g)  = eksik(g) ∧ uzatma kullanıldı             // nötr küme (r2)
+   bridgeMet = ∀ g ∈ S, ¬muaf(g) : P_g ≥ φ
    DEL ise ek olarak: authorCluster ≠ null ⇒ P_{authorCluster} ≥ 0,50
-     (yazarın kümesi küçük olsa bile; yazar kümelenmemişse bu koşul uygulanmaz)
-4. Eksik oy: ∃ g ∈ S : (Y_g+N_g) < μ_votes  ⇒  clusterShortfall = true
+     (yazarın kümesi küçük olsa bile; yazar kümelenmemişse bu koşul uygulanmaz;
+      köprü uygulanamasa da aranır (§12.3); nötr küme muafiyeti bu koşula UYGULANMAZ)
+4. Eksik oy: ∃ g ∈ S : eksik(g)  ⇒  clusterShortfall = true
 5. Karar:
    if (!quorumMet ∨ clusterShortfall) ∧ uzatma kullanılmadıysa → NEEDS_MORE_VOTES
    if !quorumMet                         → REJECT (gerekçe: yeter sayı yok)
    if !thresholdMet                      → REJECT
-   if bridgeApplicable ∧ !bridgeMet      → CONTESTED
+   if !bridgeMet (köprü ya da DEL yazar koşulu değerlendirildiyse) → CONTESTED
    else                                  → ACCEPT
 ```
 
 Notlar:
 
 - Hiç oy kullanmayan bir küme için `P_g = 1/2` olur ve bu değer taban `φ`'yi geçer. **Boykot bir engel aracı değildir.** Bir azınlık bir kararı ancak *aktif olarak hayır diyerek* durdurabilir.
-- Uzatmadan sonra hâlâ oy eksiği olan küme, yumuşatma sayesinde nötr kalır. Bu durum sonuç açıklamasında "küme yeterince katılmadı" diye raporlanır.
+- **Nötr küme kuralı (r2):** Uzatma kullanıldıktan sonra hâlâ `Y_g+N_g < μ_votes` olan anlamlı küme **nötr** sayılır ve köprü tabanından muaf tutulur (`ClusterResult.passed = null`). Böylece neredeyse sessiz bir kümede tek bir oy kararı ertelemeye zorlayamaz (ör. tek "hayır": `P_g = 1/3 < 0,40`). Sonuç açıklamasında "küme yeterince katılmadı; nötr sayıldı" diye raporlanır. Uzatma hakkı varken eksiklik muafiyet değil, uzatma gerekçesidir. Kural, köprünün karar kuralında kullanıldığı turlarda (ilk tur ve `origin = contested` yeniden oylaması) uygulanır.
 - Kümelenmemiş seçmenler (yeni üyeler) genel onaya ve katılıma sayılır, köprü testine katılmaz.
 
 ### 4.2 Sonuç açıklama listesi
@@ -137,17 +141,24 @@ Notlar:
 Her sonuç bir `checks[]` listesi üretir ve arayüz bunu "Neden kabul/red edildi?" kartında gösterir. Örnek:
 `quorum` (katılım 18/40 ≥ 10 ✔), `threshold` (onay %61,5 > %50 ✔), `bridge:g0` (A kümesi P=0,71 ≥ 0,30 ✔), `bridge:g2` (C kümesi P=0,22 < 0,30 ✘) …
 
+Gösterim kuralları (r2):
+
+- Gösterilen değer, karşılaştırma sonucuyla tutarlı olmalıdır. Yuvarlanmış değer sınırla aynı görünüyor ama değerler eşit değilse hassasiyet artırılır (ör. `P=29/97` → `0,299 < 0,30`; onay `1499/2500` → `%59,96 < %60,0`). Yine ayırt edilemezse kesir yazılır.
+- `origin = objection` turunda küme satırları "(bilgi — bu turda uygulanmaz)" etiketiyle ✔ olarak gösterilir; gerçek karşılaştırma açıklamada yazılır. Küme tablosu (`clusters[]`) hesaplanan değerleri gösterir.
+- `participation_shortfall` satırı yalnızca uzatma gerektirdiğinde ✘'tir. Uzatmadan sonra "nötr sayıldı" bilgisi ✔ olarak gösterilir.
+- `quorum` açıklaması, gerekli katılım `|E|` ile sınırlandığında bunu belirtir (§12.1).
+
 ### 4.3 Yeniden oylama — `decideRevote(input)`
 
 - **origin = contested:** `PASS ⇔ quorumMet ∧ ((thresholdMet ∧ bridgeMet) ∨ a ≥ ω)`
-- **origin = objection:** `PASS ⇔ quorumMet ∧ a ≥ ρ'`. Burada `ρ' = ρ`'dur. İtirazı imzalayanlar ilgili kümenin **tüm üyelerinin** en az 2/3'ü ise `ρ' = max(ρ, 2/3)` olur. Küme tabanları bu turda **uygulanmaz** ama hesaplanıp gösterilir.
+- **origin = objection:** `PASS ⇔ quorumMet ∧ a ≥ ρ'`. Burada `ρ' = ρ`'dur. İtirazı imzalayanlar herhangi bir **anlamlı** kümenin (§1) **tüm üyelerinin** (`n_g`) en az 2/3'ü ise ("güçlü itiraz") `ρ' = max(ρ, 2/3)` olur. Küme tabanları bu turda **uygulanmaz** ama hesaplanıp gösterilir.
 - Yeniden oylamada uzatma (needs_more_votes) **bir kez daha** kullanılabilir.
 - Sonuç her durumda kesindir (`enacted` / `rejected`). Varsa azınlık raporları karar kaydına eklenir.
 
 ### 4.4 Soğuk başlangıç
 
 `n_C < n_C,min` ya da `K < 2` ise köprü testi **uygulanamaz** (`bridgeApplicable = false`). Bu durumda:
-`τ' = min(τ + δ_cold, 2/3)`. T0 için eşik `a ≥ 0,60` olur ve kesin değil, `≥` karşılaştırması kullanılır.
+`τ' = max(τ, min(τ + δ_cold, 2/3))`. T0 için eşik `a ≥ 0,60` olur ve kesin değil, `≥` karşılaştırması kullanılır. Eşik zaten 2/3'ün üzerindeyse (ör. nitelikli hüküm değişikliğinde 3/4) soğuk başlangıç onu **düşürmez** (r2; r1'deki `min(τ+δ_cold, 2/3)` formülü 3/4'ü 2/3'e indiriyordu).
 Sonuç kartında "Yeterli görüş verisi yok; nitelikli çoğunluk arandı" notu gösterilir.
 
 ### 4.5 Sayısal kesinlik
@@ -170,6 +181,14 @@ Vekâlet isteğe bağlıdır. Grafta `DELEGATES_TO {scope, rank}` kenarı olarak
 4. **Sınır:** Bir delegenin taşıdığı başkasına ait oy sayısı `cap`'i aşamaz. Taşma olursa delegatorlar belirlenimci sırayla (vekâlet oluşturma zamanı, sonra kullanıcı kimliği) dağıtılır. Sınırı aşan kişiler `unrouted` sayılır ve oyları kullanılmamış olur. Bu kişilere bildirim gider.
 5. Etkin oy, kişinin **kendi kümesine** sayılır. Ağırlık her zaman 1'dir. Vekâlet yalnızca "kimin tercihinin uygulanacağını" belirler; kimse 1'den fazla sayılmaz.
 
+**Çözüm ayrıntıları (r2, bağlayıcı):**
+
+- **Kapsam sırası:** önerinin kategorileri ve üst sınıfları, ontoloji derinliğine göre azalan (en özel önce), eşitlikte IRI sırası; en sonda `*`. Kapsam listesinde `*` yoksa sona eklenir.
+- **Arama sırası:** Her düğümde (u ve zincirdeki her delege için) önce kapsam sırası, kapsam içinde `rank` ↑, eşitlikte vekâletin oluşturma zamanı ↑, sonra kenar kimliği ↑ uygulanır. Zincir **derinlik öncelikli** izlenir. Bir tercihin zinciri `H` adım içinde doğrudan oy veren bir delegeye ulaşmazsa sıradaki tercihe geçilir. Bu yüzden üst tercihin zinciri, alt tercihin doğrudan oyundan önce gelir. `u → d₁` bir adımdır; `u → d₁ → d₂ → d₃` üç adımdır.
+- **Uygun seçmen olmayan delege** (`E` dışında: DEL'de hariç tutulan yazar, askıdaki üye vb.) kenarı yokmuş gibi atlanır. Böyle bir delege ne oy kaynağıdır ne de zincirin ara halkası; kişi sıradaki tercihine düşer. Gerekçe: oylamaya yalnızca `E` katılır, `E` dışındaki biri başkalarının oyunu da yönlendiremez. `E` dışındakilerin doğrudan oyları sayılmaz.
+- **Yük ve sınır:** Yük, oyu uygulanan (zincirin sonundaki) delegeye yazılır. Zincirdeki oy vermemiş ara delegeler de bu yüke dahildir. Sınır aşılırsa sıralama delegatörün **kendi ilk adım** vekâletinin oluşturma zamanına, sonra kullanıcı kimliğine göre yapılır. Sınırı aşan kişi başka bir delegeye kaydırılmaz; `unrouted` olur.
+- **Kümeler arası vekâlet:** Vekâletle gelen oy delegatörün kümesine sayılır. Bu yüzden azınlık kümesinin desteği, üyelerinin seçtiği başka bir bloktaki delegenin tercihini yansıtabilir. Arayüz bunu vekâlet verilirken açıkça göstermelidir (bkz. SIMULASYON.md (f)).
+
 ## 6. Azınlık itirazı ("alarm zili") — `evaluateObjection`
 
 İlk turda ACCEPT çıkan bir öneri `objection_window` evresine girer. İtiraz imzaları:
@@ -183,7 +202,11 @@ Vekâlet isteğe bağlıdır. Grafta `DELEGATES_TO {scope, rank}` kenarı olarak
 - (a) Tek bir anlamlı küme `g`'de imzacı sayısı ≥ `max(3, ⌈0,75 · N_g⌉)`. Burada `N_g`, o kümenin `no` sayısıdır.
 - (b) Toplam imzacı ≥ `⌈0,10·|E|⌉` ve imzacılar en az **2 farklı** kümeden (kümelenmemiş sayılmaz).
 
+İmzacının kümesi ilk tur bülteninden (oy kaydından) alınır. "Güçlü itiraz" (§4.3), imzacıların bir anlamlı kümenin tüm üyelerinin en az 2/3'ü olmasıdır.
+
 Geçerli itiraz `reconciliation(origin=objection)` başlatır. Bir öneri yalnızca bir kez itiraza uğrayabilir.
+
+> **Not (simülasyon, SIMULASYON.md (g)):** Büyük topluluklarda kural (b) kolay sağlanır. Örneğin |E| = 300'de 30 imza ve iki küme yeterlidir. "Hayır" oyu %40 civarında olan ve kaybedenlerin motive olduğu bir öneri bu eşiğe ulaşır; yeniden oylamada ρ = %60 aranır. Böylece tartışmalı T0 kararlarında eşik fiilen %50'den %60'a çıkar ve toplam kabul oranı düşer. Bu **bilinçli bir tercihtir**: itiraz yalnızca **erteleyici** bir güçtür (tek seferlik uzlaşma turu, ardından ρ ile kesin sonuç). Kalıcı veto değildir ve aynı öneriye ikinci kez uygulanamaz.
 
 ## 7. Uzlaşma turu
 
@@ -209,15 +232,18 @@ Süre: §2'deki tabloya göre. Bu sürede şunlar yapılır:
 10. Süre içinde rapor gelmezse oylama raporsuz başlar ve bu durum işaretlenir. Gecikme bilirkişinin itibarını düşürür.
 11. **İtibar:** `R' = 0,8R + 0,2·S`. `S ∈ [0,1]` şu kontrol listesiyle hesaplanır: zamanında teslim, tüm soruların yanıtlanması, alan içinde kalma, hukuki nitelendirme yapmama. Başlangıç değeri `R₀ = 0,75`'tir. **Çoğunlukla aynı fikirde olmak asla ödüllendirilmez.**
 
-## 9. Kümeleme — `computeClusters` (Polis benzeri)
+## 9. Kümeleme — `computeClusters` (Polis benzeri; `pca2-kmeans-silhouette-null/2`)
 
-1. Girdi, **kapanmış** önerilerdeki doğrudan oylardır: `+1` (yes), `−1` (no), `0` (abstain). Matris satırları kullanıcılara, sütunlar önerilere karşılık gelir.
-2. Kümelemeye katılım: en az `min(7, sütunSayısı)` oy vermiş kullanıcılar. Eksik hücreler sütun ortalamasıyla doldurulur.
-3. **Temel bileşen analizi (PCA):** 2 bileşen, kuvvet yinelemesi (100 yineleme), tohumlu başlangıç vektörü. İşaret kanonikleştirilir: en büyük mutlak bileşen pozitif yapılır.
-4. **k-means:** `K ∈ 2..K_max` için k-means++ başlangıcı (tohumlu) ve 100 yinelemelik Lloyd algoritması uygulanır. En yüksek ortalama siluet değerini veren `K` seçilir. Siluet < 0,25 ise tek küme kabul edilir (`K=1`, köprü testi uygulanamaz).
-5. Kümeler büyüklüğe göre (eşitlikte merkezin x koordinatına göre) yeniden numaralandırılır: `g0, g1, …`
-6. Anlık görüntü `{k, assignments, coords, silhouette, inputHash, seed}` olarak saklanır. Özeti deftere `CLUSTER_SNAPSHOT` ile yazılır.
-7. Çapraz kontrol olarak graf modülü, uzlaşı grafında Louvain topluluk tespiti yapar. Bu yalnızca gösterge amaçlıdır.
+Aşağıdaki ayrıntılar, kümelemenin bağımsız olarak birebir yeniden üretilebilmesi için bağlayıcıdır (r2).
+
+1. Girdi, **kapanmış** önerilerdeki doğrudan oylardır: `+1` (yes), `−1` (no), `0` (abstain). Matris satırları kullanıcılara, sütunlar önerilere karşılık gelir. Satır ve sütunlar kimliğe göre (UTF-16 kod birimi sırası) sıralanır. Aynı (kullanıcı, öneri) için birden çok kayıt varsa hücre değeri bunların ortalamasıdır.
+2. Kümelemeye katılım: en az `min(7, sütunSayısı)` oy vermiş kullanıcılar. **Çekimser oylar bu sayıya dahildir.** Diğerleri `excluded` listesine yazılır ve kümelenmemiş sayılır. Sütun ortalaması yalnızca katılımcıların gözlenen hücrelerinden hesaplanır. Eksik hücreler sütun ortalamasıyla doldurulur ve matris merkezlenir; merkezlenmiş matriste eksik hücre 0 olur.
+3. **Temel bileşen analizi (PCA):** 2 bileşen, `XᵀX` üzerinde kuvvet yinelemesi (tam 100 yineleme, erken durma yok). Başlangıç vektörü `createRng(seed‖"|pca")` üretecinden her bileşen için `U(−0,5; 0,5)` değerleriyle alınır ve normalleştirilir. İkinci bileşen deflasyonla (`X ← X − (X v₁) v₁ᵀ`) ve aynı üretecin devamıyla bulunur. İşaret kanonikleştirilir: mutlak değeri en büyük bileşen (eşitlikte ilk) pozitif yapılır. Koordinatlar `x = X v₁`, `y = X v₂`'dir.
+4. **k-means (2 boyutlu PCA koordinatlarında):** `K ∈ 2..min(K_max, n−1)` için çalıştırılır. Her `K` için `createRng(seed‖"|kmeans|"‖K‖"|"‖r)` (`r = 0..9`) tohumlarıyla **10 k-means++ başlangıcı** ve en çok 100 yinelemelik Lloyd algoritması uygulanır; en düşük atalet (eşitlikte ilk) seçilir. Ortalama siluet aynı 2 boyutlu Öklid uzayında hesaplanır (tek elemanlı kümedeki nokta için `s = 0`). En yüksek ortalama siluet değerini veren `K` aday olur (eşitlikte küçük `K`). `n < 4` ise `K = 1`.
+5. **Yapı testi (r2):** Aday `K ≥ 2` yalnızca iki koşul birlikte sağlanırsa kabul edilir: (i) siluet ≥ 0,25 ve (ii) `siluet − siluet_sıfır ≥ 0,10`. Aksi halde `K = 1` olur (tek küme `g0`, köprü testi uygulanamaz). `siluet_sıfır`, sıfır modelinin ortalamasıdır. `i = 0..4` için merkezlenmiş matrisin her sütunundaki gözlenen değerler, o sütunda oy vermiş satırlar arasında `createRng(seed‖"|null|"‖i)` ile karıştırılır. Bu karıştırma marjinalleri ve eksiklik desenini korur, kişiler arası bağıntıyı yok eder. Ardından 3. ve 4. adımlar `seed‖"|null|"‖i` tohumuyla aynen uygulanır ve bulunan en iyi siluet alınır. Sıfır modeli yalnızca (i) sağlandığında hesaplanır. **Gerekçe:** 2 boyutlu PCA uzayında k-means, yapısız (tek tepeli) veride de tipik olarak 0,34–0,6 siluet bulur. Bu yüzden mutlak 0,25 eşiği sahte kümeleri tek başına ayıklayamaz (bkz. SIMULASYON.md (h)).
+6. Kümeler büyüklüğe göre yeniden numaralandırılır: `g0, g1, …`. Sıralama azalan büyüklüktür; eşitlikte merkezin x koordinatı, sonra y koordinatı (artan), sonra ilk üyenin sırası kullanılır.
+7. Anlık görüntü `{k, assignments, coords, silhouette, inputHash, seed}` olarak saklanır. `inputHash = SHA-256(kanonik JSON{algo, minVotes, kMax, sıralı girdiler})` tohumu içermez; aynı oy geçmişi aynı özeti verir. `outputHash`, sıfır siluetini de kapsar. `silhouette`, seçilen bölümlemenin değeridir; `K = 1` sonucunda eşik öncesi en iyi adayın değeridir (aday yoksa 0). Koordinatlar ve siluet 10⁻⁶'ya yuvarlanır. Özeti deftere `CLUSTER_SNAPSHOT` ile yazılır.
+8. Çapraz kontrol olarak graf modülü, uzlaşı grafında Louvain topluluk tespiti yapar. Bu yalnızca gösterge amaçlıdır.
 
 Tohum, `SHA256(sonBlokHash ‖ "cluster" ‖ zaman damgası)` olarak alınır.
 
@@ -253,3 +279,30 @@ Tohum, `SHA256(sonBlokHash ‖ "cluster" ‖ zaman damgası)` olarak alınır.
 **Doğrulama:** Kullanıcı, cihazında sakladığı makbuzla (`ballotId, choice, salt`) oyunun deftere doğru yazıldığını doğrular. Kontrol edilenler: Merkle kanıtı, blok başlığı ve ≥3 doğrulayıcı imzası. Herkes `BALLOT_REVEAL` verisinden sayımı yeniden hesaplayabilir (`verifyTally`).
 
 **Tehdit modeli (dürüstçe):** Bu sistem düşük riskli topluluk yönetişimi içindir; siyasi seçim için değildir. Sunucu, seçmen uygunluğu ve oy gizliliği konusunda güvenilir kabul edilir. Cihazda imzalı oy ve MACI benzeri zorlama direnci gelecek çalışmadır. Dört doğrulayıcı aynı makinede çalışıyorsa bu durum arayüzde açıkça belirtilir.
+
+## 12. Uygulama netleştirmeleri (KC-1.0, r1 ve r2)
+
+Aşağıdaki maddeler spesifikasyonun belirsiz bıraktığı noktaları **en koruyucu** yorumla netleştirir. Kod (`shared/src/decision.ts`, `server/src/forum/*`) bunlara uyar.
+
+1. **Gerekli katılım üst sınırı.** `quorumRequired = min(|E|, max(⌈q·|E|⌉, floor_abs))`. Çok küçük topluluklarda (`|E| ≤ 2`) `floor_abs` seçmen sayısını aşabildiğinden, herkes oy verdiğinde kabul imkânsız olmasın diye yeter sayı `|E|` ile sınırlanır. `P = 0` hiçbir zaman yeter sayıyı karşılamaz.
+2. **Köprü uygulanabilirliği.** Köprü testi için `n_C ≥ n_C,min`, `K ≥ 2` ve **en az bir anlamlı küme** gerekir; aksi halde soğuk başlangıç kuralı (§4.4) uygulanır.
+3. **Silmede yazar kümesi koruması her zaman.** DEL katmanında hedef mesajın yazarı kümelenmişse `P_{yazar} ≥ 1/2` koşulu, köprü testi soğuk başlangıç nedeniyle uygulanamasa bile aranır. Bu koşul sağlanmazsa sonuç `contested` olur.
+4. **Yeniden oylamada uzatma koşulu.** Küme oy eksiği (`μ_votes`) yalnızca köprü testinin karar kuralında kullanıldığı turlarda (ilk tur ve `origin = contested` yeniden oylaması) uzatma gerekçesidir. `origin = objection` turunda yalnızca katılım eksiği uzatma gerekçesidir.
+5. **DEL süreleri.** İtiraz penceresi 0 olduğundan kabul edilen silme talebi doğrudan yürürlüğe girer. Uzlaşma süresi 0 olduğundan tartışmalı silme talebi bir sonraki zamanlayıcı adımında doğrudan yeniden oylamaya geçer (ω = ρ = 3/4).
+6. **Ara sayımın gizliliği.** `needs_more_votes` ara sayımı deftere açıklanmaz ve oylama sürerken hiçbir istemciye gösterilmez. Uzatmadan sonra yapılan kesin sayım hem `BALLOT_REVEAL` hem `TALLY` olarak yazılır.
+7. **Sayım anahtarı.** Sunucu `decide()` fonksiyonunu `voterKey = ballotId` ile çağırır. Böylece defterdeki bültenden yapılan bağımsız yeniden sayım (`verifyTally`) aynı `inputsHash` değerini üretir. Vekâletle gelen etkin oyların `ballotId`'si de aynı HMAC ile hesaplanır, `salt` boş bırakılır ve kayıtta `via = "delegated"` yazar.
+8. **İtiraz imzacısının oyu.** "İlk turda etkin oyu `no`" koşulu bülten (`BALLOT_REVEAL`) üzerinden denetlenir; vekâletle `no` sayılan kişi de itiraz edebilir.
+9. **Bilirkişi tohumunun öğütülmesine karşı.** Panel çekilişini yazar değil zamanlayıcı başlatır. Tohumdaki blok, tartışma evresi açılırken **önceden taahhüt edilen** yüksekliktir (`o anki yükseklik + 2`), yani çekiliş anı seçilerek uygun bir blok hash'i yakalanamaz.
+10. **Küme manipülasyonuna karşı.** Kümeleme girdisine yalnızca en az 3 gündür doğrulanmış hesapların oyları alınır. Anlık görüntü oylama açılışında dondurulur ve yeniden oylamada aynı görüntü kullanılır. Kilit adım (lockstep) oy grupları graf modülünde işaretlenir: tarama her **kesin** sayımda (ara sayımda değil) yapılır, sonucu **kararı değiştirmez**; yalnızca bütünlük uyarısı olarak denetim günlüğüne yazılır ve gösterilir (herkese grup sayısı ve büyüklüğü, üyeler yalnız denetçi/yöneticiye; deftere yazılmaz).
+11. **Hak etkisi bayrakları: yalnızca yükseltme.** Yazar dışındaki üyelerin ve yapay zekânın eklediği "temel hak kısıtlaması" bayrakları katmanı en fazla T1'e yükseltir, uyarı üretir ve bilirkişiyi zorunlu kılar. Öneriyi T3 (geçersiz) yapamazlar. Bayrağı yalnızca ilgili alandaki bilirkişi ya da yönetici kaldırabilir.
+12. **Silme talebi kötüye kullanımına karşı.** Bir kullanıcının aynı anda en fazla 3 açık silme talebi olabilir ve 24 saatte en fazla 5 talep açabilir. Acil gerekçeli daraltma, karar çıkana kadar sürer; talep reddedilir, düşer ya da geri çekilirse kaldırılır.
+
+### r2 eklemeleri
+
+13. **Nötr küme kuralı (§4.1).** Köprünün karar kuralında kullanıldığı turlarda, uzatma kullanıldıktan sonra `Y_g+N_g < μ_votes` olan anlamlı küme köprü tabanından muaftır (`passed = null`). DEL'deki yazar kümesi koşulu bu muafiyetten yararlanmaz: yazarın kümesinden tek bir "hayır" bile silmeyi ertelemeye yeter (en koruyucu yorum).
+14. **Soğuk başlangıç eşiği (§4.4).** `τ' = max(τ, min(τ+δ_cold, 2/3))`, karşılaştırma `≥`. Soğuk başlangıç bir eşiği hiçbir zaman düşürmez.
+15. **Gösterim tutarlılığı (§4.2).** Değer ve sınır gösterimi karşılaştırma sonucuyla çelişmez. İtiraz kökenli turda küme satırları bilgi amaçlıdır. Uzatma sonrası eksiklik satırı ✔ "nötr sayıldı" olarak gösterilir.
+16. **Vekâlet çözüm ayrıntıları (§5).** Derinlik öncelikli arama, uygun olmayan delegenin tümüyle atlanması, yükün son delegeye yazılması ve sınırda kaydırma yapılmaması bağlayıcıdır. Sunucunun "oyumu kim kullandı" izi (`myEffectiveVia`) aynı arama sırasını kullanır; iz, sayımı yapan aramanın kendi çıktısıdır (`resolveEffectiveVotes().delegateOf`), ayrı bir kopya değildir.
+17. **Kümeleme yapı testi (§9).** Permütasyon sıfır modeli: `siluet ≥ 0,25` ve `siluet − siluet_sıfır ≥ 0,10`. Algoritma kimliği `pca2-kmeans-silhouette-null/2` olur. Kümeleme girdisinin süzülmesi (madde 10) çağıranın sorumluluğundadır.
+18. **İtiraz kümesi (§4.3, §6).** İmzacının kümesi ilk tur bülteninden alınır. Güçlü itiraz yalnızca anlamlı kümeler için değerlendirilir.
+19. **Bağımsız yeniden sayımda hata.** `verifyTally`, bozuk ya da uyumsuz bir `TALLY` kaydında (ör. T3 katmanı, `round = 2` ama `revote` yok) istisna fırlatmaz. Bunun yerine "Yeniden sayım yapılamadı: …" uyuşmazlığı raporlar ve `ok = false` döner.

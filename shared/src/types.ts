@@ -97,6 +97,9 @@ export interface GroundInfo {
   description: string;
   urgent?: boolean; // silme gerekçesi için: talep anında daraltılır
   legal?: boolean; // bilirkişi görüşü bağlayıcı
+  sealed?: boolean; // silme kabulünde "sealed" (kişisel veri)
+  invalid?: boolean; // geçersiz gerekçe (ör. görüş ayrılığı) — seçilemez
+  article?: string; // dayanak madde IRI'si
 }
 
 export interface RightInfo {
@@ -234,6 +237,34 @@ export interface ProposalSummary {
   sponsorsRequired: number;
   messageCount: number;
   participation?: { voted: number; eligible: number } | null;
+  /** Kesin sayımlarda kaydedilen bütünlük uyarısı sayısı (ör. kilit adım oy grupları). Karar DEĞİŞMEZ; yalnız denetim içindir. */
+  integrityWarningCount: number;
+}
+
+/** Hak etkisi bayrağının kaynağı ("yalnızca yükseltme": "member"/"ai" en çok T1'e yükseltir). */
+export type RightsFlagSource = "author" | "ai" | "expert" | "member";
+
+/** Öneriye eklenmiş hak etkisi bayrağı (temel hak IRI'si, etki yönü, kim ekledi). */
+export interface ProposalRightsFlag {
+  right: string;
+  direction: "restrict" | "expand";
+  source: RightsFlagSource;
+}
+
+/**
+ * Bütünlük (denetim) uyarısı. Kesin sayımda üretilir; kararı DEĞİŞTİRMEZ. Herkes yalnızca sayıları görür;
+ * grup üyelerinin takma adları yalnız denetçi ve yöneticiye gösterilir (kimin hangi oyu verdiği hiçbir zaman gösterilmez).
+ */
+export interface IntegrityWarning {
+  kind: "lockstep";
+  round: 1 | 2;
+  /** Gruptaki kişi sayısı */
+  groupSize: number;
+  /** Türkçe açıklama (kişi adı içermez) */
+  message: string;
+  detectedAt: number;
+  /** Yalnız denetçi/yönetici görür; diğer görüntüleyenlerde null. */
+  members: { userId: string; nickname: string }[] | null;
 }
 
 export interface ProposalVersion {
@@ -393,11 +424,19 @@ export interface ProposalDetail extends ProposalSummary {
   objectionEvaluation: ObjectionEvaluation | null;
   minorityReports: MinorityReport[];
   expertPanel: ExpertPanelInfo | null;
+  /** Önerinin TÜM bilirkişi soruları (panel çekilmeden sorulanlar dahil) */
+  expertQuestions: ExpertQuestion[];
   aiAnalyses: AiAnalysisInfo[];
   myBallot: { choice: VoteChoice; receipt: BallotReceipt } | null;
   myEffectiveVia: { delegateNickname: string; choice: VoteChoice } | null;
   canVote: boolean;
   canObject: boolean;
+  /** Görüntüleyen azınlık raporu yazabilir mi: uygun seçmen, tur-1 etkin oyu "red", evre açık ve henüz yazmamış. */
+  canWriteMinorityReport: boolean;
+  /** Hak etkisi bayrakları (yön ve kaynakla); denetim raporundaki `rightsAffected` yalnız IRI listesidir. */
+  rightsFlags: ProposalRightsFlag[];
+  /** Kesin sayımlarda kaydedilen bütünlük uyarıları (karar değişmez). */
+  integrityWarnings: IntegrityWarning[];
   parentTopic: { id: string; title: string } | null;
   enactedEntityId: string | null;
   ledgerTxs: { type: string; txHash: string; at: number }[];
@@ -490,13 +529,19 @@ export interface MessageVersionView {
 
 export type ExpertStatus = "applied" | "active" | "suspended" | "removed" | "rejected";
 export type ExpertAssessment = "feasible" | "infeasible" | "uncertain";
-export type AssignmentStatus = "invited" | "accepted" | "recused" | "reported" | "overdue" | "replaced";
+export type AssignmentStatus = "invited" | "accepted" | "recused" | "reported" | "overdue" | "replaced" | "cancelled";
 
 export interface ExpertInfo {
   userId: string;
   nickname: string;
   domains: string[];
-  credentials: string;
+  /**
+   * Yeterlilik beyanı (serbest metin; kurum, unvan gibi kimliği belirleyebilecek bilgiler içerebilir).
+   * Yalnızca yönetici, kayıt memuru, denetçi ve bilirkişinin kendisi görür; diğer herkese null.
+   */
+  credentials: string | null;
+  /** Herkese açık, kimlik belirlemeyen kısa yeterlilik özeti (alanlar ve durumdan üretilir). */
+  qualificationSummary: string;
   status: ExpertStatus;
   reputation: number;
   activeAssignments: number;
@@ -538,13 +583,35 @@ export interface ExpertPanelInfo {
   seed: string;
   seedSource: { blockHash: string; blockHeight: number; proposalId: string; round: number };
   candidates: { userId: string; nickname: string; weight: number; softConflict: number; excludedReason?: string }[];
-  assignments: { id: string; expertId: string; nickname: string; status: AssignmentStatus; dueAt: number }[];
+  /** recuseReason: çekinen bilirkişinin (isteğe bağlı) gerekçesi; yalnız "recused" atamalarda dolu olabilir. */
+  assignments: { id: string; expertId: string; nickname: string; status: AssignmentStatus; dueAt: number; recuseReason?: string | null }[];
+  /**
+   * Bu önerinin tüm EXPERT_DRAW defter kayıtları (ilk kura, karşı panel ve çekinme/değiştirme sonrası yedek kuralar), defter sırasıyla.
+   * Herkes çekilişi defterdeki tohum ve aday listesinden yeniden üretebilir.
+   */
+  draws?: ExpertDrawRecord[];
   reports: ExpertReportView[];
   questions: ExpertQuestion[];
   suspensiveFlag: boolean;
   noExpertAvailable: boolean;
   ledgerTx: string | null;
   createdAt: number;
+}
+
+/** Bir EXPERT_DRAW defter kaydının özeti (ExpertPanelInfo.draws). */
+export interface ExpertDrawRecord {
+  /** Panelin kura turu (1, 2, …) */
+  round: number;
+  /** panel: ilk kura · counter: karşı panel · substitute: boşalan yer için yedek kura */
+  kind: "panel" | "counter" | "substitute";
+  /** Yedek kurada boşalma nedeni */
+  reason: "recused" | "replaced" | null;
+  /** Yedek kuranın panel içindeki sırası (1, 2, …); ilk kurada null */
+  substitute: number | null;
+  /** Seçilen kişi sayısı */
+  selected: number;
+  txHash: string;
+  at: number;
 }
 
 // ───────────────────────── Graf ─────────────────────────

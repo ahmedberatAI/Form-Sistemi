@@ -57,6 +57,26 @@ CREATE TABLE IF NOT EXISTS pii_access_log (
   at INTEGER NOT NULL
 );
 
+-- Kimlik verisi düzeltme talepleri (KVKK md. 11/1-d). Önerilen değerler ve gerekçe kişinin DEK'iyle şifrelidir;
+-- öneri (enc_payload) karar ya da geri çekme anında imha edilir (NULL). Satırlar silinmez.
+CREATE TABLE IF NOT EXISTS identity_corrections (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  fields TEXT NOT NULL,                      -- JSON: düzeltilecek alan adları (değer YOK)
+  enc_payload TEXT,                          -- önerilen değerler (AES-256-GCM, kişinin DEK'i); karar sonrası NULL
+  enc_reason TEXT,                           -- gerekçe (şifreli); kripto-imhada NULL
+  key_version INTEGER NOT NULL DEFAULT 1,
+  status TEXT NOT NULL DEFAULT 'pending',    -- pending|approved|rejected|withdrawn
+  reviewed_by TEXT,                          -- amaç belirterek inceleyen son personel
+  reviewed_at INTEGER,
+  decided_by TEXT,
+  decided_at INTEGER,
+  decision_note TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_corrections_status ON identity_corrections(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_corrections_user ON identity_corrections(user_id, created_at);
+
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id),
@@ -125,6 +145,9 @@ CREATE TABLE IF NOT EXISTS proposals (
   cluster_snapshot_id TEXT,
   eligible_count INTEGER,
   enacted_entity_id TEXT,
+  expert_draw_height INTEGER,                -- bilirkişi kurası tohumu için ÖNCEDEN taahhüt edilen blok yüksekliği
+  content_labels TEXT NOT NULL DEFAULT '[]', -- JSON [{label, confidence, source}] (moderasyon; danışma)
+  final_reason TEXT,                         -- kesin sonucun Türkçe gerekçesi (ör. "sürüm çakışması")
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
@@ -206,8 +229,11 @@ CREATE TABLE IF NOT EXISTS tallies (
   reveal_payload TEXT,                       -- JSON RevealEntry[]
   ledger_tx TEXT,
   reveal_ledger_tx TEXT,
+  interim INTEGER NOT NULL DEFAULT 0,        -- 1: needs_more_votes ara sayımı (oylama sürerken gizli, deftere açıklanmaz)
+  delegation_trace TEXT,                     -- JSON {delegatorUserId: delegateUserId} — YALNIZ sunucuda (defterde yok)
   created_at INTEGER NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_tallies_p ON tallies(proposal_id, round);
 
 CREATE TABLE IF NOT EXISTS objections (
   id TEXT PRIMARY KEY,

@@ -11,6 +11,10 @@ import type {
   CategoryNode,
   ChainVerification,
   ClusterSnapshotView,
+  CorrectionRequestInput,
+  CorrectionRequestView,
+  CorrectionReview,
+  CorrectionStatus,
   DelegationView,
   DiscussionSummary,
   EdgeType,
@@ -53,6 +57,8 @@ export interface CommittedTx extends LedgerTxView {
 }
 
 export interface LedgerService {
+  /** Uygulama sunucusunun işlem imzalama açık anahtarı (hex). tx.sig = Ed25519(hexToBytes(tx.hash)). */
+  readonly appPublicKey: string;
   start(): Promise<void>;
   stop(): Promise<void>;
   /**
@@ -90,8 +96,8 @@ export interface ProposalAuditInput {
   body: string;
   /** Yazarın seçtiği + YZ'nin (yalnız yükseltme) eklediği kategori IRI'leri */
   categories: string[];
-  /** Etkilenen temel haklar (IRI) ve yönü */
-  rightsAffected?: { right: string; direction: "restrict" | "expand"; source: "author" | "ai" | "expert" }[];
+  /** Etkilenen temel haklar (IRI) ve yönü. "member"/"ai" kaynaklı bayraklar yalnızca yükseltir (en çok T1 + uyarı); T3 yalnız "author"/"expert" ile. */
+  rightsAffected?: { right: string; direction: "restrict" | "expand"; source: "author" | "ai" | "expert" | "member" }[];
   /** İçerik etiketleri (ör. fy:KisiselVeriIfsasi, fy:NefretSoylemi) — YZ/kural kaynaklı */
   contentLabels?: { label: string; confidence: number; source: "ai" | "rule" }[];
   parentTopic?: { id: string; categories: string[]; status: string } | null;
@@ -119,6 +125,10 @@ export interface OntologyService {
   articles(): ArticleInfo[];
   deletionGrounds(): GroundInfo[];
   objectionGrounds(): GroundInfo[];
+  /** İçerik etiketleri (fy:IcerikEtiketi) — moderasyon ve denetim için */
+  contentLabels(): { iri: string; label: string }[];
+  /** Yönetmelik yaması oluşturucusu için ayarlanabilir parametreler (değiştirilemez olanlar işaretli) */
+  adjustableParams(): { rule: string; param: string; label: string; value: number | boolean | string; immutable: boolean }[];
   tiers(): { tier: Tier; label: string; quorum: number; threshold: number; clusterFloor: number }[];
   /** Kategori anahtar kelimeleri (çevrimdışı sınıflandırma için) */
   keywordIndex(): { iri: string; keywords: string[] }[];
@@ -128,6 +138,8 @@ export interface OntologyService {
   validatePatch(patch: RegulationPatch): Promise<AuditReport>;
   /** Kabul edilen yamayı uygular → yeni sürüm (bylaw_versions), BYLAW_VERSION defter kaydı çağıran tarafından yapılır. */
   applyPatch(patch: RegulationPatch, proposalId: string): Promise<BylawVersionInfo>;
+  /** BYLAW_VERSION defter kaydının hash'ini sürüme bağlar. */
+  setLedgerTx(version: number, txHash: string): void;
   /** Yürürlükteki yönetmeliğin Turtle çıktısı */
   exportTurtle(version?: number): string;
 }
@@ -200,7 +212,7 @@ export interface VoteMatrixEntry {
 }
 
 export interface ClusterComputation {
-  algo: string; // "pca2-kmeans-silhouette/1"
+  algo: string; // "pca2-kmeans-silhouette-null/2" (KC-1.0 r2, sıfır modeli)
   k: number;
   silhouette: number;
   assignments: Record<string, string>; // userId → "g0"
@@ -224,7 +236,17 @@ export interface GovernanceMath {
     cap: number;
     maxHops: number;
     clusterOf: (userId: string) => string | null;
-  }): { votes: EffectiveVote[]; unrouted: string[]; capped: string[]; loads: Record<string, number> };
+  }): {
+    votes: EffectiveVote[];
+    unrouted: string[];
+    capped: string[];
+    loads: Record<string, number>;
+    /**
+     * Vekâletle sayılan her oy için oyu uygulanan (zincirin sonundaki, doğrudan oy veren) delege: delegatör → delege.
+     * Yalnız sunucuda saklanır (myEffectiveVia); defterde YOKTUR. Sınırı aşan (unrouted) kişiler burada yer almaz.
+     */
+    delegateOf: Record<string, string>;
+  };
   /** Tohumlu ağırlıklı yerine koymadan örnekleme (bilirkişi kurası) */
   drawWeighted<T extends { id: string; weight: number }>(candidates: T[], k: number, seed: string): T[];
 }
@@ -243,6 +265,8 @@ export interface AuthUser {
 
 export interface IdentityService {
   register(input: RegistrationInput): Promise<{ user: Me }>;
+  /** Kurulum: sistemde hiç yönetici yokken ilk yöneticiyi doğrulanmış olarak oluşturur (yoksa 409 admin_exists). */
+  bootstrapAdmin(input: RegistrationInput): Promise<{ user: Me }>;
   /** "Sistem tarafından girilir": kayıt memuru üyeyi doğrudan doğrulanmış olarak oluşturur. */
   createByRegistrar(actorId: string, input: RegistrationInput): Promise<{ user: Me }>;
   verify(actorId: string, userId: string, decision: "approve" | "reject", note?: string): Promise<Me>;
@@ -258,14 +282,48 @@ export interface IdentityService {
   exportOwnData(userId: string): Record<string, unknown>;
   /** KVKK: kripto-imha. Oylamaya konmaz. */
   eraseSelf(userId: string): Promise<void>;
-  changePassword(userId: string, oldPw: string, newPw: string): Promise<void>;
+  /** keepToken: verilen oturum açık kalır, diğerleri iptal edilir. */
+  changePassword(userId: string, oldPw: string, newPw: string, keepToken?: string): Promise<void>;
+  /** Silme gibi geri dönüşsüz işlemlerden önce şifre teyidi. */
+  verifyPassword(userId: string, password: string): Promise<boolean>;
+  /** Sonradan 18 yaşını dolduranların bayrağını günceller (zamanlayıcı çağırır). */
+  refreshAdulthood(): number;
+  /** Süresi geçmiş bekleyen başvuruları kripto-imha eder (zamanlayıcı çağırır). */
+  purgeStalePending(maxAgeMs?: number): number;
+
+  // ── KVKK md. 11/1-d: kimlik verisi düzeltme talebi (üye → kayıt memuru; gerekçeli, amaç kayıtlı inceleme, denetim izli) ──
+  /** Üye gerekçeli düzeltme talebi açar (aynı anda tek bekleyen talep). Önerilen değerler kişinin DEK'iyle şifreli saklanır. */
+  requestCorrection(userId: string, input: CorrectionRequestInput): CorrectionRequestView;
+  /** Üyenin kendi talepleri (en yeni önce; kendi gerekçesiyle). */
+  myCorrections(userId: string): CorrectionRequestView[];
+  /** Bekleyen kendi talebini geri çeker; önerilen değerler imha edilir. */
+  withdrawCorrection(userId: string, correctionId: string): CorrectionRequestView;
+  /** Kayıt memuru / denetçi / yönetici: talepler (değer içermez). Varsayılan yalnız bekleyenler. */
+  listCorrections(actorId: string, status?: CorrectionStatus | "all"): CorrectionRequestView[];
+  /** Amaç belirterek inceleme: pii_access_log + audit_log; mevcut ve önerilen değerler (TCKN maskeli) ve gerekçe döner. */
+  reviewCorrection(actorId: string, correctionId: string, purpose: string): CorrectionReview;
+  /** Kayıt memuru / yönetici (önce incelemiş olmalı, kendi talebine karar veremez). Onayda kasa alanları yeniden şifrelenir. */
+  decideCorrection(actorId: string, correctionId: string, decision: "approve" | "reject", note?: string): CorrectionRequestView;
 }
 
 // ═════════════════════════ Yapay zekâ ═════════════════════════
 
+/**
+ * YZ analiz kayıtları (ai_analyses + AI_ANALYSIS defter girdisi). Forum ve diğer modüller YZ kayıtlarına YALNIZCA bu
+ * arayüzle erişir (../ai iç yardımcılarını doğrudan içe aktarmaz).
+ */
 export interface AiRecordSink {
-  /** ai_analyses tablosuna yazar ve (isteğe bağlı) AI_ANALYSIS defter kaydı oluşturur. */
-  record(a: Omit<AiAnalysisInfo, "id" | "label" | "ledgerTx" | "createdAt"> & { inputHash: string; outputHash: string; promptVersion: string }): AiAnalysisInfo;
+  /**
+   * ai_analyses tablosuna yazar ve (isteğe bağlı) AI_ANALYSIS defter kaydı oluşturur.
+   * promptVersion verilmezse YZ modülünün güncel istem sürümü kullanılır.
+   */
+  record(a: Omit<AiAnalysisInfo, "id" | "label" | "ledgerTx" | "createdAt"> & { inputHash: string; outputHash: string; promptVersion?: string }): AiAnalysisInfo;
+  /** Tek analiz (yoksa null). */
+  get(id: string): AiAnalysisInfo | null;
+  /** Hedefin (ör. "proposal", id) tüm analizleri, en yeniden eskiye. */
+  list(targetType: string, targetId: string): AiAnalysisInfo[];
+  /** İnsan onayı (yetki denetimi çağıranındır). İlk onay kalıcıdır; tekrar çağrı mevcut kaydı döndürür. Yoksa 404. */
+  approve(id: string, userId: string): AiAnalysisInfo;
 }
 
 export interface ClassificationResult {
@@ -303,16 +361,23 @@ export interface SummaryInputMessage {
   body: string;
 }
 
+export interface AiCallOptions {
+  forceOffline?: boolean;
+  /** Yalnız lintExpertReport: bilirkişinin alanları (etiket ya da IRI) — "alan dışı" denetimi için */
+  domains?: string[];
+}
+
 export interface AiService {
   mode(): "claude" | "offline";
   model(): string;
   detectPii(text: string): PiiFinding[];
-  classifyProposal(input: { title: string; body: string }, ctx: { categories: { iri: string; label: string; keywords: string[] }[]; rights: { iri: string; label: string }[]; contentLabels: { iri: string; label: string }[] }): Promise<ClassificationResult>;
-  moderate(text: string, ctx: { articles: { iri: string; number: string; title: string }[]; contentLabels: { iri: string; label: string }[] }): Promise<ModerationResult>;
-  summarize(input: { topicTitle: string; messages: SummaryInputMessage[] }): Promise<DiscussionSummary & { offline: boolean; model: string }>;
+  // `opts.forceOffline`: içerik sahibi YZ rızası vermemişse (yurt dışına aktarım yok) çevrimdışı sezgisel kullanılır.
+  classifyProposal(input: { title: string; body: string }, ctx: { categories: { iri: string; label: string; keywords: string[] }[]; rights: { iri: string; label: string }[]; contentLabels: { iri: string; label: string }[] }, opts?: AiCallOptions): Promise<ClassificationResult>;
+  moderate(text: string, ctx: { articles: { iri: string; number: string; title: string }[]; contentLabels: { iri: string; label: string }[] }, opts?: AiCallOptions): Promise<ModerationResult>;
+  summarize(input: { topicTitle: string; messages: SummaryInputMessage[] }, opts?: AiCallOptions): Promise<DiscussionSummary & { offline: boolean; model: string }>;
   similar(input: { title: string; body: string }, corpus: { id: string; title: string; body: string }[], limit?: number): { id: string; score: number }[];
-  bridgingDrafts(input: { title: string; body: string; majorityPoints: string[]; minorityPoints: string[] }): Promise<{ drafts: { title: string; body: string; rationale: string }[]; offline: boolean; model: string }>;
-  lintExpertReport(text: string): Promise<{ issues: { quote: string; kind: string; message: string }[]; offline: boolean; model: string }>;
+  bridgingDrafts(input: { title: string; body: string; majorityPoints: string[]; minorityPoints: string[] }, opts?: AiCallOptions): Promise<{ drafts: { title: string; body: string; rationale: string }[]; offline: boolean; model: string }>;
+  lintExpertReport(text: string, opts?: AiCallOptions): Promise<{ issues: { quote: string; kind: string; message: string }[]; offline: boolean; model: string }>;
   /** Sonuç kontrol listesini sade Türkçeye çevirir (şablon tabanlı; YZ gerekmez). */
   explainDecision(checks: { label: string; passed: boolean; value: string; required: string }[], outcomeLabel: string): string;
 }
@@ -328,23 +393,46 @@ export interface ExpertReportInput {
   dissent?: string | null;
 }
 
+/** Bilirkişi çıktısını biçimlemek için görüntüleyen (oturum yoksa null). */
+export type ExpertViewer = { id: string; roles: readonly Role[] } | null;
+
 export interface ExpertService {
   apply(userId: string, domains: string[], credentials: string): ExpertInfo;
   decideApplication(actorId: string, userId: string, decision: "approve" | "reject", note?: string): ExpertInfo;
   sanction(actorId: string, userId: string, action: "warn" | "suspend" | "remove" | "reinstate", note: string): ExpertInfo;
-  list(filter?: { status?: string; domain?: string }): ExpertInfo[];
-  get(userId: string): ExpertInfo | null;
+  /**
+   * Görüntüleyene göre biçimlenir: `credentials` (serbest metin yeterlilik beyanı, kişisel veri içerebilir) yalnız yönetici,
+   * kayıt memuru, denetçi ve bilirkişinin kendisine; diğerlerine (viewer verilmezse de) null + `qualificationSummary`.
+   */
+  list(filter?: { status?: string; domain?: string }, viewer?: ExpertViewer): ExpertInfo[];
+  get(userId: string, viewer?: ExpertViewer): ExpertInfo | null;
   addQuestion(proposalId: string, userId: string, body: string, minorityGuaranteed?: boolean): ExpertQuestion;
   /**
    * ALGORITMA.md §8. Tohum = SHA256(sonBlokHash ‖ proposalId ‖ round). EXPERT_DRAW defter kaydı yapılır.
    * opts.counter: karşı panel (önceki panelistler hariç).
    */
-  drawPanel(proposalId: string, opts: { categories: string[]; authorId: string; k: number; dueAt: number; counter?: boolean }): Promise<ExpertPanelInfo>;
+  drawPanel(
+    proposalId: string,
+    opts: {
+      categories: string[];
+      authorId: string;
+      k: number;
+      dueAt: number;
+      counter?: boolean;
+      /**
+       * Tohum öğütmeye karşı: çekilişi zamanlayıcı başlatır ve tohum, ÖNCEDEN taahhüt edilmiş yükseklikteki
+       * bloğun hash'inden alınır (ör. tartışma açılışında "o anki yükseklik + 2"). Verilmezse son blok kullanılır.
+       */
+      seedBlock?: { height: number; hash: string };
+    },
+  ): Promise<ExpertPanelInfo>;
   respond(assignmentId: string, expertId: string, decision: "accept" | "recuse", reason?: string): Promise<ExpertPanelInfo>;
   submitReport(assignmentId: string, expertId: string, input: ExpertReportInput): Promise<ExpertReportView>;
   panel(proposalId: string): ExpertPanelInfo | null;
   /** §8 adım 9: rapor verenlerin ≥2/3'ü infeasible ve güven medyanı ≥0,8 */
   suspensiveFlag(proposalId: string): boolean;
+  /** Öneri kapandığında (geri çekildi, düştü, kabul/red) bekleyen atamaları itibar cezası olmadan iptal eder. */
+  cancelPending(proposalId: string): number;
   /** Süresi geçen atamaları işaretler, itibarı günceller. */
   markOverdue(now: number): number;
   assignmentsFor(expertId: string): { assignmentId: string; proposalId: string; status: string; dueAt: number }[];
