@@ -1,7 +1,7 @@
 // Senaryo 2 (tartışmalı → uzlaşma → yeniden oylama, ω ile aşma) ve senaryo 3 (azınlık itirazı → uzlaşma → ρ).
 import { beforeAll, describe, expect, it } from "vitest";
 import { fy, verifyTally, type ProposalDetail } from "@forum/shared";
-import { closeVoting, endPhase, makeBlocks, makeForum, seedHistory, toDeliberation, toVoting, type Blocks, type ForumHarness } from "./harness";
+import { CAT, closeVoting, endPhase, insertTopic, makeBlocks, makeForum, seedHistory, toDeliberation, toVoting, type Blocks, type ForumHarness } from "./harness";
 
 async function voteBlocks(h: ForumHarness, id: string, b: Blocks, plan: { A: "yes" | "no"; B: "yes" | "no"; C: ("yes" | "no")[] | "yes" | "no" }) {
   for (const u of b.A) await h.forum.proposals.vote(u, id, plan.A);
@@ -167,5 +167,73 @@ describe("forum: görüş kümeleri, tartışmalı sonuç ve azınlık itirazı"
     expect(q2.minorityGuaranteed).toBe(false);
     const q3 = h.forum.proposals.expertQuestion(b.A[5], id, "Kurulum ne kadar sürer acaba?");
     expect(q3.minorityGuaranteed).toBe(false);
+  });
+
+  it("köprü skoru: son anlık görüntünün anlamlı kümelerinde en düşük Laplace desteği", async () => {
+    const topicId = insertTopic(h, "Köprü konusu");
+    const msg = await h.forum.messages.post(b.A[0], "topic", topicId, { body: "Parkın bakımını gönüllülerle birlikte yapalım.", stance: "pro" });
+    for (const u of b.A.slice(1, 5)) h.forum.messages.endorse(u, msg.id, 1);
+    for (const u of b.B.slice(0, 2)) h.forum.messages.endorse(u, msg.id, 1);
+    for (const u of b.C.slice(0, 2)) h.forum.messages.endorse(u, msg.id, -1);
+    const snap = h.forum.clusters.latest()!;
+    const per = new Map<string, { a: number; d: number }>();
+    for (const [u, v] of [...b.A.slice(1, 5).map((x) => [x, 1] as const), ...b.B.slice(0, 2).map((x) => [x, 1] as const), ...b.C.slice(0, 2).map((x) => [x, -1] as const)]) {
+      const g = h.forum.clusters.clusterOf(snap.id, u.id)!;
+      const c = per.get(g) ?? { a: 0, d: 0 };
+      if (v > 0) c.a++;
+      else c.d++;
+      per.set(g, c);
+    }
+    const expected = Math.min(...snap.clusters.map((c) => per.get(c.clusterId) ?? { a: 0, d: 0 }).map((c) => (1 + c.a) / (2 + c.a + c.d)));
+    const v = h.forum.messages.get(msg.id, null);
+    expect(v.bridgingScore).toBeCloseTo(expected, 4);
+    expect(v.bridgingScore).toBeLessThan(0.5);
+  });
+
+  it("itiraz ve oy süreleri: süre dolunca 409", async () => {
+    const id = await toDeliberation(h, b.A[6], b.all.slice(7), { title: "Kütüphane hafta sonu açık", body: "Mahalle kütüphanesi cumartesi ve pazar günleri de açık olsun, öğrenciler çalışabilsin." });
+    await toVoting(h, id);
+    await voteBlocks(h, id, b, { A: "yes", B: "yes", C: ["yes", "yes", "yes", "no", "no", "no"] });
+    const p = h.forum.proposals.get(id, null);
+    h.ctx.clock.advance(p.phaseEndsAt! - h.ctx.clock.now());
+    await expect(h.forum.proposals.vote(b.C[0], id, "no")).rejects.toMatchObject({ status: 409 });
+    await h.tick();
+    const d = h.forum.proposals.get(id, null);
+    expect(d.status).toBe("objection_window");
+    h.ctx.clock.advance(d.phaseEndsAt! - h.ctx.clock.now());
+    await expect(h.forum.proposals.object(b.C[3], id, { ground: fy("UsulHatasi"), statement: "Süre dolduktan sonra yapılan itiraz denemesi." })).rejects.toMatchObject({ status: 409 });
+    await h.tick();
+    expect(h.forum.proposals.get(id, null).status).toBe("enacted");
+  });
+
+  it("uzlaşmada karşı bilirkişi talebi (≥3 kişi) → önceden taahhüt edilen blokla karşı panel", async () => {
+    const admin = h.user("yonetici2", { roles: ["admin"] });
+    const expert = h.user("bilirkisi2");
+    h.experts.apply(expert.id, [CAT.enerji], "Enerji uzmanı.");
+    h.experts.decideApplication(admin.id, expert.id, "approve");
+    const id = await toDeliberation(h, b.A[7], b.all.slice(8), {
+      title: "Spor salonuna güneş paneli",
+      body: "Spor salonunun çatısına güneş paneli kurulsun; fazla elektrik şebekeye verilsin.",
+      categories: [CAT.enerji],
+    });
+    await h.tick();
+    const first = h.forum.proposals.get(id, null).expertPanel!;
+    expect(first.isCounterPanel).toBe(false);
+    expect(first.assignments.map((a) => a.expertId)).toEqual([expert.id]);
+    await toVoting(h, id);
+    await voteBlocks(h, id, b, { A: "yes", B: "yes", C: "no" });
+    await closeVoting(h, id);
+    expect(h.forum.proposals.get(id, null).status).toBe("reconciliation");
+    await expect(h.forum.proposals.requestExpert(b.C[0], id, "panel")).rejects.toMatchObject({ status: 409 });
+    for (const u of b.C.slice(0, 3)) await h.forum.proposals.requestExpert(u, id, "counter");
+    h.forum.proposals.minorityReport(b.C[0], id, "Panel verimliliği bu çatı açısında düşük; bağımsız bir karşı bilirkişi görüşü alınmadan karar verilmemeli.");
+    await h.tick();
+    const panel = h.forum.proposals.get(id, null).expertPanel!;
+    expect(panel.isCounterPanel).toBe(true);
+    expect(panel.panelId).not.toBe(first.panelId);
+    // Önceki panelist karşı panele giremez: tek bilirkişi olduğundan uygun aday yok
+    expect(panel.assignments.map((a) => a.expertId)).not.toContain(expert.id);
+    const committed = h.ledger.getBlock(panel.seedSource.blockHeight)!;
+    expect(panel.seedSource.blockHash).toBe(committed.hash);
   });
 });

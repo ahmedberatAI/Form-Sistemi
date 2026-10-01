@@ -363,7 +363,11 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
       : "Metin yalnızca taslakta, tartışma ve uzlaşma evrelerinde değiştirilebilir (oylama başlarken kilitlenir).");
     const title = checkLength(rev.title, 5, 200, "title", "Başlık");
     const body = checkLength(rev.body, 20, 20000, "body", "Metin");
-    if (title === p.title && body === p.body) return;
+    if (title === p.title && body === p.body) {
+      // Metin aynı: yeni sürüm yok (ör. kabul edilen öneri zaten güncel metinle aynı) — yalnız karar kaydı işlenir.
+      if (rev.onCommit) core.tx(() => rev.onCommit!());
+      return;
+    }
     assertNoPii(core, `${title}\n${body}`, rev.acknowledgePii);
     const mod = await moderate(actor, `${title}\n${body}`);
     const labels = contentLabelsOf(mod);

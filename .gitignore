@@ -12,3 +12,7 @@ web/android/local.properties
 web/android/app/src/main/assets/public/
 coverage/
 .DS_Store
+
+# Ajan/geliştirici geçici dosyaları
+server/scratch*
+*.tmp.ts

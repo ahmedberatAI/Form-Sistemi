@@ -10,12 +10,12 @@
 - **Liberum veto yok:** %10'luk blok her öneriye aktif "hayır" deyip itiraz etse de çok popüler öneriler KÇ'de %100,0 oranında yürürlüğe giriyor (ortalama 9,1 gün; saf küme vetosunda %2,8). Aktif muhalefet yalnızca onayı 2/3'ün altında kalan önerileri durdurabiliyor (az farkla popüler: %5,8).
 - **Boykot işe yaramıyor:** C boykot ettiğinde nihai kabul %100,0 (bir kez uzatma oranı %12,2); aynı öneriye aktif "hayır" dendiğinde ilk tur contested oranı %91,0.
 - **Vekâlet sınırı:** Sınır (15) ile en yüklü delegenin taşıdığı oy ortalama 14,9 (|E| içindeki payı %5,0); sınırsız durumda 24,6 (%8,2). Sınır nedeniyle ortalama 10,0 kişinin oyu yönlendirilemiyor.
-- **Kalıcı kaybeden:** Ayrışmış bloklarda C'nin istemediği halde kabul edilen karar oranı basit çoğunlukta %36,2, KÇ'de %26,4. C, B'ye yakın oy verdiğinde ayrı küme olarak bulunamıyor ve koruma zayıflıyor (%41,1 → %34,8). Bedel statüko yönünde: toplam kabul %83,3 → %65,7. Basit çoğunlukta geçip KÇ'de reddedilen kararların %54,3 kadarı itiraz (alarm zili) yolundan geliyor.
-- **Kümeleme uyarısı:** §9.4'teki "siluet < 0,25 → K = 1" kuralı 2 boyutlu PCA uzayında homojen nüfusta tetiklenmiyor (bulunan K: 3, 4, 5, 4, 3). Zayıf ayrışmış geçmişte %10'luk blok ayrı küme olarak bulunamayabiliyor. Bkz. (h).
+- **Kalıcı kaybeden:** Ayrışmış bloklarda C'nin istemediği halde kabul edilen karar oranı basit çoğunlukta %38,1, KÇ'de %27,7. C, B'ye yakın oy verdiğinde ayrı küme olarak bulunamıyor ve koruma zayıflıyor (%38,8 → %32,6). Bedel statüko yönünde: toplam kabul %85,4 → %68,4. Basit çoğunlukta geçip KÇ'de reddedilen kararların %41,7 kadarı itiraz (alarm zili) yolundan geliyor.
+- **Kümeleme (r2):** r1'deki "siluet < 0,25 → K = 1" kuralı 2 boyutlu PCA uzayında homojen nüfusta tetiklenmiyordu (r1 ile bulunan K: 3, 4, 5, 4, 3). r2'nin permütasyon sıfır modeliyle homojen nüfusta K: 1, 1, 1, 1, 1; bloklu nüfusta K: 3, 3, 3, 3, 3. Bkz. (h).
 
 ## Yöntem
 
-- **Gerçek kod:** Her karar `@forum/shared` içindeki `decide()` ve `evaluateObjection()` ile verilir. Kümeler simüle oy geçmişinden `computeClusters()` ile, vekâlet `resolveEffectiveVotes()` ile hesaplanır. Basitleştirilmiş bir yeniden uygulama kullanılmaz.
+- **Gerçek kod:** Her karar `@forum/shared` içindeki `decide()` ve `evaluateObjection()` ile verilir (KC-1.0, ALGORITMA r2). Kümeler simüle oy geçmişinden `computeClusters()` ile (`pca2-kmeans-silhouette-null/2`), vekâlet `resolveEffectiveVotes()` ile hesaplanır. Basitleştirilmiş bir yeniden uygulama kullanılmaz.
 - **Nüfus:** Bloklar A/B/C (%60/%30/%10). Standart nüfus |E| = 300'dür ve üyelerin %5'i yeni üyedir (oy geçmişi yok → kümelenmemiş; genel onaya sayılır, köprüye katılmaz). Her kişinin kalıcı bir eğilimi vardır (logit, N(0; 0,5²)).
 - **Oy modeli:** Öneri, blok başına bir logit destek ile tanımlanır. Kişi `katılım` olasılığıyla (varsayılan %55) oy verir; oy verenler arasında çekimser oranı %4. Diğerleri için P(evet) = σ(logit_blok + eğilim + N(0; 0,6²)). Uzatmada, oy vermemiş olanlar katılım × 0,35 olasılıkla geç katılır.
 - **Küme anlık görüntüsü:** 60 kapanmış önerilik geçmişten hesaplanır (ortak değer N(0; 0,8²) + bloğa özgü sapma N(0; 2,0²)). Standart nüfus için: K=3, siluet 0,58, saflık %97,9, kümelenmiş 286, dışlanan 0 — g0=168 (blok A), g1=84 (blok B), g2=34 (blok C). Daha zayıf ayrışmış geçmişlerin etkisi (h)'de.
@@ -81,11 +81,11 @@ Tohum: `KC-1.0/simulasyon/2026-10|d|*`; her satır 500 öneri; itiraz yok.
 | C aktif hayır (katılım %55) | %100,0 | %0,0 | %9,0 | %91,0 | %79,8 |
 | C boykot (katılım %0) | %100,0 | %12,2 | %97,4 | %2,6 | %100,0 |
 | C neredeyse boykot (katılım %3) | %100,0 | %9,4 | %93,2 | %6,8 | %100,0 |
-| C neredeyse boykot — T1 (φ = 0,40) | %100,0 | %7,4 | %88,8 | %11,2 | %100,0 |
+| C neredeyse boykot — T1 (φ = 0,40) | %100,0 | %6,4 | %87,2 | %12,8 | %100,0 |
 | B aktif hayır | %99,8 | %0,0 | %0,0 | %99,8 | %3,6 |
 | B boykot | %100,0 | %100,0 | %99,8 | %0,2 | %100,0 |
 
-**Yorum.** Hiç oy vermeyen bir küme için P_g = (1+0)/(2+0) = 1/2 ≥ φ olur. Bu yüzden boykot **bir engel aracı değildir**: nihai kabul oranı C boykot ettiğinde %100,0, B boykot ettiğinde %100,0 olur. Boykot yalnızca anlamlı kümede μ_votes = 2 kabul/red oyu toplanamadığında tek seferlik uzatmayı tetikler (B boykotunda %100,0). C boykotunda bu oran yalnızca %12,2 olur, çünkü C kümesindeki birkaç C dışı üye oy verir ve eşik çoğu zaman yine sağlanır. Azınlık bir kararı ancak *aktif olarak hayır diyerek* durdurabilir (C aktif hayır: contested %91,0). **Dikkat (T1/T2):** Bir kümede yalnızca tek bir "hayır" oyu varsa P_g = 1/3 olur. Bu değer T0 tabanını (0,30) geçer ama T1/T2 tabanının (0,40) altında kalır. Bu nedenle neredeyse tamamen sessiz kalan bir kümede tek bir kişi contested sonucunu tetikleyebilir (T1 satırında ilk tur contested %11,2). Etki erteleyicidir: bir uzlaşma turu açılır, sonra ω uygulanır (nihai kabul %100,0).
+**Yorum.** Hiç oy vermeyen bir küme için P_g = (1+0)/(2+0) = 1/2 ≥ φ olur. Bu yüzden boykot **bir engel aracı değildir**: nihai kabul oranı C boykot ettiğinde %100,0, B boykot ettiğinde %100,0 olur. Boykot yalnızca anlamlı kümede μ_votes = 2 kabul/red oyu toplanamadığında tek seferlik uzatmayı tetikler (B boykotunda %100,0). C boykotunda bu oran yalnızca %12,2 olur, çünkü C kümesindeki birkaç C dışı üye oy verir ve eşik çoğu zaman yine sağlanır. Azınlık bir kararı ancak *aktif olarak hayır diyerek* durdurabilir (C aktif hayır: contested %91,0). **Nötr küme kuralı (r2):** Uzatmadan sonra bir anlamlı kümede hâlâ μ_votes = 2'den az kabul/red oyu varsa küme nötr sayılır ve köprü tabanından muaf tutulur. r1'de tek bir "hayır" oyu P_g = 1/3 verirdi; bu değer T0 tabanını (0,30) geçer ama T1/T2 tabanının (0,40) altında kalır. Yani neredeyse sessiz bir kümede tek bir kişi kararı ertelemeye zorlayabiliyordu. r2'de bu mümkün değildir. T1 satırında kalan ilk tur contested oranı (%12,8) yalnızca kümede en az iki kabul/red oyu toplanıp P_g'nin tabanın altında kaldığı durumlardan gelir (C kümesindeki birkaç C dışı üye ve az sayıdaki C oyu). Nihai kabul %100,0.
 
 ## (e) Küçük topluluklar ve soğuk başlangıç
 
@@ -93,23 +93,23 @@ Tohum: `KC-1.0/simulasyon/2026-10|e|<|E|>|<tekrar>`. Her |E| için 30 farklı ge
 
 | |E| | Bloklar A/B/C | Gerekli katılım (T0) | floor_abs | Ort. K | Köprü uygulanabilir | C anlamlı kümeyle temsil |
 |---|---|---|---|---|---|---|
-| 8 | 5/2/1 | 5 | 5 | 1,9 | %0 | %0 |
-| 15 | 9/4/2 | 6 | 6 | 2,8 | %100 | %17 |
-| 30 | 18/9/3 | 9 | 9 | 3,0 | %100 | %47 |
+| 8 | 5/2/1 | 5 | 5 | 1,2 | %0 | %0 |
+| 15 | 9/4/2 | 6 | 6 | 1,5 | %27 | %0 |
+| 30 | 18/9/3 | 9 | 9 | 2,1 | %53 | %33 |
 
 | |E| | Öneri tipi | Basit çoğunluk: kabul | 1. turda uzatma | KÇ 1. tur kabul | KÇ 1. tur contested | KÇ nihai kabul |
 |---|---|---|---|---|---|---|
 | 8 | Geniş destek | %69,8 | %29,9 | %66,8 | %0,0 | %66,8 |
 | 8 | Dar çoğunluk | %42,5 | %32,9 | %39,3 | %0,0 | %39,3 |
 | 8 | C'ye zararlı | %63,5 | %28,3 | %59,3 | %0,0 | %59,3 |
-| 15 | Geniş destek | %90,7 | %22,5 | %86,6 | %4,3 | %90,5 |
-| 15 | Dar çoğunluk | %55,4 | %23,3 | %49,9 | %5,8 | %52,6 |
-| 15 | C'ye zararlı | %80,0 | %23,0 | %73,2 | %7,5 | %76,6 |
-| 30 | Geniş destek | %98,1 | %14,5 | %94,2 | %4,1 | %98,0 |
-| 30 | Dar çoğunluk | %66,9 | %15,2 | %55,3 | %12,0 | %61,3 |
-| 30 | C'ye zararlı | %94,3 | %14,8 | %64,0 | %29,9 | %83,2 |
+| 15 | Geniş destek | %89,5 | %5,5 | %82,9 | %0,5 | %83,3 |
+| 15 | Dar çoğunluk | %55,2 | %5,8 | %42,0 | %1,5 | %42,5 |
+| 15 | C'ye zararlı | %77,9 | %4,7 | %67,9 | %0,9 | %68,2 |
+| 30 | Geniş destek | %97,8 | %9,8 | %91,8 | %2,8 | %94,4 |
+| 30 | Dar çoğunluk | %67,2 | %10,7 | %47,0 | %7,8 | %51,2 |
+| 30 | C'ye zararlı | %93,8 | %10,4 | %65,1 | %21,9 | %78,8 |
 
-**Yorum.** Küçük gruplarda mutlak taban `floor_abs = ⌈1,5·√|E|⌉` q·|E|'den büyüktür (|E| = 8 için 5 kişi, yani %62,5 katılım). Bu yüzden |E| = 8'de belirleyici kısıt yeter sayıdır: geniş destekli öneriler bile iki yöntemde de yalnızca %69,8 / %66,8 oranında geçer. Gerekli katılımın |E|'yi aşmaması kuralı sayesinde kabul her zaman mümkündür. |E| = 8'de n_C < 12 olduğundan köprü testi hiç uygulanmaz (soğuk başlangıç). T0 eşiği %60'a yükselir ve `≥` ile karşılaştırılır; dar çoğunluklu önerilerde kabul %42,5 → %39,3 olur. |E| = 15'te C bloğu 2 kişidir ve σ_min = 3 nedeniyle tek başına anlamlı küme olamaz. Yalnızca başka bir üyeyle aynı kümeye düştüğünde temsil edilir (%16,7). |E| = 30'da C (3 kişi, %10) sınırda anlamlıdır ve ayrı bir kümeyle temsil edildiği tekrarların oranı %46,7 olur. Bu tekrarlarda KÇ, C'ye zararlı önerileri contested yapar (genel oran %29,9; nihai kabul %94,3 → %83,2). Küçük gruplarda azınlığın korunması büyük ölçüde soğuk başlangıçtaki nitelikli çoğunluğa ve itiraz kuralına kalır.
+**Yorum.** Küçük gruplarda mutlak taban `floor_abs = ⌈1,5·√|E|⌉` q·|E|'den büyüktür (|E| = 8 için 5 kişi, yani %62,5 katılım). Bu yüzden |E| = 8'de belirleyici kısıt yeter sayıdır: geniş destekli öneriler bile iki yöntemde de yalnızca %69,8 / %66,8 oranında geçer. Gerekli katılımın |E|'yi aşmaması kuralı sayesinde kabul her zaman mümkündür. |E| = 8'de n_C < 12 olduğundan köprü testi hiç uygulanmaz (soğuk başlangıç). T0 eşiği %60'a yükselir ve `≥` ile karşılaştırılır; dar çoğunluklu önerilerde kabul %42,5 → %39,3 olur. |E| = 15'te C bloğu 2 kişidir ve σ_min = 3 nedeniyle tek başına anlamlı küme olamaz (anlamlı bir kümeyle temsil oranı %0,0). Küçük gruplarda r2'nin sıfır modeli de temkinlidir: az kişiyle siluet rastgele veride de yüksek çıkabildiği için küme yapısı ancak belirginse kabul edilir. Köprü testinin uygulanabildiği tekrarların oranı |E| = 15'te %26,7, |E| = 30'da %53,3 olur; diğer tekrarlarda soğuk başlangıç kuralı (%60, `≥`) geçerlidir. |E| = 30'da C (3 kişi, %10) sınırda anlamlıdır ve ayrı bir anlamlı kümeyle temsil edildiği tekrarların oranı %33,3 olur. Bu tekrarlarda KÇ, C'ye zararlı önerileri contested yapar (genel oran %21,9; nihai kabul %93,8 → %78,8). Küçük gruplarda azınlığın korunması büyük ölçüde soğuk başlangıçtaki nitelikli çoğunluğa ve itiraz kuralına kalır.
 
 ## (f) Vekâlet yoğunlaşması ve sınır (cap)
 
@@ -124,50 +124,55 @@ Tohum: `KC-1.0/simulasyon/2026-10|f`; standart nüfus; 300 karışık öneri; do
 
 ## (g) Kalıcı kaybeden
 
-Tohum: `KC-1.0/simulasyon/2026-10|g|<değişke>|<tekrar>`. Her değişke için 8 bağımsız tekrar × 200 karar = 1600 karar; standart nüfus yapısı; T0. Öneri akışının %25'i ortak yarar önerisidir (bütün bloklar benzer ve olumlu). %75'ini bir blok yazar (yazar blok büyüklüğüyle orantılı seçilir, yazarın bloğu güçlü evet der). Diğer blokların tutumu bir yakınlık matrisiyle (A–B +0,2, A–C −0,6, B–C +0,4) ve bloğa özgü gürültüyle belirlenir. "Hayır" diyenler itirazı %50 olasılıkla imzalar. Kümeler başlangıçta 60 önerilik geçmişten, sonra her 50 kararda bir birikmiş doğrudan oylardan yeniden hesaplanır. Bir blok, ilk turdaki üyelerinin çoğunluğu nihai sonucun tersini istediğinde o kararı **kaybetmiş** sayılır.
+Tohum: `KC-1.0/simulasyon/2026-10|g|<değişke>|<tekrar>`. Her değişke için 8 bağımsız tekrar × 200 karar = 1600 karar; standart nüfus yapısı; T0. Öneri akışının %25'i ortak yarar önerisidir (bütün bloklar benzer ve olumlu). %75'ini bir blok yazar (yazar blok büyüklüğüyle orantılı seçilir, yazarın bloğu güçlü evet der). Diğer blokların tutumu bir yakınlık matrisiyle (A–B +0,2, A–C −0,6, B–C +0,4) ve bloğa özgü gürültüyle belirlenir. "Hayır" diyenler itirazı %50 olasılıkla imzalar. Kümeler başlangıçta 60 önerilik geçmişten, sonra her 100 kararda bir birikmiş doğrudan oylardan yeniden hesaplanır. Bir blok, ilk turdaki üyelerinin çoğunluğu nihai sonucun tersini istediğinde o kararı **kaybetmiş** sayılır.
 
 ### Ayrışmış bloklar (bloğa özgü gürültü 1,5)
 
 | Blok | Basit çoğunluk: kaybetme | KÇ: kaybetme | Basit çoğunluk: istemediği kabul | KÇ: istemediği kabul | Basit çoğunluk: istediği red | KÇ: istediği red |
 |---|---|---|---|---|---|---|
-| A (%60) | %9,0 | %18,1 | %6,4 | %2,3 | %2,6 | %15,8 |
-| B (%30) | %28,3 | %26,5 | %17,1 | %7,5 | %11,0 | %18,8 |
-| C (%10) | %48,7 | %45,9 | %36,2 | %26,4 | %10,7 | %17,8 |
+| A (%60) | %7,7 | %16,5 | %5,6 | %1,7 | %2,1 | %14,8 |
+| B (%30) | %27,4 | %24,7 | %18,1 | %8,4 | %9,1 | %16,1 |
+| C (%10) | %48,7 | %44,0 | %38,1 | %27,7 | %9,1 | %14,9 |
 
-Küme anlık görüntüleri (32 adet): ortalama K 2,69, saflık %93,3, C'nin anlamlı bir kümeyle temsil edildiği görüntü oranı %59,4. Toplam kabul: basit çoğunluk %83,3, KÇ %65,7. KÇ'de ilk tur contested %14,6, geçerli itiraz %22,9, aşma (ω) ile kabul %2,6; ortalama karar süresi 6,6 gün. Basit çoğunlukta geçip KÇ'de reddedilen karar sayısı: 282 (itiraz sonrası yeniden oylamada ρ = %60 ile: 153; contested sonrası yeniden oylamada: 129; ilk turda: 0).
+Küme anlık görüntüleri (16 adet): ortalama K 2,69, saflık %91,3, C'nin anlamlı bir kümeyle temsil edildiği görüntü oranı %68,8. Toplam kabul: basit çoğunluk %85,4, KÇ %68,4. KÇ'de ilk tur contested %17,2, geçerli itiraz %19,9, aşma (ω) ile kabul %3,8; ortalama karar süresi 6,6 gün. Basit çoğunlukta geçip KÇ'de reddedilen karar sayısı: 271 (itiraz sonrası yeniden oylamada ρ = %60 ile: 113; contested sonrası yeniden oylamada: 137; ilk turda: 21).
 
 ### C, B'ye yakın (bloğa özgü gürültü 1,0)
 
 | Blok | Basit çoğunluk: kaybetme | KÇ: kaybetme | Basit çoğunluk: istemediği kabul | KÇ: istemediği kabul | Basit çoğunluk: istediği red | KÇ: istediği red |
 |---|---|---|---|---|---|---|
-| A (%60) | %8,5 | %12,3 | %7,8 | %2,6 | %0,8 | %9,7 |
-| B (%30) | %25,2 | %27,8 | %18,6 | %12,9 | %6,3 | %14,4 |
-| C (%10) | %49,7 | %50,8 | %41,1 | %34,8 | %6,9 | %14,3 |
+| A (%60) | %8,0 | %11,8 | %7,2 | %2,4 | %0,8 | %9,4 |
+| B (%30) | %22,6 | %26,1 | %15,1 | %10,1 | %7,4 | %15,9 |
+| C (%10) | %47,8 | %48,6 | %38,8 | %32,6 | %7,7 | %14,7 |
 
-Küme anlık görüntüleri (32 adet): ortalama K 2,13, saflık %88,1, C'nin anlamlı bir kümeyle temsil edildiği görüntü oranı %12,5. Toplam kabul: basit çoğunluk %90,4, KÇ %76,3. KÇ'de ilk tur contested %5,3, geçerli itiraz %26,4, aşma (ω) ile kabul %0,3; ortalama karar süresi 6,6 gün. Basit çoğunlukta geçip KÇ'de reddedilen karar sayısı: 227 (itiraz sonrası yeniden oylamada ρ = %60 ile: 173; contested sonrası yeniden oylamada: 54; ilk turda: 0).
+Küme anlık görüntüleri (16 adet): ortalama K 1,88, saflık %81,2, C'nin anlamlı bir kümeyle temsil edildiği görüntü oranı %12,5. Toplam kabul: basit çoğunluk %89,0, KÇ %75,4. KÇ'de ilk tur contested %4,0, geçerli itiraz %18,6, aşma (ω) ile kabul %0,0; ortalama karar süresi 6,0 gün. Basit çoğunlukta geçip KÇ'de reddedilen karar sayısı: 218 (itiraz sonrası yeniden oylamada ρ = %60 ile: 126; contested sonrası yeniden oylamada: 38; ilk turda: 54).
 
-**Yorum.** Basit çoğunlukta küçük blok C, istemediği kararların kabul edilmesine en çok maruz kalan bloktur (%36,2). C ayrı bir görüş kümesi olarak bulunduğunda KÇ'de bu oran %26,4 olur. C'nin oyları B'ye yakın olduğunda C ayrı küme olarak çoğu zaman bulunamaz; bu durumda koruma büyük ölçüde itiraz kuralına kalır ve daha zayıftır (%41,1 → %34,8). Bunun karşılığında çoğunluğun istediği bazı kararlar reddedilir (A'nın "istediği red" oranı %2,6 → %15,8). KÇ kaybetme yükünü bloklar arasında daha dengeli dağıtır ama statüko lehine bir eğilim de getirir (toplam kabul %83,3 → %65,7). Kırılıma göre basit çoğunlukta geçip KÇ'de reddedilen kararların %54,3 (ayrışmış) ve %76,2 (yakın) kadarı itiraz yolundan gelir. |E| = 300'de kural (b) için ⌈0,10·|E|⌉ = 30 imza ve iki küme yeterlidir. "Hayır" oyu %40 civarında olan ve kaybedenlerin motive olduğu bir öneri bu eşiğe kolayca ulaşır ve yeniden oylamada ρ = %60 aranır. Fiilen, tartışmalı T0 kararları için eşik %50'den %60'a çıkar.
+**Yorum.** Basit çoğunlukta küçük blok C, istemediği kararların kabul edilmesine en çok maruz kalan bloktur (%38,1). C ayrı bir görüş kümesi olarak bulunduğunda KÇ'de bu oran %27,7 olur. C'nin oyları B'ye yakın olduğunda C ayrı küme olarak çoğu zaman bulunamaz; bu durumda koruma büyük ölçüde itiraz kuralına kalır ve daha zayıftır (%38,8 → %32,6). Bunun karşılığında çoğunluğun istediği bazı kararlar reddedilir (A'nın "istediği red" oranı %2,1 → %14,8). KÇ kaybetme yükünü bloklar arasında daha dengeli dağıtır ama statüko lehine bir eğilim de getirir (toplam kabul %85,4 → %68,4). Kırılıma göre basit çoğunlukta geçip KÇ'de reddedilen kararların %41,7 (ayrışmış) ve %57,8 (yakın) kadarı itiraz yolundan gelir. "İlk turda" düşenler, anlık görüntünün K = 1 bulduğu (soğuk başlangıç, eşik %60) dönemlerdeki %50–60 onaylı önerilerdir. |E| = 300'de kural (b) için ⌈0,10·|E|⌉ = 30 imza ve iki küme yeterlidir. "Hayır" oyu %40 civarında olan ve kaybedenlerin motive olduğu bir öneri bu eşiğe kolayca ulaşır ve yeniden oylamada ρ = %60 aranır. Fiilen, tartışmalı T0 kararları için eşik %50'den %60'a çıkar.
 
 ## (h) Kümeleme sağlığı (§9.4 siluet kuralı)
 
-Tohum: `KC-1.0/simulasyon/2026-10|h|*`; her satır 5 tohum, |E| = 300. "Sıfır modeli"nde her önerinin oyları kullanıcılar arasında rastgele karıştırılır (permütasyon). Bu işlem marjinalleri korur ama kişiler arası bağıntıyı yok eder. Tabloda aynı boru hattının bu veride verdiği siluet ortalaması (3 permütasyon) gösterilir.
+Tohum: `KC-1.0/simulasyon/2026-10|h|*`; her satır 5 tohum, |E| = 300. Aynı oy geçmişi iki kuralla kümelenir. r1, ALGORITMA §9'un ilk sürümüdür: en iyi siluet ≥ 0,25 ise K ≥ 2. r2 (`pca2-kmeans-silhouette-null/2`) buna ek olarak `siluet − siluet_sıfır ≥ 0,10` koşulunu arar. "Sıfır modeli"nde her önerinin oyları, o öneriye oy vermiş kullanıcılar arasında tohumlu olarak karıştırılır (5 permütasyon). Bu işlem marjinalleri korur ama kişiler arası bağıntıyı yok eder. "Aday siluet", eşiklerden önceki en iyi K'nın siluetidir.
 
-| Nüfus | Bulunan K (tohum başına) | Siluet (ort.) | Sıfır modeli siluet | Fark | Saflık | C anlamlı kümeyle temsil |
-|---|---|---|---|---|---|---|
-| 60/30/10, belirgin ayrışma (sapma 2,0; 60 öneri) | 3, 3, 3, 3, 3 | 0,616 | 0,349 | 0,267 | %98,6 | 5/5 |
-| 60/30/10, zayıf ayrışma (sapma 1,6; 40 öneri) | 2, 3, 2, 2, 3 | 0,494 | 0,352 | 0,142 | %89,4 | 2/5 |
-| Homojen (tek blok) | 3, 4, 5, 4, 3 | 0,347 | 0,349 | −0,002 | — | — |
-| Homojen + güçlü bireysel eğilim (σ = 1,5) | 2, 2, 2, 2, 2 | 0,484 | 0,350 | 0,135 | — | — |
+| Nüfus | K — r1 (yalnız siluet ≥ 0,25) | K — r2 (+ sıfır modeli) | Aday siluet (ort.) | Sıfır modeli siluet | Fark | Saflık (r2) | C anlamlı kümeyle temsil (r2) |
+|---|---|---|---|---|---|---|---|
+| 60/30/10, belirgin ayrışma (sapma 2,0; 60 öneri) | 3, 3, 3, 3, 3 | 3, 3, 3, 3, 3 | 0,616 | 0,352 | 0,264 | %98,6 | 5/5 |
+| 60/30/10, zayıf ayrışma (sapma 1,6; 40 öneri) | 2, 3, 2, 2, 3 | 1, 3, 2, 2, 3 | 0,494 | 0,352 | 0,142 | %84,3 | 2/5 |
+| Homojen (tek blok) | 3, 4, 5, 4, 3 | 1, 1, 1, 1, 1 | 0,347 | 0,349 | −0,002 | — | — |
+| Homojen + güçlü bireysel eğilim (σ = 1,5) | 2, 2, 2, 2, 2 | 2, 2, 2, 2, 2 | 0,484 | 0,350 | 0,135 | — | — |
 
-Homojen nüfuslarda bulunan (sahte) kümelerle 1000 karar alındı. Contested oranı %1,5; sonucun soğuk başlangıç kuralının (K = 1) vereceği sonuçtan farklı olduğu kararların oranı %23,0.
+Tek bloklu nüfuslarda her iki anlık görüntüyle aynı oylarla kararlar alındı (rastgele öneriler, T0). "Soğuk başlangıçtan farklı": sonucun, K = 1 olsaydı (eşik %60, `≥`) çıkacak sonuçtan farklı olduğu kararların oranı.
 
-**Yorum (önemli bulgu).** k-means'in 2 boyutlu PCA koordinatlarında bulduğu en iyi ortalama siluet, yapısız (tek tepeli) veride de tipik olarak 0,34–0,6 arasındadır. Bu yüzden §9.4'teki "siluet < 0,25 ise K = 1" kuralı neredeyse hiç tetiklenmez. Homojen bir toplulukta gürültüden sahte kümeler oluşur. Köprü testi rastgele bölünmüş gruplar arasında uygulanır ve soğuk başlangıçtaki nitelikli çoğunluk (%60) devre dışı kalır. Sahte kümelerin tercihleri birbirine benzediği için contested oranı düşüktür; asıl etki eşik farkıdır. Gerçek blok yapısı ise sıfır modeline göre belirgin bir siluet farkı üretir. Güçlü bireysel eğilimler de (tek blok içinde) bir fark üretir; bu, gerçek ama ideolojik olmayan bir yapıdır ("hep evet" / "hep hayır" diyenler). Zayıf ayrışmış geçmişte %10'luk blok çoğu zaman ayrı bir küme olarak bulunamaz ve köprü korumasından yararlanamaz. **Öneri (KC-1.1):** K ≥ 2 yalnızca `siluet − siluet_sıfır ≥ 0,10` ise kabul edilsin; `siluet_sıfır`, aynı tohumdan türetilen birkaç permütasyonun ortalaması olsun. Mutlak eşik 2 boyut için yeniden ayarlanabilir, ancak tek bir mutlak eşik gürültü düzeyine göre ya gerçek yapıyı kaçırır ya da sahte küme üretir.
+| Nüfus | Karar | r1: contested | r1: soğuk başlangıçtan farklı | r2: contested | r2: soğuk başlangıçtan farklı |
+|---|---|---|---|---|---|
+| Homojen (tek blok) | 500 | %0,0 | %20,2 | %0,0 | %0,0 |
+| Homojen + güçlü bireysel eğilim (σ = 1,5) | 500 | %3,0 | %25,8 | %3,0 | %25,8 |
+
+**Yorum.** k-means'in 2 boyutlu PCA koordinatlarında bulduğu en iyi ortalama siluet, yapısız (tek tepeli) veride de tipik olarak 0,34–0,6 arasındadır. Bu yüzden r1'deki "siluet < 0,25 ise K = 1" kuralı neredeyse hiç tetiklenmiyordu. Homojen bir toplulukta gürültüden sahte kümeler oluşuyor, köprü testi rastgele bölünmüş gruplar arasında uygulanıyor ve soğuk başlangıçtaki nitelikli çoğunluk (%60) devre dışı kalıyordu. Sahte kümelerin tercihleri birbirine benzediği için contested oranı düşüktü; asıl etki eşik farkıydı. Sıfır modeli bu durumu ayırt eder: homojen veride aday siluet sıfır modelininkine çok yakındır ve r2 K = 1 bulur. Gerçek blok yapısında fark belirgindir ve kümeler korunur. **Kalan sınırlılıklar:** (1) Güçlü bireysel eğilimler ("hep evet" / "hep hayır" diyenler) tek blok içinde de gerçek bir yapı üretir ve r2 bunu küme olarak kabul edebilir. Bu yapı gerçek ama ideolojik değildir. (2) Zayıf ayrışmış geçmişte %10'luk blok çoğu zaman ayrı bir küme olarak bulunamaz ve köprü korumasından yararlanamaz; azınlığın korunması bu durumda itiraz kuralına kalır.
 
 ## Tasarım için çıkarımlar
 
-1. **Siluet kuralı (§9.4)** amaçladığı "yapı yoksa K = 1" davranışını 2 boyutta sağlamıyor (bkz. h). Permütasyon sıfır modeli ya da benzeri bir yapı testi önerilir.
-2. **İtiraz kuralı (b)** büyük topluluklarda kolay sağlanıyor ve tartışmalı T0 kararlarında fiilen %60 eşiği getiriyor (bkz. g). Bu bilinçli bir tercih değilse imza eşiği (ör. kaybeden tarafın belli bir oranı) yeniden değerlendirilmeli.
-3. **T1/T2'de tek "hayır"** neredeyse sessiz bir kümede contested sonucunu tetikleyebiliyor (P_g = 1/3 < 0,40; bkz. d). Uzatma sonrası eksik kalan kümenin köprüden muaf tutulması ya da μ_votes'un yalnız tetikleyici değil taban koşulu olarak da kullanılması değerlendirilebilir.
+1. **Siluet kuralı (§9.4)** amaçladığı "yapı yoksa K = 1" davranışını 2 boyutta sağlamıyordu. **r2'de uygulandı:** permütasyon sıfır modeli (bkz. h).
+2. **İtiraz kuralı (b)** büyük topluluklarda kolay sağlanıyor ve tartışmalı T0 kararlarında fiilen %60 eşiği getiriyor (bkz. g). ALGORITMA §6'da bunun **bilinçli bir tercih** olduğu not edildi: itiraz yalnızca erteleyici ve tek seferliktir. Statüko eğilimi azaltılmak istenirse imza eşiği (ör. kaybeden tarafın belli bir oranı) yeniden ayarlanabilir.
+3. **T1/T2'de tek "hayır"** neredeyse sessiz bir kümede contested sonucunu tetikleyebiliyordu (P_g = 1/3 < 0,40). **r2'de uygulandı:** uzatma sonrası μ_votes altında kalan küme nötr sayılır ve köprüden muaftır (bkz. d). DEL'deki yazar kümesi koruması bu muafiyetin dışında tutuldu.
 4. **Vekâlet ve küme:** Vekâletle gelen oy delegatörün kümesine sayılır. Kümeler arası vekâlet, azınlık kümesinin desteğini başka bir bloğun delegesine bağlayabilir (bkz. f).
 5. **Küçük topluluklar:** |E| < ~30'da yeter sayı ve soğuk başlangıç belirleyicidir; köprü koruması ancak azınlık en az σ_min = 3 kişilik ayrı bir küme oluşturduğunda devreye girer (bkz. e).
 

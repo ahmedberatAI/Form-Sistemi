@@ -206,7 +206,7 @@ export interface VoteMatrixEntry {
 }
 
 export interface ClusterComputation {
-  algo: string; // "pca2-kmeans-silhouette/1"
+  algo: string; // "pca2-kmeans-silhouette-null/2" (KC-1.0 r2, sıfır modeli)
   k: number;
   silhouette: number;
   assignments: Record<string, string>; // userId → "g0"

@@ -20,7 +20,8 @@ import {
   type VoteChoice,
 } from "@forum/shared";
 import type { ClusterComputation, DelegationEdge, VoteMatrixEntry } from "../src/core/contracts";
-import { computeClusters, defaultDecisionParams, resolveEffectiveVotes } from "../src/governance";
+import { defaultDecisionParams, resolveEffectiveVotes } from "../src/governance";
+import { computeClustersDetailed, type ClusterDiagnostics } from "../src/governance/clustering";
 
 const MASTER_SEED = "KC-1.0/simulasyon/2026-10";
 const OUT = fileURLToPath(new URL("../../docs/SIMULASYON.md", import.meta.url));
@@ -143,6 +144,7 @@ function makeHistory(pop: Pop, rng: Rng, count: number, gen: (rng: Rng) => Spec,
 
 interface Snap {
   comp: ClusterComputation;
+  diag: ClusterDiagnostics;
   clusterOf: (u: string) => string | null;
   /** her kümenin çoğunluk bloğu */
   majorityBlock: Record<string, number>;
@@ -150,8 +152,9 @@ interface Snap {
   purity: number;
 }
 
-function snapshot(pop: Pop, entries: VoteMatrixEntry[], seed: string): Snap {
-  const comp = computeClusters(entries, seed);
+/** Küme anlık görüntüsü; `nullModel: false` yalnız (h)'deki r1 karşılaştırması içindir. */
+function snapshot(pop: Pop, entries: VoteMatrixEntry[], seed: string, nullModel = true): Snap {
+  const { result: comp, diagnostics: diag } = computeClustersDetailed(entries, seed, {}, { nullModel });
   const counts: Record<string, number[]> = {};
   for (const [u, g] of Object.entries(comp.assignments)) {
     const c = (counts[g] ??= new Array(pop.sizes.length).fill(0));
@@ -164,7 +167,7 @@ function snapshot(pop: Pop, entries: VoteMatrixEntry[], seed: string): Snap {
     majorityBlock[g] = b;
     pure += c[b];
   }
-  return { comp, clusterOf: (u) => comp.assignments[u] ?? null, majorityBlock, purity: comp.clusteredTotal ? pure / comp.clusteredTotal : 0 };
+  return { comp, diag, clusterOf: (u) => comp.assignments[u] ?? null, majorityBlock, purity: comp.clusteredTotal ? pure / comp.clusteredTotal : 0 };
 }
 
 /** Blok, kendi çoğunlukta olduğu ve üyelerinin yarısından fazlasını içeren ANLAMLI bir kümeyle temsil ediliyor mu? */
@@ -506,6 +509,7 @@ const eRows: (string | number)[][] = [];
 const eInfo: (string | number)[][] = [];
 const eAggs = new Map<string, Agg>();
 const eProtected = new Map<number, number>();
+const eBridge = new Map<number, number>();
 for (const { E, sizes } of smallNs) {
   const perType = smallTypes.map(() => [] as RunResult[]);
   let bridgeApplicable = 0;
@@ -527,6 +531,7 @@ for (const { E, sizes } of smallNs) {
     });
   }
   eProtected.set(E, protectedC / E_REPS);
+  eBridge.set(E, bridgeApplicable / E_REPS);
   eInfo.push([E, sizes.join("/"), quorumRequired(T0.quorum, E), floorAbs(E), num(kSum / E_REPS, 1), pct(bridgeApplicable / E_REPS, 0), pct(protectedC / E_REPS, 0)]);
   smallTypes.forEach((t, i) => {
     const a = aggregate(perType[i]);
@@ -606,6 +611,7 @@ log(`(f) tamam ${Math.round(performance.now() - t0)} ms`);
 const G_REPS = 8;
 const G_DECISIONS = 200;
 const G_TOTAL = G_REPS * G_DECISIONS;
+const G_RESNAP = 100;
 const AFFINITY = [
   [1, 0.2, -0.6],
   [0.2, 1, 0.4],
@@ -669,7 +675,7 @@ function runPermanentLoser(blockNoise: number, tag: string): GResult {
     let snap = snapshot(pop, history, `${MASTER_SEED}|g|${tag}|${rep}|0`);
     noteSnap(pop, snap);
     for (let dIdx = 0; dIdx < G_DECISIONS; dIdx++) {
-      if (dIdx > 0 && dIdx % 50 === 0) {
+      if (dIdx > 0 && dIdx % G_RESNAP === 0) {
         snap = snapshot(pop, history, `${MASTER_SEED}|g|${tag}|${rep}|${dIdx}`);
         noteSnap(pop, snap);
       }
@@ -715,28 +721,11 @@ const G_VARIANTS = [
 const gResults = G_VARIANTS.map((v) => runPermanentLoser(v.noise, v.tag));
 log(`(g) tamam ${Math.round(performance.now() - t0)} ms`);
 
-// (h) Kümeleme sağlığı: homojen nüfusta siluet kuralı (§9.4) ve permütasyon sıfır modeli
-function permuted(entries: VoteMatrixEntry[], seed: string): VoteMatrixEntry[] {
-  const rng = createRng(seed);
-  const byP = new Map<string, VoteMatrixEntry[]>();
-  for (const e of entries) {
-    let l = byP.get(e.proposalId);
-    if (!l) byP.set(e.proposalId, (l = []));
-    l.push(e);
-  }
-  const res: VoteMatrixEntry[] = [];
-  for (const p of [...byP.keys()].sort()) {
-    const es = byP.get(p)!;
-    const vals = rng.shuffle(es.map((e) => e.value));
-    es.forEach((e, i) => res.push({ ...e, value: vals[i] }));
-  }
-  return res;
-}
+// (h) Kümeleme sağlığı: §9.4 siluet kuralı (r1) ve permütasyon sıfır modeli (r2)
 const H_SEEDS = 5;
 const hRows: (string | number)[][] = [];
-let hSpuriousContested = 0;
-let hColdDiff = 0;
-let hDecisions = 0;
+type HDec = { n: number; r1: { contested: number; coldDiff: number }; r2: { contested: number; coldDiff: number } };
+const hDec: HDec[] = [];
 const hCases: { label: string; sizes: number[]; spread: number; hist: number; noisy?: boolean }[] = [
   { label: `60/30/10, belirgin ayrışma (sapma ${num(SPREAD, 1)}; ${HIST} öneri)`, sizes: [180, 90, 30], spread: SPREAD, hist: HIST },
   { label: "60/30/10, zayıf ayrışma (sapma 1,6; 40 öneri)", sizes: [180, 90, 30], spread: 1.6, hist: 40 },
@@ -744,38 +733,56 @@ const hCases: { label: string; sizes: number[]; spread: number; hist: number; no
   { label: "Homojen + güçlü bireysel eğilim (σ = 1,5)", sizes: [300], spread: 0, hist: HIST, noisy: true },
 ];
 for (const hc of hCases) {
-  const ks: number[] = [];
+  const k1: number[] = [];
+  const k2: number[] = [];
   const sils: number[] = [];
   const nulls: number[] = [];
   const purities: number[] = [];
   let cProtected = 0;
+  const dec: HDec = { n: 0, r1: { contested: 0, coldDiff: 0 }, r2: { contested: 0, coldDiff: 0 } };
+  hDec.push(dec);
   for (let s = 0; s < H_SEEDS; s++) {
     const rng = createRng(`${MASTER_SEED}|h|${hc.label}|${s}`);
     const pop = makePop(hc.sizes, rng, 0);
     if (hc.noisy) for (const p of pop.people) p.bias = 1.5 * gauss(rng);
     const gen = hc.sizes.length > 1 ? historySpec(3, hc.spread) : (r: Rng) => ({ logits: [0.8 * gauss(r)] });
     const hist = makeHistory(pop, rng, hc.hist, gen, "h");
-    const snap = snapshot(pop, hist, `${MASTER_SEED}|h|${hc.label}|${s}|c`);
-    ks.push(snap.comp.k);
-    sils.push(snap.comp.silhouette);
-    purities.push(snap.purity);
-    if (hc.sizes.length > 1 && blockProtected(pop, snap, 2, T0)) cProtected++;
-    nulls.push(mean([0, 1, 2].map((i) => computeClusters(permuted(hist, `${hc.label}|${s}|perm${i}`), `${MASTER_SEED}|h|null`).silhouette)));
+    const seed = `${MASTER_SEED}|h|${hc.label}|${s}|c`;
+    const v1 = snapshot(pop, hist, seed, false);
+    const v2 = snapshot(pop, hist, seed);
+    k1.push(v1.comp.k);
+    k2.push(v2.comp.k);
+    sils.push(v2.diag.candidateSilhouette);
+    nulls.push(v2.diag.nullSilhouette ?? NaN);
+    purities.push(v2.purity);
+    if (hc.sizes.length > 1 && blockProtected(pop, v2, 2, T0)) cProtected++;
     if (hc.sizes.length === 1) {
-      const env: Env = { pop, snap, params: T0 };
       for (let j = 0; j < 100; j++) {
         const spec: Spec = { logits: [0.2 + 0.8 * gauss(rng)] };
-        const v = effective(env, castVotes(pop, spec, rng));
-        const real = decideRound(env, v, 1, false);
-        const cold = decideRound(env, v, 1, false, null, { k: 1 });
-        hDecisions++;
-        if (real.outcome === "contested") hSpuriousContested++;
-        if (real.outcome !== cold.outcome) hColdDiff++;
+        const direct = castVotes(pop, spec, rng);
+        dec.n++;
+        for (const [key, snap] of [["r1", v1], ["r2", v2]] as const) {
+          const env: Env = { pop, snap, params: T0 };
+          const v = effective(env, direct);
+          const real = decideRound(env, v, 1, false);
+          const cold = decideRound(env, v, 1, false, null, { k: 1 });
+          if (real.outcome === "contested") dec[key].contested++;
+          if (real.outcome !== cold.outcome) dec[key].coldDiff++;
+        }
       }
     }
   }
   const multi = hc.sizes.length > 1;
-  hRows.push([hc.label, ks.join(", "), num(mean(sils), 3), num(mean(nulls), 3), num(mean(sils) - mean(nulls), 3), multi ? pct(mean(purities)) : "—", multi ? `${cProtected}/${H_SEEDS}` : "—"]);
+  hRows.push([
+    hc.label,
+    k1.join(", "),
+    k2.join(", "),
+    num(mean(sils), 3),
+    num(mean(nulls), 3),
+    num(mean(sils) - mean(nulls), 3),
+    multi ? pct(mean(purities)) : "—",
+    multi ? `${cProtected}/${H_SEEDS}` : "—",
+  ]);
 }
 log(`(h) tamam ${Math.round(performance.now() - t0)} ms`);
 
@@ -808,7 +815,7 @@ summary.push(
   `- **Boykot işe yaramıyor:** C boykot ettiğinde nihai kabul ${pct(dBoycott.enacted / dBoycott.n)} (bir kez uzatma oranı ${pct(dBoycott.firstRawNeeds / dBoycott.n)}); aynı öneriye aktif "hayır" dendiğinde ilk tur contested oranı ${pct(dActive.first.contested / dActive.n)}.`,
   `- **Vekâlet sınırı:** Sınır (${fCap}) ile en yüklü delegenin taşıdığı oy ortalama ${num(mean(fStats.cap.maxLoad), 1)} (|E| içindeki payı ${pct(mean(fStats.cap.top))}); sınırsız durumda ${num(mean(fStats.none.maxLoad), 1)} (${pct(mean(fStats.none.top))}). Sınır nedeniyle ortalama ${num(mean(fStats.cap.unrouted), 1)} kişinin oyu yönlendirilemiyor.`,
   `- **Kalıcı kaybeden:** Ayrışmış bloklarda C'nin istemediği halde kabul edilen karar oranı basit çoğunlukta ${pct(gHarm(gSep, "sm", 2))}, KÇ'de ${pct(gHarm(gSep, "kc", 2))}. C, B'ye yakın oy verdiğinde ayrı küme olarak bulunamıyor ve koruma zayıflıyor (${pct(gHarm(gNear, "sm", 2))} → ${pct(gHarm(gNear, "kc", 2))}). Bedel statüko yönünde: toplam kabul ${pct(gSep.stats.sm.enacted / G_TOTAL)} → ${pct(gSep.stats.kc.enacted / G_TOTAL)}. Basit çoğunlukta geçip KÇ'de reddedilen kararların ${pct(gSep.rejectedVia.objection / smOnly(gSep))} kadarı itiraz (alarm zili) yolundan geliyor.`,
-  `- **Kümeleme uyarısı:** §9.4'teki "siluet < 0,25 → K = 1" kuralı 2 boyutlu PCA uzayında homojen nüfusta tetiklenmiyor (bulunan K: ${hRows[2][1]}). Zayıf ayrışmış geçmişte %10'luk blok ayrı küme olarak bulunamayabiliyor. Bkz. (h).`,
+  `- **Kümeleme (r2):** r1'deki "siluet < 0,25 → K = 1" kuralı 2 boyutlu PCA uzayında homojen nüfusta tetiklenmiyordu (r1 ile bulunan K: ${hRows[2][1]}). r2'nin permütasyon sıfır modeliyle homojen nüfusta K: ${hRows[2][2]}; bloklu nüfusta K: ${hRows[0][2]}. Bkz. (h).`,
 );
 
 const gRow = (g: GResult, b: number) => [
@@ -839,7 +846,7 @@ out.push(
   "",
   "## Yöntem",
   "",
-  "- **Gerçek kod:** Her karar `@forum/shared` içindeki `decide()` ve `evaluateObjection()` ile verilir. Kümeler simüle oy geçmişinden `computeClusters()` ile, vekâlet `resolveEffectiveVotes()` ile hesaplanır. Basitleştirilmiş bir yeniden uygulama kullanılmaz.",
+  "- **Gerçek kod:** Her karar `@forum/shared` içindeki `decide()` ve `evaluateObjection()` ile verilir (KC-1.0, ALGORITMA r2). Kümeler simüle oy geçmişinden `computeClusters()` ile (`pca2-kmeans-silhouette-null/2`), vekâlet `resolveEffectiveVotes()` ile hesaplanır. Basitleştirilmiş bir yeniden uygulama kullanılmaz.",
   "- **Nüfus:** Bloklar A/B/C (%60/%30/%10). Standart nüfus |E| = 300'dür ve üyelerin %5'i yeni üyedir (oy geçmişi yok → kümelenmemiş; genel onaya sayılır, köprüye katılmaz). Her kişinin kalıcı bir eğilimi vardır (logit, N(0; 0,5²)).",
   `- **Oy modeli:** Öneri, blok başına bir logit destek ile tanımlanır. Kişi \`katılım\` olasılığıyla (varsayılan %${Math.round(BASE_TURNOUT * 100)}) oy verir; oy verenler arasında çekimser oranı %${Math.round(ABSTAIN * 100)}. Diğerleri için P(evet) = σ(logit_blok + eğilim + N(0; ${num(VOTE_NOISE, 1)}²)). Uzatmada, oy vermemiş olanlar katılım × ${num(EXT_FACTOR, 2)} olasılıkla geç katılır.`,
   `- **Küme anlık görüntüsü:** ${HIST} kapanmış önerilik geçmişten hesaplanır (ortak değer N(0; 0,8²) + bloğa özgü sapma N(0; ${num(SPREAD, 1)}²)). Standart nüfus için: ${describeSnap(stdSnap)}. Daha zayıf ayrışmış geçmişlerin etkisi (h)'de.`,
@@ -890,7 +897,7 @@ out.push(
   "",
   ...table(["Senaryo", "Basit çoğunluk: kabul", "1. turda uzatma", "KÇ 1. tur kabul (uzatma sonrası)", "KÇ 1. tur contested", "KÇ nihai kabul"], dRows),
   "",
-  `**Yorum.** Hiç oy vermeyen bir küme için P_g = (1+0)/(2+0) = 1/2 ≥ φ olur. Bu yüzden boykot **bir engel aracı değildir**: nihai kabul oranı C boykot ettiğinde ${pct(dBoycott.enacted / dBoycott.n)}, B boykot ettiğinde ${pct(dBBoycott.enacted / dBBoycott.n)} olur. Boykot yalnızca anlamlı kümede μ_votes = 2 kabul/red oyu toplanamadığında tek seferlik uzatmayı tetikler (B boykotunda ${pct(dBBoycott.firstRawNeeds / dBBoycott.n)}). C boykotunda bu oran yalnızca ${pct(dBoycott.firstRawNeeds / dBoycott.n)} olur, çünkü C kümesindeki birkaç C dışı üye oy verir ve eşik çoğu zaman yine sağlanır. Azınlık bir kararı ancak *aktif olarak hayır diyerek* durdurabilir (C aktif hayır: contested ${pct(dActive.first.contested / dActive.n)}). **Dikkat (T1/T2):** Bir kümede yalnızca tek bir "hayır" oyu varsa P_g = 1/3 olur. Bu değer T0 tabanını (0,30) geçer ama T1/T2 tabanının (0,40) altında kalır. Bu nedenle neredeyse tamamen sessiz kalan bir kümede tek bir kişi contested sonucunu tetikleyebilir (T1 satırında ilk tur contested ${pct(dNearT1.first.contested / dNearT1.n)}). Etki erteleyicidir: bir uzlaşma turu açılır, sonra ω uygulanır (nihai kabul ${pct(dNearT1.enacted / dNearT1.n)}).`,
+  `**Yorum.** Hiç oy vermeyen bir küme için P_g = (1+0)/(2+0) = 1/2 ≥ φ olur. Bu yüzden boykot **bir engel aracı değildir**: nihai kabul oranı C boykot ettiğinde ${pct(dBoycott.enacted / dBoycott.n)}, B boykot ettiğinde ${pct(dBBoycott.enacted / dBBoycott.n)} olur. Boykot yalnızca anlamlı kümede μ_votes = 2 kabul/red oyu toplanamadığında tek seferlik uzatmayı tetikler (B boykotunda ${pct(dBBoycott.firstRawNeeds / dBBoycott.n)}). C boykotunda bu oran yalnızca ${pct(dBoycott.firstRawNeeds / dBoycott.n)} olur, çünkü C kümesindeki birkaç C dışı üye oy verir ve eşik çoğu zaman yine sağlanır. Azınlık bir kararı ancak *aktif olarak hayır diyerek* durdurabilir (C aktif hayır: contested ${pct(dActive.first.contested / dActive.n)}). **Nötr küme kuralı (r2):** Uzatmadan sonra bir anlamlı kümede hâlâ μ_votes = 2'den az kabul/red oyu varsa küme nötr sayılır ve köprü tabanından muaf tutulur. r1'de tek bir "hayır" oyu P_g = 1/3 verirdi; bu değer T0 tabanını (0,30) geçer ama T1/T2 tabanının (0,40) altında kalır. Yani neredeyse sessiz bir kümede tek bir kişi kararı ertelemeye zorlayabiliyordu. r2'de bu mümkün değildir. T1 satırında kalan ilk tur contested oranı (${pct(dNearT1.first.contested / dNearT1.n)}) yalnızca kümede en az iki kabul/red oyu toplanıp P_g'nin tabanın altında kaldığı durumlardan gelir (C kümesindeki birkaç C dışı üye ve az sayıdaki C oyu). Nihai kabul ${pct(dNearT1.enacted / dNearT1.n)}.`,
   "",
   "## (e) Küçük topluluklar ve soğuk başlangıç",
   "",
@@ -900,7 +907,7 @@ out.push(
   "",
   ...table(["|E|", "Öneri tipi", "Basit çoğunluk: kabul", "1. turda uzatma", "KÇ 1. tur kabul", "KÇ 1. tur contested", "KÇ nihai kabul"], eRows),
   "",
-  `**Yorum.** Küçük gruplarda mutlak taban \`floor_abs = ⌈1,5·√|E|⌉\` q·|E|'den büyüktür (|E| = 8 için 5 kişi, yani %62,5 katılım). Bu yüzden |E| = 8'de belirleyici kısıt yeter sayıdır: geniş destekli öneriler bile iki yöntemde de yalnızca ${pct(e(8, 0).sm / e(8, 0).n)} / ${pct(e(8, 0).enacted / e(8, 0).n)} oranında geçer. Gerekli katılımın |E|'yi aşmaması kuralı sayesinde kabul her zaman mümkündür. |E| = 8'de n_C < 12 olduğundan köprü testi hiç uygulanmaz (soğuk başlangıç). T0 eşiği %60'a yükselir ve \`≥\` ile karşılaştırılır; dar çoğunluklu önerilerde kabul ${pct(e(8, 1).sm / e(8, 1).n)} → ${pct(e(8, 1).enacted / e(8, 1).n)} olur. |E| = 15'te C bloğu 2 kişidir ve σ_min = 3 nedeniyle tek başına anlamlı küme olamaz. Yalnızca başka bir üyeyle aynı kümeye düştüğünde temsil edilir (${pct(eProtected.get(15)!)}). |E| = 30'da C (3 kişi, %10) sınırda anlamlıdır ve ayrı bir kümeyle temsil edildiği tekrarların oranı ${pct(eProtected.get(30)!)} olur. Bu tekrarlarda KÇ, C'ye zararlı önerileri contested yapar (genel oran ${pct(e(30, 2).first.contested / e(30, 2).n)}; nihai kabul ${pct(e(30, 2).sm / e(30, 2).n)} → ${pct(e(30, 2).enacted / e(30, 2).n)}). Küçük gruplarda azınlığın korunması büyük ölçüde soğuk başlangıçtaki nitelikli çoğunluğa ve itiraz kuralına kalır.`,
+  `**Yorum.** Küçük gruplarda mutlak taban \`floor_abs = ⌈1,5·√|E|⌉\` q·|E|'den büyüktür (|E| = 8 için 5 kişi, yani %62,5 katılım). Bu yüzden |E| = 8'de belirleyici kısıt yeter sayıdır: geniş destekli öneriler bile iki yöntemde de yalnızca ${pct(e(8, 0).sm / e(8, 0).n)} / ${pct(e(8, 0).enacted / e(8, 0).n)} oranında geçer. Gerekli katılımın |E|'yi aşmaması kuralı sayesinde kabul her zaman mümkündür. |E| = 8'de n_C < 12 olduğundan köprü testi hiç uygulanmaz (soğuk başlangıç). T0 eşiği %60'a yükselir ve \`≥\` ile karşılaştırılır; dar çoğunluklu önerilerde kabul ${pct(e(8, 1).sm / e(8, 1).n)} → ${pct(e(8, 1).enacted / e(8, 1).n)} olur. |E| = 15'te C bloğu 2 kişidir ve σ_min = 3 nedeniyle tek başına anlamlı küme olamaz (anlamlı bir kümeyle temsil oranı ${pct(eProtected.get(15)!)}). Küçük gruplarda r2'nin sıfır modeli de temkinlidir: az kişiyle siluet rastgele veride de yüksek çıkabildiği için küme yapısı ancak belirginse kabul edilir. Köprü testinin uygulanabildiği tekrarların oranı |E| = 15'te ${pct(eBridge.get(15)!)}, |E| = 30'da ${pct(eBridge.get(30)!)} olur; diğer tekrarlarda soğuk başlangıç kuralı (%60, \`≥\`) geçerlidir. |E| = 30'da C (3 kişi, %10) sınırda anlamlıdır ve ayrı bir anlamlı kümeyle temsil edildiği tekrarların oranı ${pct(eProtected.get(30)!)} olur. Bu tekrarlarda KÇ, C'ye zararlı önerileri contested yapar (genel oran ${pct(e(30, 2).first.contested / e(30, 2).n)}; nihai kabul ${pct(e(30, 2).sm / e(30, 2).n)} → ${pct(e(30, 2).enacted / e(30, 2).n)}). Küçük gruplarda azınlığın korunması büyük ölçüde soğuk başlangıçtaki nitelikli çoğunluğa ve itiraz kuralına kalır.`,
   "",
   "## (f) Vekâlet yoğunlaşması ve sınır (cap)",
   "",
@@ -918,7 +925,7 @@ out.push(
   "",
   "## (g) Kalıcı kaybeden",
   "",
-  `Tohum: \`${MASTER_SEED}|g|<değişke>|<tekrar>\`. Her değişke için ${G_REPS} bağımsız tekrar × ${G_DECISIONS} karar = ${G_TOTAL} karar; standart nüfus yapısı; T0. Öneri akışının %25'i ortak yarar önerisidir (bütün bloklar benzer ve olumlu). %75'ini bir blok yazar (yazar blok büyüklüğüyle orantılı seçilir, yazarın bloğu güçlü evet der). Diğer blokların tutumu bir yakınlık matrisiyle (A–B +0,2, A–C −0,6, B–C +0,4) ve bloğa özgü gürültüyle belirlenir. "Hayır" diyenler itirazı %50 olasılıkla imzalar. Kümeler başlangıçta ${HIST} önerilik geçmişten, sonra her 50 kararda bir birikmiş doğrudan oylardan yeniden hesaplanır. Bir blok, ilk turdaki üyelerinin çoğunluğu nihai sonucun tersini istediğinde o kararı **kaybetmiş** sayılır.`,
+  `Tohum: \`${MASTER_SEED}|g|<değişke>|<tekrar>\`. Her değişke için ${G_REPS} bağımsız tekrar × ${G_DECISIONS} karar = ${G_TOTAL} karar; standart nüfus yapısı; T0. Öneri akışının %25'i ortak yarar önerisidir (bütün bloklar benzer ve olumlu). %75'ini bir blok yazar (yazar blok büyüklüğüyle orantılı seçilir, yazarın bloğu güçlü evet der). Diğer blokların tutumu bir yakınlık matrisiyle (A–B +0,2, A–C −0,6, B–C +0,4) ve bloğa özgü gürültüyle belirlenir. "Hayır" diyenler itirazı %50 olasılıkla imzalar. Kümeler başlangıçta ${HIST} önerilik geçmişten, sonra her ${G_RESNAP} kararda bir birikmiş doğrudan oylardan yeniden hesaplanır. Bir blok, ilk turdaki üyelerinin çoğunluğu nihai sonucun tersini istediğinde o kararı **kaybetmiş** sayılır.`,
   "",
   `### ${G_VARIANTS[0].label}`,
   "",
@@ -932,23 +939,31 @@ out.push(
   "",
   gText(gNear),
   "",
-  `**Yorum.** Basit çoğunlukta küçük blok C, istemediği kararların kabul edilmesine en çok maruz kalan bloktur (${pct(gHarm(gSep, "sm", 2))}). C ayrı bir görüş kümesi olarak bulunduğunda KÇ'de bu oran ${pct(gHarm(gSep, "kc", 2))} olur. C'nin oyları B'ye yakın olduğunda C ayrı küme olarak çoğu zaman bulunamaz; bu durumda koruma büyük ölçüde itiraz kuralına kalır ve daha zayıftır (${pct(gHarm(gNear, "sm", 2))} → ${pct(gHarm(gNear, "kc", 2))}). Bunun karşılığında çoğunluğun istediği bazı kararlar reddedilir (A'nın "istediği red" oranı ${pct(gBlocked(gSep, "sm", 0))} → ${pct(gBlocked(gSep, "kc", 0))}). KÇ kaybetme yükünü bloklar arasında daha dengeli dağıtır ama statüko lehine bir eğilim de getirir (toplam kabul ${pct(gSep.stats.sm.enacted / G_TOTAL)} → ${pct(gSep.stats.kc.enacted / G_TOTAL)}). Kırılıma göre basit çoğunlukta geçip KÇ'de reddedilen kararların ${pct(gSep.rejectedVia.objection / smOnly(gSep))} (ayrışmış) ve ${pct(gNear.rejectedVia.objection / smOnly(gNear))} (yakın) kadarı itiraz yolundan gelir. |E| = 300'de kural (b) için ⌈0,10·|E|⌉ = 30 imza ve iki küme yeterlidir. "Hayır" oyu %40 civarında olan ve kaybedenlerin motive olduğu bir öneri bu eşiğe kolayca ulaşır ve yeniden oylamada ρ = %60 aranır. Fiilen, tartışmalı T0 kararları için eşik %50'den %60'a çıkar.`,
+  `**Yorum.** Basit çoğunlukta küçük blok C, istemediği kararların kabul edilmesine en çok maruz kalan bloktur (${pct(gHarm(gSep, "sm", 2))}). C ayrı bir görüş kümesi olarak bulunduğunda KÇ'de bu oran ${pct(gHarm(gSep, "kc", 2))} olur. C'nin oyları B'ye yakın olduğunda C ayrı küme olarak çoğu zaman bulunamaz; bu durumda koruma büyük ölçüde itiraz kuralına kalır ve daha zayıftır (${pct(gHarm(gNear, "sm", 2))} → ${pct(gHarm(gNear, "kc", 2))}). Bunun karşılığında çoğunluğun istediği bazı kararlar reddedilir (A'nın "istediği red" oranı ${pct(gBlocked(gSep, "sm", 0))} → ${pct(gBlocked(gSep, "kc", 0))}). KÇ kaybetme yükünü bloklar arasında daha dengeli dağıtır ama statüko lehine bir eğilim de getirir (toplam kabul ${pct(gSep.stats.sm.enacted / G_TOTAL)} → ${pct(gSep.stats.kc.enacted / G_TOTAL)}). Kırılıma göre basit çoğunlukta geçip KÇ'de reddedilen kararların ${pct(gSep.rejectedVia.objection / smOnly(gSep))} (ayrışmış) ve ${pct(gNear.rejectedVia.objection / smOnly(gNear))} (yakın) kadarı itiraz yolundan gelir. "İlk turda" düşenler, anlık görüntünün K = 1 bulduğu (soğuk başlangıç, eşik %60) dönemlerdeki %50–60 onaylı önerilerdir. |E| = 300'de kural (b) için ⌈0,10·|E|⌉ = 30 imza ve iki küme yeterlidir. "Hayır" oyu %40 civarında olan ve kaybedenlerin motive olduğu bir öneri bu eşiğe kolayca ulaşır ve yeniden oylamada ρ = %60 aranır. Fiilen, tartışmalı T0 kararları için eşik %50'den %60'a çıkar.`,
   "",
   "## (h) Kümeleme sağlığı (§9.4 siluet kuralı)",
   "",
-  `Tohum: \`${MASTER_SEED}|h|*\`; her satır ${H_SEEDS} tohum, |E| = 300. "Sıfır modeli"nde her önerinin oyları kullanıcılar arasında rastgele karıştırılır (permütasyon). Bu işlem marjinalleri korur ama kişiler arası bağıntıyı yok eder. Tabloda aynı boru hattının bu veride verdiği siluet ortalaması (3 permütasyon) gösterilir.`,
+  `Tohum: \`${MASTER_SEED}|h|*\`; her satır ${H_SEEDS} tohum, |E| = 300. Aynı oy geçmişi iki kuralla kümelenir. r1, ALGORITMA §9'un ilk sürümüdür: en iyi siluet ≥ 0,25 ise K ≥ 2. r2 (\`pca2-kmeans-silhouette-null/2\`) buna ek olarak \`siluet − siluet_sıfır ≥ 0,10\` koşulunu arar. "Sıfır modeli"nde her önerinin oyları, o öneriye oy vermiş kullanıcılar arasında tohumlu olarak karıştırılır (5 permütasyon). Bu işlem marjinalleri korur ama kişiler arası bağıntıyı yok eder. "Aday siluet", eşiklerden önceki en iyi K'nın siluetidir.`,
   "",
-  ...table(["Nüfus", "Bulunan K (tohum başına)", "Siluet (ort.)", "Sıfır modeli siluet", "Fark", "Saflık", "C anlamlı kümeyle temsil"], hRows),
+  ...table(["Nüfus", "K — r1 (yalnız siluet ≥ 0,25)", "K — r2 (+ sıfır modeli)", "Aday siluet (ort.)", "Sıfır modeli siluet", "Fark", "Saflık (r2)", "C anlamlı kümeyle temsil (r2)"], hRows),
   "",
-  `Homojen nüfuslarda bulunan (sahte) kümelerle ${hDecisions} karar alındı. Contested oranı ${pct(hSpuriousContested / hDecisions)}; sonucun soğuk başlangıç kuralının (K = 1) vereceği sonuçtan farklı olduğu kararların oranı ${pct(hColdDiff / hDecisions)}.`,
+  "Tek bloklu nüfuslarda her iki anlık görüntüyle aynı oylarla kararlar alındı (rastgele öneriler, T0). \"Soğuk başlangıçtan farklı\": sonucun, K = 1 olsaydı (eşik %60, `≥`) çıkacak sonuçtan farklı olduğu kararların oranı.",
   "",
-  "**Yorum (önemli bulgu).** k-means'in 2 boyutlu PCA koordinatlarında bulduğu en iyi ortalama siluet, yapısız (tek tepeli) veride de tipik olarak 0,34–0,6 arasındadır. Bu yüzden §9.4'teki \"siluet < 0,25 ise K = 1\" kuralı neredeyse hiç tetiklenmez. Homojen bir toplulukta gürültüden sahte kümeler oluşur. Köprü testi rastgele bölünmüş gruplar arasında uygulanır ve soğuk başlangıçtaki nitelikli çoğunluk (%60) devre dışı kalır. Sahte kümelerin tercihleri birbirine benzediği için contested oranı düşüktür; asıl etki eşik farkıdır. Gerçek blok yapısı ise sıfır modeline göre belirgin bir siluet farkı üretir. Güçlü bireysel eğilimler de (tek blok içinde) bir fark üretir; bu, gerçek ama ideolojik olmayan bir yapıdır (\"hep evet\" / \"hep hayır\" diyenler). Zayıf ayrışmış geçmişte %10'luk blok çoğu zaman ayrı bir küme olarak bulunamaz ve köprü korumasından yararlanamaz. **Öneri (KC-1.1):** K ≥ 2 yalnızca `siluet − siluet_sıfır ≥ 0,10` ise kabul edilsin; `siluet_sıfır`, aynı tohumdan türetilen birkaç permütasyonun ortalaması olsun. Mutlak eşik 2 boyut için yeniden ayarlanabilir, ancak tek bir mutlak eşik gürültü düzeyine göre ya gerçek yapıyı kaçırır ya da sahte küme üretir.",
+  ...table(
+    ["Nüfus", "Karar", "r1: contested", "r1: soğuk başlangıçtan farklı", "r2: contested", "r2: soğuk başlangıçtan farklı"],
+    hCases
+      .map((hc, i) => ({ hc, d: hDec[i] }))
+      .filter((x) => x.hc.sizes.length === 1)
+      .map(({ hc, d }) => [hc.label, d.n, pct(d.r1.contested / d.n), pct(d.r1.coldDiff / d.n), pct(d.r2.contested / d.n), pct(d.r2.coldDiff / d.n)]),
+  ),
+  "",
+  "**Yorum.** k-means'in 2 boyutlu PCA koordinatlarında bulduğu en iyi ortalama siluet, yapısız (tek tepeli) veride de tipik olarak 0,34–0,6 arasındadır. Bu yüzden r1'deki \"siluet < 0,25 ise K = 1\" kuralı neredeyse hiç tetiklenmiyordu. Homojen bir toplulukta gürültüden sahte kümeler oluşuyor, köprü testi rastgele bölünmüş gruplar arasında uygulanıyor ve soğuk başlangıçtaki nitelikli çoğunluk (%60) devre dışı kalıyordu. Sahte kümelerin tercihleri birbirine benzediği için contested oranı düşüktü; asıl etki eşik farkıydı. Sıfır modeli bu durumu ayırt eder: homojen veride aday siluet sıfır modelininkine çok yakındır ve r2 K = 1 bulur. Gerçek blok yapısında fark belirgindir ve kümeler korunur. **Kalan sınırlılıklar:** (1) Güçlü bireysel eğilimler (\"hep evet\" / \"hep hayır\" diyenler) tek blok içinde de gerçek bir yapı üretir ve r2 bunu küme olarak kabul edebilir. Bu yapı gerçek ama ideolojik değildir. (2) Zayıf ayrışmış geçmişte %10'luk blok çoğu zaman ayrı bir küme olarak bulunamaz ve köprü korumasından yararlanamaz; azınlığın korunması bu durumda itiraz kuralına kalır.",
   "",
   "## Tasarım için çıkarımlar",
   "",
-  "1. **Siluet kuralı (§9.4)** amaçladığı \"yapı yoksa K = 1\" davranışını 2 boyutta sağlamıyor (bkz. h). Permütasyon sıfır modeli ya da benzeri bir yapı testi önerilir.",
-  "2. **İtiraz kuralı (b)** büyük topluluklarda kolay sağlanıyor ve tartışmalı T0 kararlarında fiilen %60 eşiği getiriyor (bkz. g). Bu bilinçli bir tercih değilse imza eşiği (ör. kaybeden tarafın belli bir oranı) yeniden değerlendirilmeli.",
-  "3. **T1/T2'de tek \"hayır\"** neredeyse sessiz bir kümede contested sonucunu tetikleyebiliyor (P_g = 1/3 < 0,40; bkz. d). Uzatma sonrası eksik kalan kümenin köprüden muaf tutulması ya da μ_votes'un yalnız tetikleyici değil taban koşulu olarak da kullanılması değerlendirilebilir.",
+  "1. **Siluet kuralı (§9.4)** amaçladığı \"yapı yoksa K = 1\" davranışını 2 boyutta sağlamıyordu. **r2'de uygulandı:** permütasyon sıfır modeli (bkz. h).",
+  "2. **İtiraz kuralı (b)** büyük topluluklarda kolay sağlanıyor ve tartışmalı T0 kararlarında fiilen %60 eşiği getiriyor (bkz. g). ALGORITMA §6'da bunun **bilinçli bir tercih** olduğu not edildi: itiraz yalnızca erteleyici ve tek seferliktir. Statüko eğilimi azaltılmak istenirse imza eşiği (ör. kaybeden tarafın belli bir oranı) yeniden ayarlanabilir.",
+  "3. **T1/T2'de tek \"hayır\"** neredeyse sessiz bir kümede contested sonucunu tetikleyebiliyordu (P_g = 1/3 < 0,40). **r2'de uygulandı:** uzatma sonrası μ_votes altında kalan küme nötr sayılır ve köprüden muaftır (bkz. d). DEL'deki yazar kümesi koruması bu muafiyetin dışında tutuldu.",
   "4. **Vekâlet ve küme:** Vekâletle gelen oy delegatörün kümesine sayılır. Kümeler arası vekâlet, azınlık kümesinin desteğini başka bir bloğun delegesine bağlayabilir (bkz. f).",
   "5. **Küçük topluluklar:** |E| < ~30'da yeter sayı ve soğuk başlangıç belirleyicidir; köprü koruması ancak azınlık en az σ_min = 3 kişilik ayrı bir küme oluşturduğunda devreye girer (bkz. e).",
   "",

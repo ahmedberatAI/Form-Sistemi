@@ -20,6 +20,6 @@ export function createGovernanceMath(): GovernanceMath {
   return { computeClusters, resolveEffectiveVotes, drawWeighted };
 }
 
-export { computeClusters, CLUSTER_ALGO } from "./clustering";
+export { computeClusters, computeClustersDetailed, CLUSTER_ALGO, CLUSTER_ALGO_V1, type ClusterDiagnostics } from "./clustering";
 export { resolveEffectiveVotes, normalizeScopeOrder, scopeOrderFor } from "./delegation";
 export { defaultDecisionParams } from "./params";

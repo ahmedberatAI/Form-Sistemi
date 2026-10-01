@@ -1,9 +1,9 @@
 // Senaryo 5 (yönetmelik yaması → enacted → yeni sürüm + BYLAW_VERSION; değiştirilemez hedef → inadmissible) ve
 // senaryo 6 (aynı konuya iki düzenleme teklifi: ikincisi "Sürüm çakışması" ile reddedilir) + alt konu.
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { fy, type RegulationPatch } from "@forum/shared";
 import type { AuthUser } from "../../src/core/contracts";
-import { CAT, endPhase, insertTopic, makeForum, toDeliberation, toVoting, type ForumHarness } from "./harness";
+import { CAT, endPhase, insertTopic, LONG_BODY, makeForum, toDeliberation, toVoting, type ForumHarness } from "./harness";
 
 describe("forum: yönetmelik değişikliği ve konu sürümleri", () => {
   let h: ForumHarness;
@@ -37,7 +37,10 @@ describe("forum: yönetmelik değişikliği ve konu sürümleri", () => {
     await endPhase(h, id);
     d = h.forum.proposals.get(id, null);
     expect(d.status).toBe("objection_window");
-    expect(d.results[0].thresholdUsed).toEqual({ num: 2, den: 3 });
+    // Eşik, oylama açılışında sabitlenen parametredir (T2: en az 2/3; nitelikli hükümde ontoloji 3/4 ister)
+    const th = d.results[0].thresholdUsed;
+    expect(th.num * 3).toBeGreaterThanOrEqual(2 * th.den);
+    expect(d.params?.tier).toBe("T2");
     await endPhase(h, id);
     d = h.forum.proposals.get(id, null);
     expect(d.status).toBe("enacted");
@@ -123,5 +126,22 @@ describe("forum: yönetmelik değişikliği ve konu sürümleri", () => {
     expect(sub.parentTopic).toEqual({ id: topicId, title: "Mahalle parkı (düzenleme 1)" });
     expect(h.forum.topics.get(topicId, m[13]).openProposals.map((p) => p.id)).toContain(sub.id);
     expect(h.forum.topics.get(topicId, null).openProposals.map((p) => p.id)).not.toContain(sub.id); // taslak
+  });
+
+  it("yürürlük etkisi uygulanamazsa öneri gerekçeli reddedilir (sonsuz yeniden deneme yok)", async () => {
+    const parent = insertTopic(h, "Arşivlenecek konu");
+    const id = await toDeliberation(h, m[20], m.slice(21), { kind: "subtopic", parentTopicId: parent, title: "Arşivlenecek konunun alt konusu", body: LONG_BODY, categories: [] });
+    await toVoting(h, id);
+    for (let i = 0; i < 25; i++) await h.forum.proposals.vote(m[i], id, "yes");
+    await endPhase(h, id);
+    expect(h.forum.proposals.get(id, null).status).toBe("objection_window");
+    h.ctx.db.run("UPDATE topics SET status = 'archived' WHERE id = ?", parent);
+    const err = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    await endPhase(h, id);
+    const d = h.forum.proposals.get(id, null);
+    expect(d.status).toBe("rejected");
+    expect(d.events.at(-1)?.reason).toMatch(/^Yürürlük etkisi uygulanamadı: Üst konu yürürlükte değil/);
+    expect(h.forum.topics.get(parent, null).childCount).toBe(0);
+    err.mockRestore();
   });
 });

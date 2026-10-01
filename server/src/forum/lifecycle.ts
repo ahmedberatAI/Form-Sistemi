@@ -259,34 +259,55 @@ export function createLifecycle(core: ForumCore, parts: LifecycleParts): Lifecyc
     }
   }
 
-  /** Yürürlük etkileri + enacted (ya da sürüm çakışması / yama hatasında rejected). Çağıranın işlemi içinde. */
+  /**
+   * Yürürlük etkileri + enacted (ya da sürüm çakışması / yama hatası / etki uygulanamadığında rejected).
+   * Çağıranın işlemi içinde. Etki hatası öneriyi asla sonsuz yeniden denemede bırakmaz (canlılık).
+   */
   function enact(p: ProposalRow, prep: EnactPrep, reason: string, now: number): Transition {
     const parsed = parseProposal(p);
+    const enacted = (entity: string | null) =>
+      applyTransition(core, p, "enacted", reason, { now, endsAt: null, set: { enacted_entity_id: entity, final_reason: reason } });
+    const effect = <T>(fn: () => T): { ok: true; value: T } | { ok: false; why: string } => {
+      try {
+        return { ok: true, value: core.tx(fn) };
+      } catch (e) {
+        if (e instanceof StaleState) throw e;
+        console.error(`[forum] ${proposalRef(p)} yürürlük etkisi uygulanamadı:`, e);
+        return { ok: false, why: e instanceof Error ? e.message : String(e) };
+      }
+    };
     switch (p.kind) {
       case "topic":
       case "subtopic": {
-        const r = topics.createFromProposal(p.id);
-        return applyTransition(core, p, "enacted", reason, { now, endsAt: null, set: { enacted_entity_id: r.topicId, final_reason: reason } });
+        const r = effect(() => topics.createFromProposal(p.id));
+        if (!r.ok) return close(p, "rejected", `Yürürlük etkisi uygulanamadı: ${r.why}`, now);
+        return enacted(r.value.topicId);
       }
       case "amendment": {
-        const r = topics.reviseFromProposal(p.id);
-        if ("conflict" in r) {
-          const why = `Sürüm çakışması: konu bu arada güncellendi (güncel sürüm ${r.currentVersion}, teklifin dayandığı sürüm ${parsed.amendment?.baseVersion ?? "?"}); düzenleme uygulanamadı.`;
+        const r = effect(() => topics.reviseFromProposal(p.id));
+        if (!r.ok) return close(p, "rejected", `Yürürlük etkisi uygulanamadı: ${r.why}`, now);
+        if ("conflict" in r.value) {
+          const why = `Sürüm çakışması: konu bu arada güncellendi (güncel sürüm ${r.value.currentVersion}, teklifin dayandığı sürüm ${parsed.amendment?.baseVersion ?? "?"}); düzenleme uygulanamadı.`;
           return close(p, "rejected", why, now);
         }
-        return applyTransition(core, p, "enacted", reason, { now, endsAt: null, set: { enacted_entity_id: r.topicId, final_reason: reason } });
+        return enacted(r.value.topicId);
       }
       case "deletion": {
         const d = parsed.deletion;
-        if (d) messages.hide(d.messageIds, p.id, d.ground, groundIsSealed(deps, d.ground));
-        return applyTransition(core, p, "enacted", reason, { now, endsAt: null, set: { final_reason: reason } });
+        const r = effect(() => (d ? messages.hide(d.messageIds, p.id, d.ground, groundIsSealed(deps, d.ground)) : []));
+        if (!r.ok) return close(p, "rejected", `Yürürlük etkisi uygulanamadı: ${r.why}`, now);
+        return enacted(null);
       }
       case "regulation": {
         if (!prep.bylaw) return close(p, "rejected", `Yönetmelik yaması uygulanamadı: ${prep.error ?? "bilinmeyen hata"}`, now);
         const v = prep.bylaw;
         const tx = core.submit("BYLAW_VERSION", { version: v.version, hash: v.hash, proposalId: p.id });
-        deps.ontology.setLedgerTx(v.version, tx);
-        return applyTransition(core, p, "enacted", reason, { now, endsAt: null, set: { enacted_entity_id: String(v.version), final_reason: reason } });
+        try {
+          deps.ontology.setLedgerTx(v.version, tx);
+        } catch (e) {
+          console.error("[forum] yönetmelik sürümüne defter kaydı bağlanamadı:", e);
+        }
+        return enacted(String(v.version));
       }
     }
   }

@@ -1,0 +1,166 @@
+/* ── Sistem ajanı: defter, blok/işlem doğrulama, yönetim, kayıt memuru, yönetmelik ── */
+
+.sy-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.sy-mark-ok {
+  color: var(--success);
+}
+.sy-mark-fail {
+  color: var(--danger);
+}
+.sy-mark-na {
+  color: var(--text-muted);
+}
+.sy-mark-sym {
+  font-size: 1.05em;
+  line-height: 1;
+}
+
+.sy-validators {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+}
+.sy-validator {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.sy-validator.is-unhealthy {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+.sy-validator-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+}
+.sy-validator-id {
+  font-family: var(--mono);
+  font-weight: 700;
+}
+
+.sy-types {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.sy-steps {
+  margin: 0;
+  padding-inline-start: 1.3rem;
+}
+.sy-steps li + li {
+  margin-top: 0.35rem;
+}
+
+.sy-path {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.sy-path li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.sy-pre {
+  max-height: 480px;
+  overflow: auto;
+  white-space: pre;
+}
+.sy-pre-wrap {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.sy-has-list {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 720px) {
+  .sy-has-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.sy-has-list ul {
+  margin: 0.35rem 0 0;
+  padding-inline-start: 1.2rem;
+}
+
+.sy-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.sy-inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+.sy-inline-form > .field {
+  flex: 1 1 160px;
+  min-width: 0;
+  margin: 0;
+}
+
+.sy-roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.75rem;
+}
+.sy-roles .check {
+  margin: 0;
+}
+
+.sy-article {
+  border-left: 3px solid var(--border-strong);
+  padding-left: 0.75rem;
+}
+.sy-article.is-immutable {
+  border-left-color: var(--danger);
+}
+.sy-article.is-qualified {
+  border-left-color: var(--warning);
+}
+.sy-article-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 0.25rem 0 0;
+}
+
+.sy-tree .tree-item > .row {
+  gap: 0.35rem 0.5rem;
+}
+.sy-keywords {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.sy-meta-json {
+  margin: 0;
+  max-width: 420px;
+  max-height: 220px;
+  overflow: auto;
+  font-size: 0.78rem;
+}

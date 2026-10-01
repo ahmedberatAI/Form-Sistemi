@@ -150,4 +150,31 @@ describe("forum: konu önerisi baştan sona (gerçek defter)", () => {
     const notes = h.forum.community.notifications(members[0].id);
     expect(notes.items.some((n) => n.title.includes("Kabul edildi"))).toBe(true);
   });
+
+  it("gerçek defterde bilirkişi kurası: taahhüt edilen yükseklik geçişle birlikte üretilen bloktur", async () => {
+    const admin = h.user("yonetici", { roles: ["admin"] });
+    const expert = h.user("bilirkisi");
+    h.experts.apply(expert.id, [CAT.enerji], "Enerji uzmanı.");
+    h.experts.decideApplication(admin.id, expert.id, "approve");
+    const d = await h.forum.proposals.create(members[1], {
+      kind: "topic",
+      title: "Okula güneş paneli",
+      body: "İlkokulun çatısına güneş paneli kurulsun ve elektrik giderleri azaltılsın.",
+      categories: [CAT.enerji],
+      submit: true,
+    });
+    for (const s of members.slice(2, 5)) await h.forum.proposals.sponsor(s, d.id);
+    const height = h.ctx.db.get<{ e: number }>("SELECT expert_draw_height AS e FROM proposals WHERE id = ?", d.id)!.e;
+    await h.flush();
+    // Taahhüt anında en son blok height-1 idi; PHASE_CHANGED aynı işlemde gönderildiği için height bloğu kesin oluşur
+    // (bekleyen işlemlerle ya da bu geçişle) ve hash'i taahhüt anında bilinemezdi.
+    const block = h.ledger.getBlock(height)!;
+    expect(block).not.toBeNull();
+    const phaseTx = h.ledger.findTxs({ type: "PHASE_CHANGED", proposalId: d.id }).find((t) => t.payload.to === "deliberation")!;
+    expect(phaseTx.height).toBeGreaterThanOrEqual(height);
+    await h.tick();
+    const panel = h.forum.proposals.get(d.id, null).expertPanel!;
+    expect(panel.seedSource).toMatchObject({ blockHeight: height, blockHash: block.hash, proposalId: d.id });
+    expect(panel.assignments.map((a) => a.expertId)).toEqual([expert.id]);
+  });
 });
