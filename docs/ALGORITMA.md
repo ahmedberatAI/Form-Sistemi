@@ -253,3 +253,20 @@ Tohum, `SHA256(sonBlokHash ‖ "cluster" ‖ zaman damgası)` olarak alınır.
 **Doğrulama:** Kullanıcı, cihazında sakladığı makbuzla (`ballotId, choice, salt`) oyunun deftere doğru yazıldığını doğrular. Kontrol edilenler: Merkle kanıtı, blok başlığı ve ≥3 doğrulayıcı imzası. Herkes `BALLOT_REVEAL` verisinden sayımı yeniden hesaplayabilir (`verifyTally`).
 
 **Tehdit modeli (dürüstçe):** Bu sistem düşük riskli topluluk yönetişimi içindir; siyasi seçim için değildir. Sunucu, seçmen uygunluğu ve oy gizliliği konusunda güvenilir kabul edilir. Cihazda imzalı oy ve MACI benzeri zorlama direnci gelecek çalışmadır. Dört doğrulayıcı aynı makinede çalışıyorsa bu durum arayüzde açıkça belirtilir.
+
+## 12. Uygulama netleştirmeleri (KC-1.0, r1)
+
+Aşağıdaki maddeler spesifikasyonun belirsiz bıraktığı noktaları **en koruyucu** yorumla netleştirir. Kod (`shared/src/decision.ts`, `server/src/forum/*`) bunlara uyar.
+
+1. **Gerekli katılım üst sınırı.** `quorumRequired = min(|E|, max(⌈q·|E|⌉, floor_abs))`. Çok küçük topluluklarda (`|E| ≤ 2`) `floor_abs` seçmen sayısını aşabildiğinden, herkes oy verdiğinde kabul imkânsız olmasın diye yeter sayı `|E|` ile sınırlanır. `P = 0` hiçbir zaman yeter sayıyı karşılamaz.
+2. **Köprü uygulanabilirliği.** Köprü testi için `n_C ≥ n_C,min`, `K ≥ 2` ve **en az bir anlamlı küme** gerekir; aksi halde soğuk başlangıç kuralı (§4.4) uygulanır.
+3. **Silmede yazar kümesi koruması her zaman.** DEL katmanında hedef mesajın yazarı kümelenmişse `P_{yazar} ≥ 1/2` koşulu, köprü testi soğuk başlangıç nedeniyle uygulanamasa bile aranır. Bu koşul sağlanmazsa sonuç `contested` olur.
+4. **Yeniden oylamada uzatma koşulu.** Küme oy eksiği (`μ_votes`) yalnızca köprü testinin karar kuralında kullanıldığı turlarda (ilk tur ve `origin = contested` yeniden oylaması) uzatma gerekçesidir. `origin = objection` turunda yalnızca katılım eksiği uzatma gerekçesidir.
+5. **DEL süreleri.** İtiraz penceresi 0 olduğundan kabul edilen silme talebi doğrudan yürürlüğe girer. Uzlaşma süresi 0 olduğundan tartışmalı silme talebi bir sonraki zamanlayıcı adımında doğrudan yeniden oylamaya geçer (ω = ρ = 3/4).
+6. **Ara sayımın gizliliği.** `needs_more_votes` ara sayımı deftere açıklanmaz ve oylama sürerken hiçbir istemciye gösterilmez. Uzatmadan sonra yapılan kesin sayım hem `BALLOT_REVEAL` hem `TALLY` olarak yazılır.
+7. **Sayım anahtarı.** Sunucu `decide()` fonksiyonunu `voterKey = ballotId` ile çağırır. Böylece defterdeki bültenden yapılan bağımsız yeniden sayım (`verifyTally`) aynı `inputsHash` değerini üretir. Vekâletle gelen etkin oyların `ballotId`'si de aynı HMAC ile hesaplanır, `salt` boş bırakılır ve kayıtta `via = "delegated"` yazar.
+8. **İtiraz imzacısının oyu.** "İlk turda etkin oyu `no`" koşulu bülten (`BALLOT_REVEAL`) üzerinden denetlenir; vekâletle `no` sayılan kişi de itiraz edebilir.
+9. **Bilirkişi tohumunun öğütülmesine karşı.** Panel çekilişini yazar değil zamanlayıcı başlatır. Tohumdaki blok, tartışma evresi açılırken **önceden taahhüt edilen** yüksekliktir (`o anki yükseklik + 2`), yani çekiliş anı seçilerek uygun bir blok hash'i yakalanamaz.
+10. **Küme manipülasyonuna karşı.** Kümeleme girdisine yalnızca en az 3 gündür doğrulanmış hesapların oyları alınır. Anlık görüntü oylama açılışında dondurulur ve yeniden oylamada aynı görüntü kullanılır. Kilit adım (lockstep) oy grupları graf modülünde işaretlenir.
+11. **Hak etkisi bayrakları: yalnızca yükseltme.** Yazar dışındaki üyelerin ve yapay zekânın eklediği "temel hak kısıtlaması" bayrakları katmanı en fazla T1'e yükseltir, uyarı üretir ve bilirkişiyi zorunlu kılar. Öneriyi T3 (geçersiz) yapamazlar. Bayrağı yalnızca ilgili alandaki bilirkişi ya da yönetici kaldırabilir.
+12. **Silme talebi kötüye kullanımına karşı.** Bir kullanıcının aynı anda en fazla 3 açık silme talebi olabilir ve 24 saatte en fazla 5 talep açabilir. Acil gerekçeli daraltma, karar çıkana kadar sürer; talep reddedilir, düşer ya da geri çekilirse kaldırılır.

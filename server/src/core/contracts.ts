@@ -90,8 +90,8 @@ export interface ProposalAuditInput {
   body: string;
   /** Yazarın seçtiği + YZ'nin (yalnız yükseltme) eklediği kategori IRI'leri */
   categories: string[];
-  /** Etkilenen temel haklar (IRI) ve yönü */
-  rightsAffected?: { right: string; direction: "restrict" | "expand"; source: "author" | "ai" | "expert" }[];
+  /** Etkilenen temel haklar (IRI) ve yönü. "member"/"ai" kaynaklı bayraklar yalnızca yükseltir (en çok T1 + uyarı); T3 yalnız "author"/"expert" ile. */
+  rightsAffected?: { right: string; direction: "restrict" | "expand"; source: "author" | "ai" | "expert" | "member" }[];
   /** İçerik etiketleri (ör. fy:KisiselVeriIfsasi, fy:NefretSoylemi) — YZ/kural kaynaklı */
   contentLabels?: { label: string; confidence: number; source: "ai" | "rule" }[];
   parentTopic?: { id: string; categories: string[]; status: string } | null;
@@ -307,16 +307,21 @@ export interface SummaryInputMessage {
   body: string;
 }
 
+export interface AiCallOptions {
+  forceOffline?: boolean;
+}
+
 export interface AiService {
   mode(): "claude" | "offline";
   model(): string;
   detectPii(text: string): PiiFinding[];
-  classifyProposal(input: { title: string; body: string }, ctx: { categories: { iri: string; label: string; keywords: string[] }[]; rights: { iri: string; label: string }[]; contentLabels: { iri: string; label: string }[] }): Promise<ClassificationResult>;
-  moderate(text: string, ctx: { articles: { iri: string; number: string; title: string }[]; contentLabels: { iri: string; label: string }[] }): Promise<ModerationResult>;
-  summarize(input: { topicTitle: string; messages: SummaryInputMessage[] }): Promise<DiscussionSummary & { offline: boolean; model: string }>;
+  // `opts.forceOffline`: içerik sahibi YZ rızası vermemişse (yurt dışına aktarım yok) çevrimdışı sezgisel kullanılır.
+  classifyProposal(input: { title: string; body: string }, ctx: { categories: { iri: string; label: string; keywords: string[] }[]; rights: { iri: string; label: string }[]; contentLabels: { iri: string; label: string }[] }, opts?: AiCallOptions): Promise<ClassificationResult>;
+  moderate(text: string, ctx: { articles: { iri: string; number: string; title: string }[]; contentLabels: { iri: string; label: string }[] }, opts?: AiCallOptions): Promise<ModerationResult>;
+  summarize(input: { topicTitle: string; messages: SummaryInputMessage[] }, opts?: AiCallOptions): Promise<DiscussionSummary & { offline: boolean; model: string }>;
   similar(input: { title: string; body: string }, corpus: { id: string; title: string; body: string }[], limit?: number): { id: string; score: number }[];
-  bridgingDrafts(input: { title: string; body: string; majorityPoints: string[]; minorityPoints: string[] }): Promise<{ drafts: { title: string; body: string; rationale: string }[]; offline: boolean; model: string }>;
-  lintExpertReport(text: string): Promise<{ issues: { quote: string; kind: string; message: string }[]; offline: boolean; model: string }>;
+  bridgingDrafts(input: { title: string; body: string; majorityPoints: string[]; minorityPoints: string[] }, opts?: AiCallOptions): Promise<{ drafts: { title: string; body: string; rationale: string }[]; offline: boolean; model: string }>;
+  lintExpertReport(text: string, opts?: AiCallOptions): Promise<{ issues: { quote: string; kind: string; message: string }[]; offline: boolean; model: string }>;
   /** Sonuç kontrol listesini sade Türkçeye çevirir (şablon tabanlı; YZ gerekmez). */
   explainDecision(checks: { label: string; passed: boolean; value: string; required: string }[], outcomeLabel: string): string;
 }
