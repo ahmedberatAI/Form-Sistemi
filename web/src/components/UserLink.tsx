@@ -25,8 +25,8 @@ export function UserLink({ id, nickname, status, isExpert, user, showExpert = tr
   const expert = user?.isExpert ?? isExpert;
   if (st === "erased" || !uid || !name) {
     return (
-      <span className={cx("user-link user-erased", className)} title="Bu üyenin kişisel verisi imha edildi">
-        {name && st !== "erased" ? name : "Silinmiş üye"}
+      <span className={cx("user-link user-erased", className)} title={st === "erased" ? "Bu üyenin kişisel verisi imha edildi" : undefined}>
+        {name || "Silinmiş üye"}
       </span>
     );
   }

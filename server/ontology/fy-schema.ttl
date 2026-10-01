@@ -225,3 +225,4 @@ fy:degistirilemezAtlatma a owl:ObjectProperty ; rdfs:label "değiştirilemez hü
 
 # SHACL şekillerinin açıklama özellikleri
 fy:bulguKodu a owl:AnnotationProperty ; rdfs:label "bulgu kodu"@tr .
+fy:sekilGrubu a owl:AnnotationProperty ; rdfs:label "şekil grubu (oneri | yonetmelik)"@tr .

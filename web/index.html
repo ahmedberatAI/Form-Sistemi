@@ -3,10 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="Forum Sistemi — katılımcı yönetişim forumu: konular, öneriler, Köprülü Çoğunluk oylaması, dağıtık defter." />
+    <meta name="theme-color" content="#1d4ed8" />
+    <meta name="color-scheme" content="light dark" />
     <title>Forum Sistemi</title>
+    <script>
+      // İlk boyamadan önce kayıtlı temayı uygula (beyaz yanıp sönmeyi önler). Asıl mantık: src/components/system/theme.ts
+      try {
+        var t = localStorage.getItem("forum.theme");
+        if (t === "light" || t === "dark" || t === "system") document.documentElement.dataset.theme = t;
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>Forum Sistemi'ni kullanmak için JavaScript'i etkinleştirin.</noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

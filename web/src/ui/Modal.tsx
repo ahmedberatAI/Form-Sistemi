@@ -179,7 +179,7 @@ export function ConfirmDialog({
         {requireText ? (
           <div className="field">
             <label className="field-label" htmlFor={inputId}>
-              Onaylamak için <strong className="mono">{requireText}</strong> yazın
+              Onaylamak için kutuya <strong className="confirm-token">“{requireText}”</strong> yazın
             </label>
             <input
               id={inputId}

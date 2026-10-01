@@ -7,7 +7,7 @@ const dtFull = new Intl.DateTimeFormat(LOCALE, { day: "numeric", month: "long", 
 const dtShort = new Intl.DateTimeFormat(LOCALE, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 const dOnly = new Intl.DateTimeFormat(LOCALE, { day: "numeric", month: "long", year: "numeric" });
 const tOnly = new Intl.DateTimeFormat(LOCALE, { hour: "2-digit", minute: "2-digit" });
-const rtf = new Intl.RelativeTimeFormat(LOCALE, { numeric: "auto" });
+const rtf = new Intl.RelativeTimeFormat(LOCALE, { numeric: "always" });
 const nf = new Intl.NumberFormat(LOCALE);
 
 const valid = (ms: number | null | undefined): ms is number => typeof ms === "number" && Number.isFinite(ms);
@@ -48,7 +48,12 @@ export function formatRelative(ms: number | null | undefined, now: number): stri
   if (abs < 45 * sec) return diff < 0 ? "az önce" : "birazdan";
   if (abs < 45 * min) return rtf.format(Math.round(diff / min), "minute");
   if (abs < 22 * hour) return rtf.format(Math.round(diff / hour), "hour");
-  if (abs < 26 * day) return rtf.format(Math.round(diff / day), "day");
+  if (abs < 26 * day) {
+    const d = Math.round(diff / day);
+    if (d === -1) return "dün";
+    if (d === 1) return "yarın";
+    return rtf.format(d, "day");
+  }
   if (abs < 320 * day) return rtf.format(Math.round(diff / (30 * day)), "month");
   return rtf.format(Math.round(diff / (365 * day)), "year");
 }

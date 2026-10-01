@@ -316,6 +316,8 @@ export interface SummaryInputMessage {
 
 export interface AiCallOptions {
   forceOffline?: boolean;
+  /** Yalnız lintExpertReport: bilirkişinin alanları (etiket ya da IRI) — "alan dışı" denetimi için */
+  domains?: string[];
 }
 
 export interface AiService {

@@ -227,9 +227,9 @@ Her taslakta title (kısa başlık), body (uygulanabilir öneri metni, 2–4 cü
   return { system, user, schema, validator, effort: "medium" as const };
 }
 
-export const LINT_KINDS = ["legal_qualification", "overclaim", "unsupported_claim", "other"] as const;
+export const LINT_KINDS = ["legal_qualification", "overclaim", "out_of_domain", "unsupported_claim", "other"] as const;
 
-export function lintRequest(text: string) {
+export function lintRequest(text: string, domains: string[] = []) {
   const schema = obj({
     issues: arr(
       obj({
@@ -245,7 +245,9 @@ export function lintRequest(text: string) {
 Görev: bir bilirkişi raporu taslağını biçim ve sınırlar açısından denetle (raporun teknik içeriğini değiştirme).
 - 6754 sayılı Bilirkişilik Kanunu md. 3/2 uyarınca bilirkişi hukuki nitelendirme yapamaz ("hukuka aykırıdır", "suç teşkil eder", "kusurludur", "tazminat ödenmelidir" gibi). Bu ifadeleri kind = legal_qualification olarak işaretle.
 - Kanıtla desteklenmeyen aşırı kesinlik ifadelerini ("kesinlikle", "%100") kind = overclaim olarak işaretle.
+- Bilirkişinin uzmanlık alanı dışına taşan değerlendirmelerini kind = out_of_domain olarak işaretle. Uzmanlık alanları verilmişse onlara göre, verilmemişse raporun ana konusundan çıkararak karar ver; ana konuyla ilgili bağlam bilgisini alan dışı sayma.
 - Dayanağı gösterilmemiş olgusal iddiaları kind = unsupported_claim olarak işaretle.
 quote alanına ifadeyi rapordan AYNEN alıntıla; message alanında sorunu ve nasıl düzeltileceğini açıkla. Sorun yoksa boş liste döndür.`;
-  return { system, user: tag("bilirkisi_raporu", text), schema, validator, effort: "low" as const };
+  const user = [...(domains.length ? [tag("uzmanlik_alanlari", domains.map((d) => `- ${d}`).join("\n"))] : []), tag("bilirkisi_raporu", text)].join("\n\n");
+  return { system, user, schema, validator, effort: "low" as const };
 }

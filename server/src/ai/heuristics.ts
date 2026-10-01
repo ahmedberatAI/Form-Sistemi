@@ -1,25 +1,25 @@
 // Çevrimdışı sezgisel mod: anahtar yokken (ya da Claude başarısız olunca) tam işlevsel, belirlenimci çıktılar.
-import { clusterLabel, compactIri, fy, RIGHT_VOCAB, type DiscussionSummary, type AiCitedPoint } from "@forum/shared";
+import { clusterLabel, compactIri, fy, type DiscussionSummary, type AiCitedPoint } from "@forum/shared";
 import type { ClassificationResult, ModerationResult, PiiFinding, SummaryInputMessage } from "../core/contracts";
 import {
   ACCUSATION_WORDS,
   COPYRIGHT_CUES,
-  EXPAND_CUES,
   HATE_CUES,
   INSULT_WORDS,
   LABEL_ARTICLE_KEYWORDS,
-  LABEL_SEVERITY,
   LEGAL_MESSAGE,
   LEGAL_QUALIFICATION_PATTERNS,
   OVERCLAIM_MESSAGE,
   OVERCLAIM_PATTERNS,
+  OUT_OF_DOMAIN_MESSAGE,
+  OUT_OF_DOMAIN_PATTERNS,
   PROTECTED_GROUPS,
-  RESTRICT_CUES,
   SPAM_STRONG,
   SPAM_WEAK,
   THREAT_PHRASES,
 } from "./lexicons";
 import { detectPii, PseudonymMasker, redactPii } from "./pii";
+import { detectRights } from "./rights";
 import { clamp01, contentTokens, f5, findPhrase, lowerTr, normalizeTr, round3, sentences, STOPWORDS, tokenize, truncate, type Token } from "./text";
 
 export interface ClassifyContext {
@@ -237,17 +237,10 @@ export function offlineModerate(text: string, ctx: ModerateContext): Offline<Mod
 
 // ───────────────────────── Sınıflandırma ─────────────────────────
 
-function rightKeywords(r: { iri: string; label: string }): string[] {
-  const v = RIGHT_VOCAB.find((x) => x.local === localOf(r.iri));
-  if (v) return v.keywords;
-  return contentTokens(r.label).filter((t) => t.length >= 5);
-}
-
 export function offlineClassify(input: { title: string; body: string }, ctx: ClassifyContext): Offline<ClassificationResult> {
   // Kategori eşleştirmesinde durak sözcükler ("hatta", "ama" …) atlanır.
   const titleTokens = tokenize(input.title ?? "").filter((t) => !STOPWORDS.has(t.norm));
   const bodyTokens = tokenize(input.body ?? "").filter((t) => !STOPWORDS.has(t.norm));
-  const all = tokenize(`${input.title ?? ""}\n${input.body ?? ""}`);
   const fullText = `${input.title ?? ""}\n${input.body ?? ""}`;
 
   const scored = ctx.categories
@@ -269,23 +262,16 @@ export function offlineClassify(input: { title: string; body: string }, ctx: Cla
   const chosen = scored.filter((x) => x.score >= Math.max(1, best * 0.5)).slice(0, 3);
   const categories = chosen.map((x) => ({ iri: x.c.iri, confidence: round3(Math.min(0.9, 0.25 + 0.12 * x.score)) }));
 
-  const restrictCues = phraseHits(all, fullText, RESTRICT_CUES).quotes;
-  const expandCues = phraseHits(all, fullText, EXPAND_CUES).quotes;
-  const restrictSet = new Set(RESTRICT_CUES.map(normalizeTr));
-  const rightsAffected: ClassificationResult["rightsAffected"] = [];
-  const rightNotes: string[] = [];
-  for (const r of ctx.rights) {
-    const kws = rightKeywords(r).filter((k) => findPhrase(all, k).length > 0);
-    if (!kws.length) continue;
-    let direction: "restrict" | "expand" | null = null;
-    if (restrictCues.length || kws.some((k) => restrictSet.has(normalizeTr(k)))) direction = "restrict";
-    else if (expandCues.length) direction = "expand";
-    if (!direction) continue;
-    const cue = direction === "restrict" ? restrictCues.length > 0 : expandCues.length > 0;
-    rightsAffected.push({ right: r.iri, direction, confidence: round3(Math.min(0.9, 0.4 + 0.15 * kws.length + (cue ? 0.1 : 0))) });
-    rightNotes.push(`«${r.label}» (${direction === "restrict" ? "kısıtlama" : "genişletme"}; ${kws.map((k) => `«${k}»`).join(", ")})`);
-  }
-  rightsAffected.sort((a, b) => b.confidence - a.confidence || a.right.localeCompare(b.right));
+  const found = detectRights(fullText, ctx.rights, localOf);
+  const rightsAffected: ClassificationResult["rightsAffected"] = found.map((f) => ({ right: f.right, direction: f.direction, confidence: round3(f.confidence) }));
+  const labelOfRight = new Map(ctx.rights.map((r) => [r.iri, r.label]));
+  const rightNotes = found.map(
+    (f) =>
+      `«${labelOfRight.get(f.right) ?? f.right}» (${f.direction === "restrict" ? "kısıtlama" : "genişletme"}, güven ${f.confidence.toFixed(2).replace(".", ",")}${f.confidence < 0.5 ? ", zayıf ipucu" : ""}; ${f.evidence
+        .slice(0, 2)
+        .map((e) => `«${truncate(e, 80)}»`)
+        .join(", ")})`,
+  );
 
   const { hits } = analyzeContent(fullText);
   const contentLabels = hits.map((h) => ({ label: labelIri(h.local, ctx.contentLabels), confidence: h.confidence }));
@@ -296,10 +282,7 @@ export function offlineClassify(input: { title: string; body: string }, ctx: Cla
   } else {
     parts.push("Kategori anahtar kelimeleriyle eşleşme bulunamadı; kategoriyi yazar seçmelidir.");
   }
-  if (rightNotes.length) {
-    const cues = [...new Set((restrictCues.length ? restrictCues : expandCues).map(lowerTr))];
-    parts.push(`Hak etkisi ipuçları${cues.length ? ` (${cues.map((c) => `«${c}»`).join(", ")})` : ""}: ${rightNotes.join("; ")}.`);
-  }
+  if (rightNotes.length) parts.push(`Hak etkisi değerlendirmesi: ${rightNotes.join("; ")}.`);
   if (hits.length) parts.push(`İçerik uyarıları: ${hits.map((h) => LABEL_NAMES[h.local] ?? h.local).join(", ")}.`);
   parts.push("Bu sınıflandırma çevrimdışı sezgisel yöntemle yapılmıştır ve yalnızca öneri niteliğindedir; etiketler yalnızca yükseltilebilir.");
   return { categories, rightsAffected, contentLabels, rationale: parts.join(" ") };
@@ -591,6 +574,11 @@ export function offlineBridging(input: { title: string; body: string; majorityPo
 
 // ───────────────────────── Bilirkişi raporu denetimi ─────────────────────────
 
+/**
+ * Bulgu türleri: legal_qualification, overclaim, out_of_domain. Çevrimdışı "out_of_domain" yalnızca bilirkişinin
+ * kendi beyanıyla alan dışına çıktığı cümleleri ("uzmanlık alanım dışında olmakla birlikte …") yakalar; alan
+ * karşılaştırmasına dayalı tespit yalnızca Claude modunda yapılır (çevrimdışında üretilmeyebilir).
+ */
 export function offlineLint(text: string): { issues: { quote: string; kind: string; message: string }[] } {
   const issues: { quote: string; kind: string; message: string }[] = [];
   const seen = new Set<string>();
@@ -606,6 +594,11 @@ export function offlineLint(text: string): { issues: { quote: string; kind: stri
     if (over.length && !seen.has(`O:${quote}`)) {
       seen.add(`O:${quote}`);
       issues.push({ quote, kind: "overclaim", message: `${OVERCLAIM_MESSAGE} (Saptanan ifade: «${over[0]}».)` });
+    }
+    const ood = OUT_OF_DOMAIN_PATTERNS.filter((p) => low.includes(p));
+    if (ood.length && !seen.has(`D:${quote}`)) {
+      seen.add(`D:${quote}`);
+      issues.push({ quote, kind: "out_of_domain", message: `${OUT_OF_DOMAIN_MESSAGE} (Saptanan ifade: «${ood[0]}».)` });
     }
   }
   return { issues };

@@ -32,7 +32,7 @@ export function AiLabel({ label, model, at, offline, info, children, hideNote, c
       <span className="ai-label-text">{text}</span>
       {isOffline ? (
         <span className="ai-offline" title="Claude API anahtarı tanımlı değil ya da yanıt alınamadı; kural tabanlı sezgisel analiz kullanıldı.">
-          çevrimdışı sezgisel mod
+          Çevrimdışı: kural tabanlı sezgisel analiz
         </span>
       ) : null}
       {approved}

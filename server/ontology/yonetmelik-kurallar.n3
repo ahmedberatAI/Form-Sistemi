@@ -20,9 +20,10 @@
 # Yönetmelik önerileri "Forum yönetmeliği" kategorisindedir
 { ?p a fy:YonetmelikOnerisi . } => { ?p fy:kategori fy:ForumYonetmeligi . } .
 
-# ─── K3. Alt konu: üst konu etkinse etkin konu sınıfına girer; kategoriler miras kalır ───
+# ─── K3. Alt konu / düzenleme: konu etkinse etkin konu sınıfına girer; kategoriler miras kalır ───
 { ?t fy:durum "active" . } => { ?t a fy:EtkinKonu . } .
 { ?p a fy:AltKonuOnerisi . ?p fy:ustKonu ?t . ?t fy:konuKategorisi ?c . } => { ?p fy:mirasKategori ?c . ?p fy:kategori ?c . } .
+{ ?p a fy:DuzenlemeOnerisi . ?p fy:hedefKonu ?t . ?t fy:konuKategorisi ?c . } => { ?p fy:mirasKategori ?c . ?p fy:kategori ?c . } .
 
 # ─── K4. Bilirkişi gereksinimi: kategoriden (üst sınıftan miras) ───
 { ?p a fy:Oneri . ?p a ?c . ?c fy:bilirkisiGerekli true . } =>

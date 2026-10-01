@@ -91,7 +91,7 @@ export function signTxHash(hash: string, appSecretKey: string): string {
 // ed25519Verify saf bir fonksiyondur; (anahtar, imza, mesaj özeti) üçlüsüyle önbelleğe almak sonucu değiştirmez.
 // Aynı süreçteki dört doğrulayıcının aynı imzayı dört kez doğrulamasını önler.
 const verifyMemo = new Map<string, boolean>();
-const MEMO_LIMIT = 50_000;
+const MEMO_LIMIT = 100_000;
 
 export function verifySig(sig: unknown, message: Uint8Array, publicKey: string): boolean {
   if (typeof sig !== "string" || sig.length !== 128) return false;
@@ -99,7 +99,14 @@ export function verifySig(sig: unknown, message: Uint8Array, publicKey: string):
   const hit = verifyMemo.get(key);
   if (hit !== undefined) return hit;
   const ok = ed25519Verify(sig, message, publicKey);
-  if (verifyMemo.size >= MEMO_LIMIT) verifyMemo.clear();
+  if (verifyMemo.size >= MEMO_LIMIT) {
+    // En eski %10'u at (Map ekleme sırasını korur).
+    let drop = MEMO_LIMIT / 10;
+    for (const k of verifyMemo.keys()) {
+      verifyMemo.delete(k);
+      if (--drop <= 0) break;
+    }
+  }
   verifyMemo.set(key, ok);
   return ok;
 }

@@ -21,6 +21,16 @@ import { detectPii, PseudonymMasker, sanitizeForModel } from "./pii";
 const MAX_SUMMARY_MESSAGES = 400;
 const MAX_MESSAGE_CHARS = 2000;
 
+/** lintExpertReport için ek seçenek: bilirkişinin uzmanlık alanları (etiket ya da IRI) "out_of_domain" denetimine verilir. */
+export interface LintOptions extends AiCallOptions {
+  domains?: string[];
+}
+
+/** AiService + uzmanlık alanı alan lint (sözleşme genişletilene dek somut tip üzerinden kullanılabilir). */
+export interface AiServiceExt extends AiService {
+  lintExpertReport(text: string, opts?: LintOptions): ReturnType<AiService["lintExpertReport"]>;
+}
+
 export interface AiServiceOptions {
   /** undefined: ortamdan (AI_ENABLED + ANTHROPIC_API_KEY); null: zorla çevrimdışı. */
   client?: AnthropicLike | null;
@@ -38,7 +48,7 @@ function defaultClient(ctx: CoreContext): AnthropicLike | null {
 
 const OFF = { offline: true, model: OFFLINE_MODEL } as const;
 
-export function createAiService(ctx: CoreContext, opts: AiServiceOptions = {}): AiService {
+export function createAiService(ctx: CoreContext, opts: AiServiceOptions = {}): AiServiceExt {
   const client = opts.client === undefined ? defaultClient(ctx) : opts.client;
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const model = ctx.config.aiModel;
@@ -173,9 +183,9 @@ export function createAiService(ctx: CoreContext, opts: AiServiceOptions = {}): 
       return { drafts: r.data.drafts, offline: false, model: r.model };
     },
 
-    async lintExpertReport(text, o) {
+    async lintExpertReport(text, o?: LintOptions) {
       const offline = offlineLint(text);
-      const r = await ask(o, () => lintRequest(sanitizeForModel(text)));
+      const r = await ask(o, () => lintRequest(sanitizeForModel(text), (o?.domains ?? []).map((d) => sanitizeForModel(d))));
       if (!r) return { ...offline, ...OFF };
       // Hukuki nitelendirme kuralı belirlenimci olarak da uygulanır: yerel bulgular eklenir.
       const issues: { quote: string; kind: string; message: string }[] = [...r.data.issues];

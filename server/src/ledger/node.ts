@@ -625,7 +625,9 @@ export class ValidatorNode {
 
   private computeValidity(v: Value): boolean {
     const last = this.lastInfo();
-    if (v.prevHash !== last.hash || !(v.time > last.time) || v.time > this.hooks.now() + MAX_FUTURE_MS) return false;
+    // Üst sınır önceki bloğa da bağlıdır: simüle saat geri gitse (ör. ofset kaybı) zincir durmaz.
+    const horizon = Math.max(this.hooks.now(), last.time + 1) + MAX_FUTURE_MS;
+    if (v.prevHash !== last.hash || !(v.time > last.time) || v.time > horizon) return false;
     if (v.txCount < 1 || v.txCount > this.opts.maxTxsPerBlock) return false;
     const seen = new Set<string>();
     for (const tx of v.txs) {

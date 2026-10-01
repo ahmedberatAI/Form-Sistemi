@@ -28,8 +28,9 @@ export async function buildServer(services: AppServices, config: Config, opts: H
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: BODY_LIMIT });
 
   // Boş gövdeli JSON isteklerini kabul et (gövde yok sayılır); geri kalanı Fastify'ın güvenli ayrıştırıcısında.
+  // API yalnız JSON kabul eder (text/plain → 415).
   const defaultJson = app.getDefaultJsonParser("error", "ignore");
-  app.removeContentTypeParser("application/json");
+  app.removeContentTypeParser(["application/json", "text/plain"]);
   app.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, done) => {
     const raw = typeof body === "string" ? body : body.toString("utf8");
     if (raw.trim() === "") return done(null, undefined);

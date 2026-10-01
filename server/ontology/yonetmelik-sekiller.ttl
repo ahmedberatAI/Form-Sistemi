@@ -5,6 +5,8 @@
 #  bir bulgu kodu taşır (fy:bulguKodu); sh:message Türkçedir ve maddeye atıf yapar.
 #  "Meta-şekiller" (en altta) yönetmeliğin kendisini denetler: yama uygulandıktan
 #  sonra ortaya çıkan yönetmelik de bu şekillere uymak zorundadır.
+#  fy:sekilGrubu: "oneri" şekilleri her denetimde birleştirilmiş veri kümesinde, "yonetmelik"
+#  (meta) şekilleri yüklemede ve her yamada yamalı yönetmelik üzerinde çalıştırılır.
 # ═══════════════════════════════════════════════════════════════════════════
 @prefix fy:   <https://forumsistemi.org/ont#> .
 @prefix sh:   <http://www.w3.org/ns/shacl#> .
@@ -14,7 +16,7 @@
 
 # ═════════════════════════ Tüm öneriler ═════════════════════════
 
-fy:OneriSekli a sh:NodeShape ;
+fy:OneriSekli a sh:NodeShape ; fy:sekilGrubu "oneri" ;
     sh:targetClass fy:Oneri ;
     sh:property [
         sh:path fy:baslik ; sh:minCount 1 ; sh:maxCount 1 ; sh:minLength 3 ; sh:maxLength 200 ;
@@ -47,7 +49,7 @@ fy:OneriSekli a sh:NodeShape ;
         sh:message "Madde 12 (2): Öneri, orta güvenle yasak içerik etiketi taşıyor; bilirkişi incelemesi gerekiyor."
     ] .
 
-fy:KategoriSekli a sh:NodeShape ;
+fy:KategoriSekli a sh:NodeShape ; fy:sekilGrubu "oneri" ;
     sh:targetClass fy:KonuOnerisi, fy:AltKonuOnerisi, fy:DuzenlemeOnerisi ;
     sh:property [
         sh:path fy:kategori ; sh:minCount 1 ;
@@ -57,7 +59,7 @@ fy:KategoriSekli a sh:NodeShape ;
 
 # ═════════════════════════ Alt konu ═════════════════════════
 
-fy:AltKonuSekli a sh:NodeShape ;
+fy:AltKonuSekli a sh:NodeShape ; fy:sekilGrubu "oneri" ;
     sh:targetClass fy:AltKonuOnerisi ;
     sh:property [
         sh:path fy:ustKonu ; sh:minCount 1 ; sh:maxCount 1 ;
@@ -72,7 +74,7 @@ fy:AltKonuSekli a sh:NodeShape ;
 
 # ═════════════════════════ Düzenleme teklifi ═════════════════════════
 
-fy:DuzenlemeSekli a sh:NodeShape ;
+fy:DuzenlemeSekli a sh:NodeShape ; fy:sekilGrubu "oneri" ;
     sh:targetClass fy:DuzenlemeOnerisi ;
     sh:property [
         sh:path fy:tabanSurum ; sh:minCount 1 ; sh:maxCount 1 ;
@@ -97,7 +99,7 @@ fy:DuzenlemeSekli a sh:NodeShape ;
 
 # ═════════════════════════ Silme (karartma) talebi ═════════════════════════
 
-fy:SilmeSekli a sh:NodeShape ;
+fy:SilmeSekli a sh:NodeShape ; fy:sekilGrubu "oneri" ;
     sh:targetClass fy:SilmeOnerisi ;
     sh:property [
         sh:path fy:silmeGerekcesi ; sh:minCount 1 ; sh:maxCount 1 ;
@@ -122,7 +124,7 @@ fy:SilmeSekli a sh:NodeShape ;
 
 # ═════════════════════════ Yönetmelik değişikliği ═════════════════════════
 
-fy:YonetmelikDegisikligiSekli a sh:NodeShape ;
+fy:YonetmelikDegisikligiSekli a sh:NodeShape ; fy:sekilGrubu "oneri" ;
     sh:targetClass fy:YonetmelikOnerisi ;
     sh:property [
         sh:path fy:yamaIslemi ; sh:minCount 1 ;
@@ -147,7 +149,7 @@ fy:YonetmelikDegisikligiSekli a sh:NodeShape ;
 
 # ═════════════════════════ Meta-şekiller: yönetmeliğin kendisi ═════════════════════════
 
-fy:MaddeSekli a sh:NodeShape ;
+fy:MaddeSekli a sh:NodeShape ; fy:sekilGrubu "yonetmelik" ;
     sh:targetClass fy:Madde ;
     sh:property [
         sh:path fy:maddeNo ; sh:minCount 1 ; sh:maxCount 1 ; sh:pattern "^Madde [0-9]+( \\([0-9]+\\))?( [a-zçğışöü]\\))?$" ;
@@ -165,7 +167,7 @@ fy:MaddeSekli a sh:NodeShape ;
         sh:message "Madde 6 (1): Her maddenin tek bir koruma düzeyi (Değiştirilemez, Nitelikli, Olağan) olmalıdır."
     ] .
 
-fy:KuralSekli a sh:NodeShape ;
+fy:KuralSekli a sh:NodeShape ; fy:sekilGrubu "yonetmelik" ;
     sh:targetClass fy:Kural ;
     sh:property [
         sh:path fy:dayanak ; sh:minCount 1 ; sh:maxCount 1 ; sh:class fy:Madde ;
@@ -183,7 +185,7 @@ fy:KuralSekli a sh:NodeShape ;
         sh:message "Madde 6 (3): Önceliklendirilen (overrides) hüküm Yönetmelikte tanımlı bir kural ya da madde olmalıdır."
     ] .
 
-fy:TemelHakSekli a sh:NodeShape ;
+fy:TemelHakSekli a sh:NodeShape ; fy:sekilGrubu "yonetmelik" ;
     sh:targetClass fy:TemelHak ;
     sh:property [
         sh:path rdfs:label ; sh:minCount 1 ;
@@ -191,7 +193,7 @@ fy:TemelHakSekli a sh:NodeShape ;
         sh:message "Madde 4 (2): Her temel hakkın bir adı olmalıdır."
     ] .
 
-fy:GerekceSekli a sh:NodeShape ;
+fy:GerekceSekli a sh:NodeShape ; fy:sekilGrubu "yonetmelik" ;
     sh:targetClass fy:Gerekce ;
     sh:property [
         sh:path rdfs:label ; sh:minCount 1 ;
@@ -200,21 +202,21 @@ fy:GerekceSekli a sh:NodeShape ;
     ] .
 
 # Parametre aralıkları (Madde 23 (2)). Yeter sayı 0 < q ≤ 1; eşik 0,5 ≤ τ ≤ 1; oranlar [0, 1]; süreler [0, 8760].
-fy:YeterSayiSekli a sh:NodeShape ;
+fy:YeterSayiSekli a sh:NodeShape ; fy:sekilGrubu "yonetmelik" ;
     sh:targetSubjectsOf fy:yeterSayi ;
     sh:property [
         sh:path fy:yeterSayi ; sh:maxCount 1 ; sh:minExclusive 0 ; sh:maxInclusive 1 ;
         sh:severity sh:Violation ; fy:bulguKodu "param_range" ; fy:dayanak fy:Madde_23_2 ;
         sh:message "Madde 23 (2): Yeter sayı 0'dan büyük ve en fazla 1 olmalıdır."
     ] .
-fy:EsikSekli a sh:NodeShape ;
+fy:EsikSekli a sh:NodeShape ; fy:sekilGrubu "yonetmelik" ;
     sh:targetSubjectsOf fy:esik ;
     sh:property [
         sh:path fy:esik ; sh:maxCount 1 ; sh:minInclusive 0.5 ; sh:maxInclusive 1 ;
         sh:severity sh:Violation ; fy:bulguKodu "param_range" ; fy:dayanak fy:Madde_23_2 ;
         sh:message "Madde 23 (2): Onay eşiği 0,50 ile 1 arasında olmalıdır."
     ] .
-fy:OranSekli a sh:NodeShape ;
+fy:OranSekli a sh:NodeShape ; fy:sekilGrubu "yonetmelik" ;
     sh:targetSubjectsOf fy:kumeTabani, fy:yazarKumesiTabani, fy:asmaEsigi, fy:yenidenOyEsigi, fy:anlamliKumePayi,
         fy:sogukBaslangicArtisi, fy:vekaletSiniriOrani, fy:yuksekGuvenEsigi, fy:ortaGuvenEsigi ;
     sh:property [ sh:path fy:kumeTabani ; sh:maxCount 1 ; sh:minInclusive 0 ; sh:maxInclusive 1 ; fy:bulguKodu "param_range" ; fy:dayanak fy:Madde_23_2 ;
@@ -235,7 +237,7 @@ fy:OranSekli a sh:NodeShape ;
         sh:message "Madde 23 (2): Yüksek güven eşiği 0'dan büyük ve en fazla 1 olmalıdır." ] ;
     sh:property [ sh:path fy:ortaGuvenEsigi ; sh:maxCount 1 ; sh:minExclusive 0 ; sh:maxInclusive 1 ; sh:lessThan fy:yuksekGuvenEsigi ; fy:bulguKodu "param_range" ; fy:dayanak fy:Madde_23_2 ;
         sh:message "Madde 23 (2): Orta güven eşiği 0'dan büyük olmalı ve yüksek güven eşiğinden küçük kalmalıdır." ] .
-fy:SureSekli a sh:NodeShape ;
+fy:SureSekli a sh:NodeShape ; fy:sekilGrubu "yonetmelik" ;
     sh:targetSubjectsOf fy:sureDestek, fy:sureTartisma, fy:sureOylama, fy:sureUzatma, fy:sureItiraz, fy:sureUzlasma ;
     sh:property [ sh:path fy:sureDestek ; sh:maxCount 1 ; sh:datatype xsd:integer ; sh:minInclusive 1 ; sh:maxInclusive 8760 ; fy:bulguKodu "param_range" ; fy:dayanak fy:Madde_23_2 ;
         sh:message "Madde 23 (2): Destekçi toplama süresi 1 ile 8760 saat arasında bir tamsayı olmalıdır." ] ;
@@ -249,7 +251,7 @@ fy:SureSekli a sh:NodeShape ;
         sh:message "Madde 23 (2): İtiraz penceresi 0 ile 8760 saat arasında bir tamsayı olmalıdır." ] ;
     sh:property [ sh:path fy:sureUzlasma ; sh:maxCount 1 ; sh:datatype xsd:integer ; sh:minInclusive 0 ; sh:maxInclusive 8760 ; fy:bulguKodu "param_range" ; fy:dayanak fy:Madde_23_2 ;
         sh:message "Madde 23 (2): Uzlaşma süresi 0 ile 8760 saat arasında bir tamsayı olmalıdır." ] .
-fy:SayiSekli a sh:NodeShape ;
+fy:SayiSekli a sh:NodeShape ; fy:sekilGrubu "yonetmelik" ;
     sh:targetSubjectsOf fy:anlamliKumeAsgariUye, fy:kumeBasinaAsgariOy, fy:kopruIcinAsgariKumelenmis, fy:vekaletAzamiAdim, fy:bilirkisiSayisi ;
     sh:property [ sh:path fy:anlamliKumeAsgariUye ; sh:maxCount 1 ; sh:datatype xsd:integer ; sh:minInclusive 1 ; fy:bulguKodu "param_range" ; fy:dayanak fy:Madde_23_2 ;
         sh:message "Madde 23 (2): Anlamlı küme asgari üye sayısı pozitif bir tamsayı olmalıdır." ] ;
@@ -261,7 +263,7 @@ fy:SayiSekli a sh:NodeShape ;
         sh:message "Madde 23 (2): Vekâlet zinciri azami adım sayısı pozitif bir tamsayı olmalıdır." ] ;
     sh:property [ sh:path fy:bilirkisiSayisi ; sh:maxCount 1 ; sh:datatype xsd:integer ; sh:minInclusive 1 ; sh:maxInclusive 9 ; fy:bulguKodu "param_range" ; fy:dayanak fy:Madde_23_2 ;
         sh:message "Madde 23 (2): Panel bilirkişi sayısı 1 ile 9 arasında bir tamsayı olmalıdır." ] .
-fy:MantiksalSekli a sh:NodeShape ;
+fy:MantiksalSekli a sh:NodeShape ; fy:sekilGrubu "yonetmelik" ;
     sh:targetSubjectsOf fy:esikKesin ;
     sh:property [ sh:path fy:esikKesin ; sh:maxCount 1 ; sh:datatype xsd:boolean ; fy:bulguKodu "param_range" ; fy:dayanak fy:Madde_23_2 ;
         sh:message "Madde 23 (2): \"Eşik kesin mi\" parametresi doğru/yanlış değerinde olmalıdır." ] .

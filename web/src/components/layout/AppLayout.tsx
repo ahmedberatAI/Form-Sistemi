@@ -116,7 +116,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
   }, [auth.sessionExpired]);
 
   const items = visibleItems(auth);
-  const topItems = items.filter((i) => i.group === "main" || i.group === "explore" || i.group === "duty");
+  // Görev sayfaları (kayıt memuru, yönetim) masaüstünde kullanıcı menüsünde, mobilde "Daha fazla"da.
+  const topItems = items.filter((i) => i.group === "main" || i.group === "explore");
   const bottomItems = items.filter((i) => i.bottom);
   const user = auth.user;
   const sys = auth.system;

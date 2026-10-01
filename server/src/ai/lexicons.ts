@@ -47,15 +47,8 @@ export const SPAM_WEAK = ["kazan", "kazanç", "fırsat", "son gün", "sipariş",
 /** Telif ihlali göstergeleri. */
 export const COPYRIGHT_CUES = ["tüm hakları saklıdır", "izinsiz", "korsan", "full indir", "pdf indir", "film indir", "kitabın tamamı", "tam metni aşağıda", "telif hakkı", "kopyaladım"];
 
-/** Hak kısıtlaması ipuçları. */
-export const RESTRICT_CUES = [
-  "yasak", "yasaklansın", "yasaklanmalı", "zorunlu", "kısıtlansın", "kısıtlanmalı", "kısıtla", "yalnızca", "sadece",
-  "hariç", "giremesin", "girmesin", "giremez", "kaldırılsın", "kapatılsın", "engellensin", "men edilsin",
-  "izin verilmesin", "ücretli olsun", "durdurulsun", "el konulsun", "izlensin", "fişlensin", "susturulsun",
-];
-
 /** Hak genişletmesi ipuçları. */
-export const EXPAND_CUES = ["ücretsiz", "erişilebilir", "herkese açık", "genişletilsin", "genişlet", "herkes yararlanabilsin", "kolaylaştırılsın"];
+export const EXPAND_CUES = ["ücretsiz", "erişilebilir", "herkese açık", "genişletilsin", "genişlet", "herkes yararlanabilsin", "kolaylaştırılsın", "erişime açılsın"];
 
 /** Hukuki nitelendirme kalıpları (6754 s. Bilirkişilik Kanunu md. 3/2). Alt dize olarak aranır. */
 export const LEGAL_QUALIFICATION_PATTERNS = [
@@ -67,8 +60,17 @@ export const LEGAL_QUALIFICATION_PATTERNS = [
 /** Aşırı kesinlik ifadeleri. */
 export const OVERCLAIM_PATTERNS = ["kesinlikle", "%100", "% 100", "yüzde yüz", "tartışmasız", "hiç şüphesiz", "şüphesiz", "kuşkusuz", "garanti eder", "asla yanılmaz"];
 
+/** Bilirkişinin kendi beyanıyla alan dışına taştığını gösteren kalıplar (çevrimdışı "out_of_domain" sezgiseli). */
+export const OUT_OF_DOMAIN_PATTERNS = [
+  "uzmanlık alanım dışında", "uzmanlık alanımın dışında", "alanım dışında", "alanımın dışında", "uzmanlık alanım olmamakla",
+  "uzmanlık alanım olmasa", "alanım olmasa da", "benim alanım değil", "alanıma girmemekle", "alanıma girmese de",
+  "uzmanı olmamakla birlikte", "uzmanı olmasam da", "konusunda uzman olmasam da", "uzman değilim ama", "uzman değilim ancak",
+];
+
 export const LEGAL_MESSAGE =
   "6754 sayılı Bilirkişilik Kanunu md. 3/2: bilirkişi hukuki nitelendirme yapamaz; hukuki değerlendirme karar organına aittir. Bu ifadeyi teknik/olgusal bir tespitle değiştirin.";
+export const OUT_OF_DOMAIN_MESSAGE =
+  "Uzmanlık alanı dışı: bilirkişi yalnızca görevlendirildiği uzmanlık alanında görüş bildirir (6754 sayılı Bilirkişilik Kanunu). Bu değerlendirmeyi rapordan çıkarın ya da sınırlılık olarak belirtip ilgili alandan bilirkişi görüşü istenmesini önerin.";
 export const OVERCLAIM_MESSAGE =
   "Aşırı kesinlik: bilirkişi raporu güven düzeyini ve belirsizlikleri açıkça belirtmelidir; kanıtla desteklenmeyen mutlak ifadelerden kaçının.";
 
@@ -80,13 +82,4 @@ export const LABEL_ARTICLE_KEYWORDS: Record<string, string[]> = {
   NefretSoylemi: ["nefret", "ayrımcılık", "eşitlik"],
   Spam: ["spam", "reklam", "konu dışı"],
   TelifIhlali: ["telif", "fikri mülkiyet", "eser"],
-};
-
-export const LABEL_SEVERITY: Record<string, 0 | 1 | 2 | 3> = {
-  Tehdit: 3,
-  NefretSoylemi: 3,
-  KisiselVeriIfsasi: 2,
-  HakaretIftira: 2,
-  Spam: 1,
-  TelifIhlali: 1,
 };

@@ -1,6 +1,6 @@
 // Hata gösterimi: ApiError (status, code, message, details) okunur biçimde; tekrar dene düğmesi.
 import type { ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { ApiError, errorMessage } from "../api/client";
 import { Alert, Button } from "./basic";
 
@@ -63,12 +63,14 @@ export function ErrorView({ error, title, onRetry, compact }: ErrorViewProps) {
   const heading = title ?? (api ? CODE_TITLES[api.code] ?? "İşlem başarısız" : "Bir hata oluştu");
   const lines = !compact && api ? describeDetails(api.details) : [];
   const isNetwork = api && (api.isNetwork || api.code === "unreachable" || api.code === "bad_response");
+  const location = useLocation();
+  const needsLogin = api?.status === 401 && api.code === "unauthorized" && location.pathname !== "/giris";
   return (
     <Alert
       tone="error"
       title={heading}
       actions={
-        onRetry || isNetwork || api?.status === 401 ? (
+        onRetry || isNetwork || needsLogin ? (
           <>
             {onRetry ? (
               <Button size="sm" icon="refresh" onClick={onRetry}>
@@ -80,8 +82,8 @@ export function ErrorView({ error, title, onRetry, compact }: ErrorViewProps) {
                 Sunucu ayarları
               </Link>
             ) : null}
-            {api?.status === 401 ? (
-              <Link className="btn btn-primary btn-sm" to="/giris">
+            {needsLogin ? (
+              <Link className="btn btn-primary btn-sm" to="/giris" state={{ from: location.pathname + location.search }}>
                 Giriş yap
               </Link>
             ) : null}

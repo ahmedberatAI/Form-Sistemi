@@ -142,7 +142,10 @@ function kmeansOnce(points: Point[], K: number, rng: Rng): { labels: Int32Array;
   return { labels, inertia };
 }
 
-/** Yerel en iyiye takılmaya karşı tohumlu yeniden başlatmalar; en düşük atalet (eşitlikte ilk) seçilir. */
+/**
+ * §9.4 yorumu: tek bir k-means++ başlangıcı farklı tohumlarda farklı yerel en iyilere takılabildiği için
+ * aynı tohumdan türetilen 10 başlangıç denenir; en düşük atalet (eşitlikte ilk) seçilir.
+ */
 function kmeans(points: Point[], K: number, seed: string): Int32Array {
   let best: { labels: Int32Array; inertia: number } | null = null;
   for (let r = 0; r < KMEANS_RESTARTS; r++) {

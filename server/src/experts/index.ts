@@ -884,7 +884,12 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
       // YZ denetimi danışmadır: hata verirse rapor yine kabul edilir.
       let lint: StoredLint;
       try {
-        const r = await ai.lintExpertReport(dissent ? `${body}\n\n${dissent}` : body);
+        const er = expertRow(expertId);
+        const aiOk = db.get<{ ai_consent: number }>("SELECT ai_consent FROM users WHERE id = ?", expertId)?.ai_consent === 1;
+        const r = await ai.lintExpertReport(dissent ? `${body}\n\n${dissent}` : body, {
+          forceOffline: !aiOk,
+          domains: er ? domainsOf(er).map((d) => ontology.categoryLabel(d)) : [],
+        });
         lint = { issues: Array.isArray(r.issues) ? r.issues : [], model: r.model, offline: r.offline, label: aiLabel(r.model, clock.now()) };
       } catch {
         lint = { issues: [], model: "", offline: true, label: "" };

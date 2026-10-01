@@ -10,7 +10,7 @@ export interface AsyncState<T> {
   /** Veriyi yeniden yükler (önceki veri ekranda kalır) */
   reload: () => Promise<void>;
   /** Yerel güncelleme (ör. eylem yanıtıyla gelen yeni nesne) */
-  setData: (next: T | ((prev: T | undefined) => T)) => void;
+  setData: (next: T | undefined | ((prev: T | undefined) => T | undefined)) => void;
 }
 
 /**
@@ -62,8 +62,8 @@ export function useAsync<T>(fn: () => Promise<T>, deps: DependencyList, opts?: {
   }, [enabled, opts?.pollMs, run]);
 
   const reload = useCallback(() => run(false), [run]);
-  const setData = useCallback((next: T | ((prev: T | undefined) => T)) => {
-    setDataState((prev) => (typeof next === "function" ? (next as (p: T | undefined) => T)(prev) : next));
+  const setData = useCallback((next: T | undefined | ((prev: T | undefined) => T | undefined)) => {
+    setDataState((prev) => (typeof next === "function" ? (next as (p: T | undefined) => T | undefined)(prev) : next));
   }, []);
 
   return { data, error, loading, reload, setData };

@@ -78,42 +78,62 @@ function initialState(i?: Partial<RegistrationInput>): FormState {
   };
 }
 
+// Sunucudaki kurallarla (server/src/identity/validation.ts) aynı
+const NICKNAME_RE = /^[A-Za-z0-9çğıöşüÇĞİÖŞÜâîûÂÎÛ._-]{3,32}$/;
+const NAME_RE = /^[\p{L}\p{M}' .-]+$/u;
+
+/** 05XX…, +90…, 0090… biçimlerini kabul eder (sunucu +90XXXXXXXXXX'e çevirir). */
+function isValidPhone(raw: string): boolean {
+  const s = raw.normalize("NFKC").replace(/[\s().-]/g, "");
+  return /^0(5\d{9})$/.test(s) || /^\+90([2-5]\d{9})$/.test(s) || /^0090([2-5]\d{9})$/.test(s);
+}
+
 const ORDER: FieldKey[] = ["nickname", "password", "password2", "firstName", "lastName", "tckn", "birthDate", "email", "phone", "il", "ilce", "mahalle", "acikAdres", "postaKodu", "kvkkNoticeAccepted"];
 
 function validate(s: FormState, mode: "self" | "registrar", today: string): Partial<Record<FieldKey, string>> {
   const e: Partial<Record<FieldKey, string>> = {};
   const nick = s.nickname.trim();
   if (nick.length < 3 || nick.length > 32) e.nickname = "Takma ad 3–32 karakter olmalıdır.";
-  else if (!/^[\p{L}\p{N}_.-]+$/u.test(nick)) e.nickname = "Takma ad yalnızca harf, rakam, nokta, alt çizgi ve tire içerebilir (boşluk yok).";
-  else if (nick.includes("@")) e.nickname = "Takma ad e-posta adresi olamaz.";
+  else if (!NICKNAME_RE.test(nick)) e.nickname = "Takma ad yalnızca harf (Türkçe harfler dahil), rakam, nokta, alt çizgi ve tire içerebilir; boşluk olamaz.";
   if (s.password.length < 8) e.password = "Şifre en az 8 karakter olmalıdır.";
-  else if (!/[A-Za-zÇĞİÖŞÜçğıöşü]/.test(s.password) || !/\d/.test(s.password)) e.password = "Şifre en az bir harf ve bir rakam içermelidir.";
+  else if (s.password.length > 128) e.password = "Şifre en fazla 128 karakter olabilir.";
+  else if (!/\p{L}/u.test(s.password) || !/\p{N}/u.test(s.password)) e.password = "Şifre en az bir harf ve bir rakam içermelidir.";
   if (mode === "self" && s.password2 !== s.password) e.password2 = "Şifreler eşleşmiyor.";
   if (!s.firstName.trim()) e.firstName = "Ad zorunludur.";
+  else if (!NAME_RE.test(s.firstName.trim())) e.firstName = "Ad yalnızca harf, boşluk, kesme işareti ve tire içerebilir.";
   if (!s.lastName.trim()) e.lastName = "Soyad zorunludur.";
+  else if (!NAME_RE.test(s.lastName.trim())) e.lastName = "Soyad yalnızca harf, boşluk, kesme işareti ve tire içerebilir.";
   const tckn = s.tckn.replace(/\D/g, "");
   if (tckn.length !== 11) e.tckn = "T.C. kimlik numarası 11 haneli olmalıdır.";
   else if (!isValidTckn(tckn)) e.tckn = "T.C. kimlik numarası geçerli değil (algoritma denetimi başarısız).";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s.birthDate)) e.birthDate = "Doğum tarihini girin.";
-  else if (s.birthDate > today) e.birthDate = "Doğum tarihi gelecekte olamaz.";
+  else if (s.birthDate >= today) e.birthDate = "Doğum tarihi geçmişte olmalıdır.";
   else if (s.birthDate < "1900-01-01") e.birthDate = "Doğum tarihi geçerli değil.";
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s.email.trim())) e.email = "Geçerli bir e-posta adresi girin.";
-  const digits = s.phone.replace(/\D/g, "");
-  if (digits.length < 10 || digits.length > 13) e.phone = "Geçerli bir telefon numarası girin (ör. 0532 123 45 67).";
-  if (!s.il.trim()) e.il = "İl zorunludur.";
-  if (!s.ilce.trim()) e.ilce = "İlçe zorunludur.";
-  if (!s.mahalle.trim()) e.mahalle = "Mahalle zorunludur.";
-  if (!s.acikAdres.trim()) e.acikAdres = "Açık adres zorunludur.";
+  if (!isValidPhone(s.phone)) e.phone = "Telefon numarası 05XX XXX XX XX ya da +90 ile başlayan biçimde olmalıdır.";
+  if (s.il.trim().length < 2) e.il = s.il.trim() ? "İl en az 2 karakter olmalıdır." : "İl zorunludur.";
+  if (s.ilce.trim().length < 2) e.ilce = s.ilce.trim() ? "İlçe en az 2 karakter olmalıdır." : "İlçe zorunludur.";
+  if (s.mahalle.trim().length < 2) e.mahalle = s.mahalle.trim() ? "Mahalle en az 2 karakter olmalıdır." : "Mahalle zorunludur.";
+  if (s.acikAdres.trim().length < 5) e.acikAdres = s.acikAdres.trim() ? "Açık adres en az 5 karakter olmalıdır." : "Açık adres zorunludur.";
   if (s.postaKodu.trim() && !/^\d{5}$/.test(s.postaKodu.trim())) e.postaKodu = "Posta kodu 5 haneli olmalıdır.";
   if (!s.kvkkNoticeAccepted) e.kvkkNoticeAccepted = mode === "self" ? "Devam etmek için aydınlatma metnini okuduğunuzu onaylayın." : "Üyenin aydınlatma metnini okuduğunu onaylayın.";
   return e;
 }
 
-/** Sunucu hatasını alanlara eşler (zod issues: path ["address","il"] → "il"; kod adlarından tahmin). */
+/**
+ * Sunucu hatasını alanlara eşler. Sunucu details biçimi: { "nickname": "…", "address.il": "…" }
+ * (zod issues dizisi de desteklenir); ayrıca hata kodundan tahmin (duplicate_nickname → nickname).
+ */
 function mapServerError(err: unknown): Partial<Record<FieldKey, string>> {
   const out: Partial<Record<FieldKey, string>> = {};
   if (!(err instanceof ApiError)) return out;
   const det = err.details as unknown;
+  if (det && typeof det === "object" && !Array.isArray(det)) {
+    for (const [k, v] of Object.entries(det as Record<string, unknown>)) {
+      const last = k.split(".").pop() as FieldKey;
+      if (typeof v === "string" && ORDER.includes(last)) out[last] ??= v;
+    }
+  }
   const issues = Array.isArray(det) ? det : Array.isArray((det as { issues?: unknown })?.issues) ? (det as { issues: unknown[] }).issues : [];
   for (const it of issues) {
     const o = it as { path?: unknown; message?: unknown };

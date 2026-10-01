@@ -38,7 +38,7 @@ export default function LoginPage() {
     <div className="page page-narrow">
       <PageHeader title="Giriş yap" subtitle="Forum Sistemi hesabınızla oturum açın." />
       {from ? (
-        <Alert tone="info" className="mb">
+        <Alert tone="info">
           Devam etmek için oturum açmanız gerekiyor.
         </Alert>
       ) : null}

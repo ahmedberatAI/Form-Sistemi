@@ -26,20 +26,29 @@ export interface ShaclFinding {
   value: string | null;
 }
 
-function severityOf(t: Term): Severity {
+function severityOf(t: { value: string }): Severity {
   if (t.value === SH_NS + "Warning") return "warning";
   if (t.value === SH_NS + "Info") return "info";
   return "violation";
 }
 
+export type ShapeGroup = "oneri" | "yonetmelik";
+
 export class ShaclChecker {
   private readonly validator: Validator;
   private readonly meta = new Map<string, { code: string | null; article: string | null }>();
+  private readonly groups = new Map<ShapeGroup, { terms: Term[] }[]>();
 
   constructor(shapesQuads: Quad[]) {
     this.validator = new Validator(rdfDataset.dataset(shapesQuads), { factory: factory as never });
     const store = new Store(shapesQuads);
     const key = (t: Term) => `${t.termType}:${t.value}`;
+    for (const q of store.getQuads(null, fyN("sekilGrubu"), null, null)) {
+      const g = q.object.value as ShapeGroup;
+      const arr = this.groups.get(g) ?? [];
+      arr.push({ terms: [q.subject] });
+      this.groups.set(g, arr);
+    }
     for (const q of store.getQuads(null, fyN("bulguKodu"), null, null)) {
       const m = this.meta.get(key(q.subject)) ?? { code: null, article: null };
       m.code = q.object.value;
@@ -52,8 +61,10 @@ export class ShaclChecker {
     }
   }
 
-  async validate(quads: Quad[]): Promise<ShaclFinding[]> {
-    const report = await this.validator.validate({ dataset: rdfDataset.dataset(quads) });
+  /** group verilirse yalnızca o gruptaki şekiller (fy:sekilGrubu) çalıştırılır. */
+  async validate(quads: Quad[], group?: ShapeGroup): Promise<ShaclFinding[]> {
+    const shapes = group ? this.groups.get(group) ?? [] : undefined;
+    const report = await this.validator.validate({ dataset: rdfDataset.dataset(quads) }, shapes);
     const out: ShaclFinding[] = [];
     const seen = new Set<string>();
     for (const r of report.results) {
