@@ -274,7 +274,7 @@ export async function runScenario(e: SeedEngine, opts: { start: number; end: num
 
   e.schedule(S + 2.5 * DAY, "2. dalga", async () => {
     await create(P(C.P5, { A: 0.95, B: 0.2, C: 0.97 }));
-    await create(P(C.P6, { A: 0.85, B: 0.25, C: 1 }));
+    await create(P(C.P6, { A: 0.97, B: 0.35, C: 1 }));
     await create(P(C.P7, { A: 0.03, B: 0.97, C: 0.5 }));
     await create(P(C.P8, { A: 0.95, B: 0.25, C: 0.8 }));
     await create(P(C.P13, { A: 0.1, B: 0.05, C: 1 }));

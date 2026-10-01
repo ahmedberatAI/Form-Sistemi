@@ -62,7 +62,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [connectionError, setConnectionError] = useState<ApiError | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
   const [unread, setUnread] = useState(0);
-  const offsetRef = useRef(0);
+  // Sunucu saati simüle ve TIME_SCALE kat hızlı akar: now() = simAnchor + (Date.now() − realAnchor) × scale
+  const clockRef = useRef<{ simAnchor: number; realAnchor: number; scale: number } | null>(null);
   const tokenRef = useRef<string | null>(null);
 
   const applySession = useCallback(async (t: string | null, me: Me | null) => {
@@ -80,7 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const t0 = Date.now();
       const s = await api.getSystem();
       const t1 = Date.now();
-      offsetRef.current = s.now - Math.round((t0 + t1) / 2);
+      clockRef.current = { simAnchor: s.now, realAnchor: Math.round((t0 + t1) / 2), scale: s.timeScale > 0 ? s.timeScale : 1 };
       setSystem(s);
       return s;
     } catch {
@@ -217,7 +218,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [applySession]);
 
   const setUser = useCallback((me: Me) => setUserState(me), []);
-  const now = useCallback(() => Date.now() + offsetRef.current, []);
+  const now = useCallback(() => {
+    const c = clockRef.current;
+    return c ? Math.floor(c.simAnchor + (Date.now() - c.realAnchor) * c.scale) : Date.now();
+  }, []);
 
   const value = useMemo<AuthContextValue>(() => {
     const roles = user?.roles ?? [];

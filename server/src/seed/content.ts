@@ -582,6 +582,12 @@ export const C1: ProposalSpec = {
     { by: "B", stance: "question", text: "Dönüştürülen yerlerde engelli kartlı araçlara da park önceliği tanınabilir mi?" },
     { by: "A", stance: "neutral", reply: 4, bridge: true, text: "Bu iyi bir uzlaşma noktası olabilir; dönüştürülen yerlerde engelli kartlı araçlara ücretsiz ve süresiz park hakkı eklenebilir." },
   ],
+  topicMessages: [
+    { by: "volkan_i", stance: "neutral", text: "Uygulama başladı; ilk ayın doluluk sayımlarını engelli derneğiyle birlikte yapıp bu başlıkta paylaşacağız." },
+    { by: "zeynep", stance: "con", text: "Karara saygı duyuyoruz ama azınlık raporumuzdaki talep araştırması da yapılmalı; yer bulamayıp geri dönenler sayımda görünmüyor." },
+    { by: "A", stance: "neutral", reply: 1, bridge: true, text: "Talep araştırmasının altı aylık değerlendirmeye eklenmesini öneriyorum; iki veri birlikte daha doğru bir tablo verir." },
+    { by: "B", stance: "pro", text: "Çevredeki yollarda çift sıra park ilk haftada belirgin biçimde azaldı." },
+  ],
 };
 
 /** Yeniden oylamada bırakılan tartışmalı öneri. */

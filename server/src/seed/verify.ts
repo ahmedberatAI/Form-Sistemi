@@ -122,7 +122,7 @@ export function printSummary(e: SeedEngine, checks: Check[], meta: { seconds: nu
   line(`Simüle saat  : ${new Date(meta.simNow).toISOString()}   Süre: ${meta.seconds.toFixed(1)} sn`);
   line("");
   line("Hesaplar (şifreler sabittir):");
-  line(`  ${pad("Takma ad", 34)}${pad("Rol", 40)}Şifre`);
+  line(`  ${pad("Takma ad", 37)}${pad("Rol", 40)}Şifre`);
   const rows: [string, string, string][] = [
     ["yonetici", "yönetici (+üye)", PASSWORDS.admin],
     ["kayitmemuru", "kayıt memuru", PASSWORDS.registrar],
@@ -133,7 +133,7 @@ export function printSummary(e: SeedEngine, checks: Check[], meta: { seconds: nu
   ];
   const members = PEOPLE.filter((p) => p.kind === "member").length;
   rows.push(["ayse, mehmet, zeynep", `üye (+${members - 3} üye daha)`, PASSWORDS.member]);
-  for (const [n, r, p] of rows) line(`  ${pad(n, 34)}${pad(r, 40)}${p}`);
+  for (const [n, r, p] of rows) line(`  ${pad(n, 37)}${pad(r, 40)}${p}`);
   const pending = s.identity.listPending().map((u) => u.nickname);
   line(`  Bekleyen başvurular: ${pending.join(", ") || "—"}; reddedilen: 1; reşit olmayan: genc_ali, ada_k; siyasi rıza vermeyen: ozan_v, kerem_b, lale_y`);
   line("");

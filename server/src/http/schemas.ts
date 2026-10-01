@@ -209,12 +209,14 @@ export const proposalListQuery = z.object({
   topicId: qText(200).optional(),
   authorId: qText(200).optional(),
   mine: qBool.optional(),
-  limit: qInt(1, 500).optional(),
+  limit: qInt(1, 1000).optional(),
 });
 
 export const createProposalBody = z.object({
   kind: z.enum(PROPOSAL_KINDS),
-  title: requiredText(300),
+  // Başlık burada boş olabilir: ön denetim yarım formu da değerlendirir; silme talebinde başlık otomatik üretilir.
+  // Asıl uzunluk kuralları forum servisinde (alan bazlı Türkçe hata ile) uygulanır.
+  title: text(300).default(""),
   body: text(50_000),
   categories: z.array(iri).max(30).default([]),
   parentTopicId: id.optional(),
