@@ -1,0 +1,95 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  Forum Sistemi — N3 çıkarım kuralları (Horn kuralları, ileri zincirleme)
+#  n3 paketinin Reasoner'ı ile T-kutusu + yürürlükteki A-kutusu + öneri alt grafı
+#  üzerinde sabit noktaya kadar uygulanır. Sayısal karşılaştırma yoktur: güven
+#  düzeyleri (yüksek/orta/düşük) denetim öncesinde rasyonel karşılaştırmayla atanır,
+#  sürüm eşitliği SHACL (sh:equals) ile, koruma tabanları meta-denetimle sınanır.
+#  İhlal/uyarı "bayrakları" burada çıkarılır, yonetmelik-sekiller.ttl (SHACL)
+#  tarafından maddeye atıfla raporlanır.
+# ═══════════════════════════════════════════════════════════════════════════
+@prefix fy:   <https://forumsistemi.org/ont#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+# ─── K1. Sınıf ağacı: rdfs:subClassOf geçişli kapanışı ve tip kalıtımı ───
+{ ?a rdfs:subClassOf ?b . ?b rdfs:subClassOf ?c . } => { ?a rdfs:subClassOf ?c . } .
+{ ?x a ?c . ?c rdfs:subClassOf ?d . } => { ?x a ?d . } .
+
+# ─── K2. Kategoriler: karar önerisi, kategorisinin ve tüm üst kategorilerinin üyesidir ───
+# (Silme talepleri kategori sınıflarına girmez; kategori kuralları ve bilirkişi gereksinimi onlara uygulanmaz.)
+{ ?p a fy:KararOnerisi . ?p fy:kategori ?c . } => { ?p a ?c . } .
+{ ?p a fy:KararOnerisi . ?p a ?c . ?c rdfs:subClassOf fy:Kategori . } => { ?p fy:kategori ?c . } .
+# Yönetmelik önerileri "Forum yönetmeliği" kategorisindedir
+{ ?p a fy:YonetmelikOnerisi . } => { ?p fy:kategori fy:ForumYonetmeligi . } .
+
+# ─── K3. Alt konu / düzenleme: konu etkinse etkin konu sınıfına girer; kategoriler miras kalır ───
+{ ?t fy:durum "active" . } => { ?t a fy:EtkinKonu . } .
+{ ?p a fy:AltKonuOnerisi . ?p fy:ustKonu ?t . ?t fy:konuKategorisi ?c . } => { ?p fy:mirasKategori ?c . ?p fy:kategori ?c . } .
+{ ?p a fy:DuzenlemeOnerisi . ?p fy:hedefKonu ?t . ?t fy:konuKategorisi ?c . } => { ?p fy:mirasKategori ?c . ?p fy:kategori ?c . } .
+
+# ─── K4. Bilirkişi gereksinimi: kategoriden (üst sınıftan miras); sonuç K12'de kuralın parametresiyle doğar ───
+{ ?p a fy:KararOnerisi . ?p a ?c . ?c fy:bilirkisiGerekli true . } =>
+  { ?p fy:bilirkisiAlani ?c . ?p fy:uygulananKural fy:KuralBilirkisiKategorisi . } .
+{ ?p a fy:Oneri . ?p fy:bilirkisiTalebi true . } => { ?p a fy:BilirkisiGerektirenOneri . } .
+
+# ─── K5. Temel haklar ───
+# Kısıtlanan her hak → hak kısıtlayan öneri (fy:KuralHakKisitlamasi ile en az T1)
+{ ?p fy:hakEtkisi ?e . ?e fy:yon fy:Kisitlama . ?e fy:hak ?h . } =>
+  { ?p a fy:HakKisitlayanOneri . ?p fy:kisitladigiHak ?h . } .
+# Özü oylanamaz hakkın BAĞLAYICI kaynaklı (yazar beyanı / bilirkişi tespiti) kısıtlaması → T3 ihlali
+{ ?p fy:hakEtkisi ?e . ?e fy:yon fy:Kisitlama . ?e fy:hak ?h . ?h fy:cekirdekDegistirilemez true .
+  ?e fy:kaynak ?k . ?k a fy:BaglayiciKaynak . } =>
+  { ?p fy:kisitlananCekirdekHak ?h . ?p fy:uygulananKural fy:KuralCekirdekHak . } .
+# DANIŞMA kaynaklı (yapay zekâ / üye bayrağı) kısıtlama → yalnızca yükseltme: T1 + uyarı + bilirkişi
+{ ?p fy:hakEtkisi ?e . ?e fy:yon fy:Kisitlama . ?e fy:hak ?h . ?h fy:cekirdekDegistirilemez true .
+  ?e fy:kaynak ?k . ?k a fy:DanismaKaynagi . } =>
+  { ?p fy:danismaCekirdekHakUyarisi ?h . ?p fy:uygulananKural fy:KuralDanismaYukseltmesi . } .
+
+# ─── K6. İçerik etiketleri (güven düzeyi denetimden önce eşiklere göre atanır) ───
+{ ?p fy:icerikEtiketAtamasi ?a . ?a fy:guvenDuzeyi fy:YuksekGuven . ?a fy:etiket ?l . ?l a fy:IcerikEtiketi . } =>
+  { ?p fy:yuksekGuvenliEtiket ?l . ?p fy:uygulananKural fy:KuralIcerikEtiketi . } .
+{ ?p fy:icerikEtiketAtamasi ?a . ?a fy:guvenDuzeyi fy:OrtaGuven . ?a fy:etiket ?l . ?l a fy:IcerikEtiketi . } =>
+  { ?p fy:ortaGuvenliEtiket ?l . ?p a fy:BilirkisiGerektirenOneri . ?p fy:uygulananKural fy:KuralIcerikEtiketi . } .
+
+# ─── K7. Silme (karartma) gerekçeleri ───
+{ ?p fy:silmeGerekcesi ?g . ?g a fy:GecersizGerekce . } =>
+  { ?p fy:gecersizSilmeGerekcesi ?g . ?p fy:uygulananKural fy:KuralGorusAyriligi . } .
+{ ?p a fy:SilmeOnerisi . ?p fy:silmeGerekcesi ?g . ?g fy:acil true . } => { ?p a fy:AcilSilmeTalebi . } .
+{ ?p a fy:SilmeOnerisi . ?p fy:silmeGerekcesi ?g . ?g fy:muhurlu true . } => { ?p a fy:MuhurluSilmeTalebi . } .
+
+# ─── K8. Yönetmelik yaması: değiştirilemez hüküm hedefi → T3 ───
+# (a) doğrudan değiştirilemez madde
+{ ?p fy:yamaIslemi ?o . ?o fy:hedef ?m . ?m fy:korumaDuzeyi fy:Degistirilemez . } =>
+  { ?p fy:degistirilemezHedef ?m . ?p fy:uygulananKural fy:KuralDegistirilemezHedef . } .
+# (b) değiştirilemez maddeye dayanan kural / parametre taşıyıcısı
+{ ?p fy:yamaIslemi ?o . ?o fy:hedef ?r . ?r fy:dayanak ?m . ?m fy:korumaDuzeyi fy:Degistirilemez . } =>
+  { ?p fy:degistirilemezHedef ?r . ?p fy:uygulananKural fy:KuralDegistirilemezHedef . } .
+
+# ─── K9. Yeni değiştirilemez hüküm üretimi yasak (kalıcılaştırma) ───
+{ ?p fy:yamaIslemi ?o . ?o fy:yeniKoruma fy:Degistirilemez . } =>
+  { ?p fy:yeniDegistirilemez ?o . ?p fy:uygulananKural fy:KuralYeniDegistirilemez . } .
+{ ?p fy:yamaIslemi ?o . ?o fy:param fy:dayanak . ?o fy:yeniDeger ?m . ?m fy:korumaDuzeyi fy:Degistirilemez . } =>
+  { ?p fy:yeniDegistirilemez ?o . ?p fy:uygulananKural fy:KuralYeniDegistirilemez . } .
+{ ?p fy:yamaIslemi ?o . ?o fy:param fy:asgariKatman . ?o fy:yeniDeger fy:KatmanT3 . } =>
+  { ?p fy:yeniDegistirilemez ?o . ?p fy:uygulananKural fy:KuralYeniDegistirilemez . } .
+
+# ─── K10. İki adımlı atlatma: değiştirilemez hükmü "overrides" ile etkisizleştirme ───
+{ ?p fy:yamaIslemi ?o . ?o fy:param fy:overrides . ?o fy:yeniDeger ?m . ?m fy:korumaDuzeyi fy:Degistirilemez . } =>
+  { ?p fy:degistirilemezAtlatma ?m . ?p fy:uygulananKural fy:KuralDegistirilemezAtlatma . } .
+{ ?p fy:yamaIslemi ?o . ?o fy:param fy:overrides . ?o fy:yeniDeger ?r . ?r fy:dayanak ?m . ?m fy:korumaDuzeyi fy:Degistirilemez . } =>
+  { ?p fy:degistirilemezAtlatma ?r . ?p fy:uygulananKural fy:KuralDegistirilemezAtlatma . } .
+
+# ─── K11. Nitelikli hüküm değişikliği (3/4 eşik, 0,50 yeter sayı) ───
+# Nitelikli hükmü (ya da ona dayanan kuralı) değiştirmek, "overrides" ile devre dışı bırakmak, bir kuralı
+# nitelikli hükme dayandırmak ya da nitelikli koruma vermek aynı nitelikli çoğunluğu gerektirir.
+{ ?p fy:yamaIslemi ?o . ?o fy:hedef ?m . ?m fy:korumaDuzeyi fy:Nitelikli . } => { ?p a fy:NitelikliHukumDegisikligi . } .
+{ ?p fy:yamaIslemi ?o . ?o fy:hedef ?r . ?r fy:dayanak ?m . ?m fy:korumaDuzeyi fy:Nitelikli . } => { ?p a fy:NitelikliHukumDegisikligi . } .
+{ ?p fy:yamaIslemi ?o . ?o fy:param fy:overrides . ?o fy:yeniDeger ?m . ?m fy:korumaDuzeyi fy:Nitelikli . } => { ?p a fy:NitelikliHukumDegisikligi . } .
+{ ?p fy:yamaIslemi ?o . ?o fy:param fy:overrides . ?o fy:yeniDeger ?r . ?r fy:dayanak ?m . ?m fy:korumaDuzeyi fy:Nitelikli . } => { ?p a fy:NitelikliHukumDegisikligi . } .
+{ ?p fy:yamaIslemi ?o . ?o fy:param fy:dayanak . ?o fy:yeniDeger ?m . ?m fy:korumaDuzeyi fy:Nitelikli . } => { ?p a fy:NitelikliHukumDegisikligi . } .
+{ ?p fy:yamaIslemi ?o . ?o fy:yeniKoruma fy:Nitelikli . } => { ?p a fy:NitelikliHukumDegisikligi . } .
+
+# ─── K12. Sınıfa bağlı kuralların uygulanması ve katman / bilirkişi sonuçları ───
+{ ?r a fy:Kural . ?r fy:uygulanirSinif ?k . ?p a fy:Oneri . ?p a ?k . } => { ?p fy:uygulananKural ?r . } .
+{ ?p fy:uygulananKural ?r . ?r fy:asgariKatman ?t . } => { ?p fy:asgariKatman ?t . } .
+{ ?p fy:uygulananKural ?r . ?r fy:bilirkisiGerekli true . } => { ?p a fy:BilirkisiGerektirenOneri . } .
