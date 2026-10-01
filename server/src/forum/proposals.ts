@@ -18,7 +18,6 @@ import {
   type DecisionParams,
   type DeletionPayload,
   type ExpertQuestion,
-  type Finding,
   type MinorityReport,
   type ObjectionRequest,
   type PrecheckResponse,
@@ -50,6 +49,7 @@ import {
   GORUS_AYRILIGI,
   checkLength,
   createProposalSchema,
+  fieldError,
   durationsOf,
   groundIsUrgent,
   hasRole,
@@ -190,7 +190,7 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
     let categories = uniq(input.categories.map(normIri));
     const unknown = categories.filter((c) => !known.has(c));
     if (unknown.length > 0) {
-      if (strict) throw badRequest("validation", `Bilinmeyen kategori: ${unknown.join(", ")}`, [{ path: "categories", message: "bilinmeyen kategori" }]);
+      if (strict) throw fieldError("categories", `Bilinmeyen kategori: ${unknown.join(", ")}`);
       categories = categories.filter((c) => known.has(c));
     }
     let parentTopic: TopicRow | null = null;
@@ -211,7 +211,7 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
       if (kind === "amendment") {
         const current = Number(parentTopic?.current_version ?? 1);
         const base = input.amendment?.baseVersion ?? (strict ? undefined : current);
-        if (base === undefined) throw badRequest("validation", "Düzenleme teklifi için dayandığı konu sürümü (amendment.baseVersion) zorunludur.", [{ path: "amendment.baseVersion", message: "zorunlu" }]);
+        if (base === undefined) throw fieldError("amendment.baseVersion", "Düzenleme teklifi için dayandığı konu sürümü (amendment.baseVersion) zorunludur.");
         if (strict && base !== current) {
           throw conflict("version_conflict", `Konu bu arada güncellendi (güncel sürüm ${current}); teklifinizi güncel metne göre yeniden hazırlayın.`, { currentVersion: current });
         }
@@ -219,11 +219,11 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
       }
     } else if (kind === "deletion") {
       const d = input.deletion;
-      if (!d) throw badRequest("validation", "Silme talebi için mesajlar ve gerekçe (deletion) zorunludur.", [{ path: "deletion", message: "zorunlu" }]);
+      if (!d) throw fieldError("deletion", "Silme talebi için mesajlar ve gerekçe (deletion) zorunludur.");
       const ground = normIri(d.ground);
       const grounds = safe(() => deps.ontology.deletionGrounds(), []).map((g) => g.iri);
       if (!grounds.includes(ground) && ground !== GORUS_AYRILIGI) {
-        throw badRequest("validation", "Geçersiz silme gerekçesi; yönetmelikteki gerekçelerden biri seçilmelidir.", [{ path: "deletion.ground", message: "geçersiz" }]);
+        throw fieldError("deletion.ground", "Geçersiz silme gerekçesi; yönetmelikteki gerekçelerden biri seçilmelidir.");
       }
       const ids = uniq(d.messageIds);
       const rows = db.all<MessageRow>("SELECT * FROM messages WHERE id IN (SELECT value FROM json_each(?))", jsonList(ids));
@@ -276,14 +276,14 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
       deletion = { messageIds: ids, ground, statement };
     } else if (kind === "regulation") {
       patch = input.regulationPatch ?? null;
-      if (!patch && strict) throw badRequest("validation", "Yönetmelik değişikliği için yama (regulationPatch) zorunludur.", [{ path: "regulationPatch", message: "zorunlu" }]);
+      if (!patch && strict) throw fieldError("regulationPatch", "Yönetmelik değişikliği için yama (regulationPatch) zorunludur.");
       const reg = fy("ForumYonetmeligi");
       if (categories.length === 0 && known.has(reg)) categories = [reg];
     }
     if (strict) {
       title = checkLength(title, 5, 200, "title", "Başlık");
       body = checkLength(body, 20, 20000, "body", "Metin");
-      if (categories.length === 0) throw badRequest("validation", "En az bir geçerli kategori seçilmelidir.", [{ path: "categories", message: "boş" }]);
+      if (categories.length === 0) throw fieldError("categories", "En az bir geçerli kategori seçilmelidir.");
     }
     if (amendment) amendment = { ...amendment, newTitle: title, newBody: body };
     return { kind, title, body, categories, parentTopicId, amendment, deletion, patch, requestExpert: !!input.requestExpert, parentTopic };
@@ -503,19 +503,8 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
       const [mod, cls] = await Promise.all([moderate(actor, text), classify(actor, n.title, n.body)]);
       const labels = contentLabelsOf(mod);
       const aiRights = aiRightsOf(cls);
-      let audit = await deps.ontology.audit(auditInputOf(n, aiRights, labels));
-      if (n.kind === "regulation" && n.patch) {
-        const pr = await deps.ontology.validatePatch(n.patch);
-        const key = (f: Finding) => `${f.code}|${f.message}`;
-        const merge = (a: Finding[], b: Finding[]) => [...a, ...b.filter((f) => !a.some((x) => key(x) === key(f)))];
-        audit = {
-          ...audit,
-          admissible: audit.admissible && pr.admissible,
-          violations: merge(audit.violations, pr.violations),
-          warnings: merge(audit.warnings, pr.warnings),
-          infos: merge(audit.infos, pr.infos),
-        };
-      }
+      // Yönetmelik önerisinde audit yama denetimini (validatePatch) zaten içerir; ayrıca eklenmez.
+      const audit = await deps.ontology.audit(auditInputOf(n, aiRights, labels));
       const model = cls?.model ?? deps.ai.model();
       const labelOf = (iri: string) => safe(() => deps.ontology.categoryLabel(iri), iri);
       const rightLabels = new Map(safe(() => deps.ontology.rights(), []).map((r) => [r.iri, r.label] as const));
@@ -743,7 +732,7 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
 
     async decideSuggestion(actor: AuthUser, id: string, suggestionId: string, decision: "accept" | "reject"): Promise<ProposalDetail> {
       requireVerified(actor, "Metin önerisi kararı");
-      if (decision !== "accept" && decision !== "reject") throw badRequest("validation", "Karar 'accept' ya da 'reject' olmalıdır.");
+      if (decision !== "accept" && decision !== "reject") throw fieldError("decision", "Karar “accept” (kabul) ya da “reject” (red) olmalıdır.");
       const p = visibleProposal(core, id, actor);
       requireAuthor(p, actor);
       const s = db.get<{ id: string; author_id: string; body: string; status: string }>(
@@ -780,7 +769,7 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
       const data = parseInput(z.object({ right: z.string().min(1).max(500), direction: z.enum(["restrict", "expand"]), remove: z.boolean().optional() }), input);
       const right = normIri(data.right);
       if (!safe(() => deps.ontology.rights(), []).some((r) => r.iri === right)) {
-        throw badRequest("validation", "Bilinmeyen temel hak.", [{ path: "right", message: "bilinmeyen" }]);
+        throw fieldError("right", "Bilinmeyen temel hak.");
       }
       const p = visibleProposal(core, id, actor);
       requireStatus(p, ["sponsoring", "deliberation"], "Hak etkisi bayrakları destekçi toplama ve tartışma evrelerinde değiştirilebilir.");
@@ -867,7 +856,7 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
       requireVoter(p, actor);
       const ground = normIri(data.ground);
       if (!safe(() => deps.ontology.objectionGrounds(), []).some((g) => g.iri === ground)) {
-        throw badRequest("validation", "Geçersiz itiraz gerekçesi; yönetmelikteki itiraz gerekçelerinden biri seçilmelidir.", [{ path: "ground", message: "geçersiz" }]);
+        throw fieldError("ground", "Geçersiz itiraz gerekçesi; yönetmelikteki itiraz gerekçelerinden biri seçilmelidir.");
       }
       const statement = checkLength(data.statement, 20, 2000, "statement", "İtiraz açıklaması");
       assertNoPii(core, statement, false);
@@ -940,7 +929,7 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
 
     async requestExpert(actor: AuthUser, id: string, kind: "panel" | "counter"): Promise<ProposalDetail> {
       requireVerified(actor, "Bilirkişi talebi");
-      if (kind !== "panel" && kind !== "counter") throw badRequest("validation", "Talep türü 'panel' ya da 'counter' olmalıdır.");
+      if (kind !== "panel" && kind !== "counter") throw fieldError("kind", "Talep türü “panel” ya da “counter” (karşı panel) olmalıdır.");
       const p = visibleProposal(core, id, actor);
       if (kind === "panel") requireStatus(p, ["sponsoring", "deliberation"], "Bilirkişi paneli destekçi toplama ve tartışma evrelerinde talep edilebilir.");
       else requireStatus(p, ["reconciliation"], "Karşı bilirkişi talebi yalnızca uzlaşma turunda yapılabilir.");
@@ -1109,11 +1098,11 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
       const p = visibleProposal(core, a.targetId, actor);
       requireAuthor(p, actor);
       if (draftIndex !== undefined && draftIndex !== null) {
-        if (a.task !== "bridging_drafts") throw badRequest("validation", "Taslak seçimi yalnızca köprü taslakları için geçerlidir.");
+        if (a.task !== "bridging_drafts") throw fieldError("draftIndex", "Taslak seçimi yalnızca köprü taslakları için geçerlidir.");
         requireStatus(p, ["reconciliation"], "Köprü taslağı yalnızca uzlaşma turunda yeni sürüm olarak uygulanabilir.");
         const drafts = (a.output as { drafts?: { title: string; body: string }[] } | null)?.drafts ?? [];
         const d = Number.isInteger(draftIndex) ? drafts[draftIndex] : undefined;
-        if (!d) throw badRequest("validation", "Geçersiz taslak numarası.", [{ path: "draftIndex", message: "aralık dışı" }]);
+        if (!d) throw fieldError("draftIndex", "Geçersiz taslak numarası.");
         await applyRevision(actor, p, { title: d.title?.trim() || p.title, body: d.body });
       }
       return approveAnalysis(deps.ctx, analysisId, actor.id);

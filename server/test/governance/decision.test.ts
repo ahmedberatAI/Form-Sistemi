@@ -246,7 +246,7 @@ describe("decide — T0 olağan", () => {
 
   it("nötr kural contested kökenli yeniden oylamada da uzatmadan sonra geçerlidir", () => {
     const rv = { round: 2 as const, revote: { origin: "contested" as const, strongObjection: false } };
-    const v = votes({ g0: [30, 10], g1: [10, 8], g2: [0, 1] }); // 40/59 < 2/3
+    const v = votes({ g0: [27, 10], g1: [10, 8], g2: [0, 1] }); // 37/56 < 2/3, ≥ %60
     expect(decide(input({ ...rv, params: T("T1"), votes: v, extensionAvailable: true })).outcome).toBe("needs_more_votes");
     const r = decide(input({ ...rv, params: T("T1"), votes: v, extensionAvailable: false }));
     expect(r.overrideMet).toBe(false);

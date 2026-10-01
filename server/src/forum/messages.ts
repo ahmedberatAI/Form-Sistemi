@@ -8,6 +8,7 @@ import { newId, newSalt } from "../core/ids";
 import {
   ACTIVE_SQL,
   checkLength,
+  fieldError,
   groundIsUrgent,
   hasRole,
   jsonList,
@@ -78,7 +79,7 @@ export function createMessageService(core: ForumCore): MessageService {
       if (forWrite && p.status === "draft") throw conflict("invalid_state", "Taslak önerinin tartışması henüz açılmadı; önce öneriyi gönderin.");
       return { link: proposalLink(p.id), ref: proposalRef(p), authorId: p.author_id };
     }
-    throw badRequest("validation", "İş parçacığı türü 'topic' ya da 'proposal' olmalıdır.");
+    throw fieldError("threadType", "İş parçacığı türü “topic” ya da “proposal” olmalıdır.");
   }
 
   async function moderate(actor: AuthUser, text: string): Promise<ModerationResult | null> {
@@ -108,7 +109,7 @@ export function createMessageService(core: ForumCore): MessageService {
       if (data.parentId) {
         parent = row(data.parentId);
         if (!parent || parent.thread_type !== threadType || parent.thread_id !== threadId) {
-          throw badRequest("validation", "Yanıtlanan mesaj bu tartışmada bulunamadı.", [{ path: "parentId", message: "geçersiz" }]);
+          throw fieldError("parentId", "Yanıtlanan mesaj bu tartışmada bulunamadı.");
         }
       }
       assertNoPii(core, body, data.acknowledgePii);
@@ -228,7 +229,7 @@ export function createMessageService(core: ForumCore): MessageService {
 
     endorse(actor: AuthUser, messageId: string, value: -1 | 0 | 1): MessageView {
       requireVerified(actor, "Mesaja katılım bildirmek");
-      if (value !== -1 && value !== 0 && value !== 1) throw badRequest("validation", "Değer -1, 0 ya da 1 olmalıdır.");
+      if (value !== -1 && value !== 0 && value !== 1) throw fieldError("value", "Değer -1 (katılmıyorum), 0 (geri al) ya da 1 (katılıyorum) olmalıdır.");
       const m = requireRow(messageId);
       if (m.author_id === actor.id) throw unprocessable("own_message", "Kendi mesajınıza katılım bildiremezsiniz.");
       if (m.visibility === "hidden" || m.visibility === "sealed") throw conflict("invalid_state", "Gizlenmiş mesaj desteklenemez.");

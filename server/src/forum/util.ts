@@ -20,7 +20,7 @@ import type { AuditLogger } from "../core/audit";
 import { HOUR } from "../core/clock";
 import type { Config } from "../core/config";
 import type { AuthUser } from "../core/contracts";
-import { badRequest, forbidden, notFound } from "../core/errors";
+import { badRequest, forbidden, notFound, type AppError } from "../core/errors";
 import type { ForumDeps } from "../core/forum-contracts";
 import { json, type Db, type SqlValue } from "../db";
 
@@ -223,7 +223,9 @@ export function groundIsUrgent(deps: Pick<ForumDeps, "ontology">, iri: string): 
   return DELETION_GROUND_VOCAB.some((v) => fy(v.local) === iri && v.urgent);
 }
 
-export function groundIsSealed(iri: string): boolean {
+export function groundIsSealed(deps: Pick<ForumDeps, "ontology">, iri: string): boolean {
+  const g = safe(() => deps.ontology.deletionGrounds(), []).find((x) => x.iri === iri);
+  if (g && g.sealed !== undefined) return !!g.sealed;
   return DELETION_GROUND_VOCAB.some((v) => fy(v.local) === iri && v.sealed);
 }
 
@@ -260,20 +262,107 @@ export function requireVerified(actor: AuthUser | null | undefined, what = "Bu i
 
 // ───────────── Doğrulama ─────────────
 
-/** zod şeması ile ayrıştırır; hata → 400 validation (Türkçe, alan yollarıyla). */
-export function parseInput<T>(schema: z.ZodType<T>, value: unknown): T {
-  const r = schema.safeParse(value);
-  if (r.success) return r.data;
-  const details = r.error.issues.map((i) => ({ path: i.path.map(String).join("."), message: i.message }));
-  const first = details[0];
-  throw badRequest("validation", `Geçersiz istek${first?.path ? ` (${first.path})` : ""}: ${first?.message ?? "alanları kontrol edin"}.`, details);
+/** 400 validation: `details` = { "<alan.yolu>": "<kullanıcıya gösterilecek Türkçe ileti>" } (kimlik/HTTP ile aynı biçim). */
+export function fieldError(field: string, message: string, summary?: string): AppError {
+  return badRequest("validation", summary ?? message, { [field]: message });
 }
 
+const FIELD_LABELS: Record<string, string> = {
+  kind: "Öneri türü",
+  title: "Başlık",
+  body: "Metin",
+  categories: "Kategoriler",
+  parentTopicId: "Hedef konu",
+  amendment: "Düzenleme bilgisi",
+  "amendment.baseVersion": "Dayanılan konu sürümü",
+  deletion: "Silme talebi",
+  "deletion.messageIds": "Hedef mesajlar",
+  "deletion.ground": "Silme gerekçesi",
+  "deletion.statement": "Gerekçe açıklaması",
+  regulationPatch: "Yönetmelik yaması",
+  "regulationPatch.ops": "Yama işlemleri",
+  "regulationPatch.rationale": "Yama gerekçesi",
+  requestExpert: "Bilirkişi talebi",
+  submit: "Gönder seçeneği",
+  acknowledgePii: "Kişisel veri onayı",
+  stance: "Tutum",
+  parentId: "Yanıtlanan mesaj",
+  choice: "Oy",
+  ground: "Gerekçe",
+  statement: "Açıklama",
+  right: "Temel hak",
+  direction: "Etki yönü",
+  remove: "Kaldırma seçeneği",
+  status: "Durum",
+  q: "Arama metni",
+  topicId: "Konu",
+  authorId: "Yazar",
+  mine: "Yalnız benimkiler",
+  limit: "Sınır",
+  rule: "Kural",
+  param: "Parametre",
+  value: "Değer",
+  op: "Yama işlemi",
+  iri: "IRI",
+  label: "Etiket",
+  parent: "Üst kategori",
+  keywords: "Anahtar kelimeler",
+  article: "Madde",
+  number: "Madde numarası",
+  text: "Madde metni",
+  protection: "Koruma düzeyi",
+};
+
+const TYPE_TR: Record<string, string> = { string: "metin", number: "sayı", int: "tam sayı", boolean: "evet/hayır", array: "liste", object: "nesne" };
+
+function fieldLabel(path: readonly PropertyKey[]): string {
+  const keys = path.filter((k) => typeof k === "string") as string[];
+  return FIELD_LABELS[keys.join(".")] ?? FIELD_LABELS[keys[keys.length - 1] ?? ""] ?? "Alan";
+}
+
+/** zod'un varsayılan (İngilizce) iletilerini Türkçeleştirir; şemada açık Türkçe ileti varsa o kullanılır. */
+function trIssue(iss: { code?: string; path?: readonly PropertyKey[]; input?: unknown; [k: string]: unknown }): string {
+  const label = fieldLabel(iss.path ?? []);
+  const origin = String(iss.origin ?? "");
+  const unit = origin === "string" ? " karakter" : origin === "array" || origin === "set" ? " öğe" : "";
+  switch (iss.code) {
+    case "invalid_type":
+      return iss.input === undefined || iss.input === null ? `${label} zorunludur.` : `${label} geçersiz: ${TYPE_TR[String(iss.expected)] ?? String(iss.expected)} bekleniyor.`;
+    case "too_small":
+      return origin === "array" && Number(iss.minimum) === 1 ? `${label} boş olamaz.` : `${label} en az ${String(iss.minimum)}${unit} olmalıdır.`;
+    case "too_big":
+      return `${label} en fazla ${String(iss.maximum)}${unit} olabilir.`;
+    case "invalid_value":
+      return `${label} şu değerlerden biri olmalıdır: ${((iss.values as unknown[]) ?? []).map(String).join(", ")}.`;
+    case "invalid_union":
+      return `${label} geçersiz.`;
+    case "unrecognized_keys":
+      return `Tanınmayan alan: ${((iss.keys as string[]) ?? []).join(", ")}.`;
+    case "invalid_format":
+      return `${label} biçimi geçersiz.`;
+    default:
+      return `${label} geçersiz.`;
+  }
+}
+
+/** zod şeması ile ayrıştırır; hata → 400 validation, details = { alan.yolu: Türkçe ileti }. */
+export function parseInput<T>(schema: z.ZodType<T>, value: unknown): T {
+  const r = schema.safeParse(value, { error: (iss) => trIssue(iss as never) });
+  if (r.success) return r.data;
+  const details: Record<string, string> = {};
+  for (const i of r.error.issues) {
+    const path = i.path.map(String).join(".") || "_";
+    if (!(path in details)) details[path] = i.message;
+  }
+  const first = Object.values(details)[0];
+  throw badRequest("validation", first ?? "İstek geçersiz.", details);
+}
+
+/** Kırpılmış uzunluk denetimi (Türkçe ileti). */
 export function checkLength(value: string, min: number, max: number, field: string, label: string): string {
   const v = value.trim();
-  if (v.length < min || v.length > max) {
-    throw badRequest("validation", `${label} ${min}–${max} karakter olmalıdır (şu an ${v.length}).`, [{ path: field, message: "uzunluk" }]);
-  }
+  if (v.length < min) throw fieldError(field, `${label} en az ${min} karakter olmalıdır (şu an ${v.length}).`);
+  if (v.length > max) throw fieldError(field, `${label} en fazla ${max} karakter olabilir (şu an ${v.length}).`);
   return v;
 }
 
@@ -300,20 +389,20 @@ const patchOp = z.discriminatedUnion("op", [
 ]);
 
 export const regulationPatchSchema = z.object({
-  ops: z.array(patchOp).min(1, "Yama en az bir işlem içermelidir").max(50),
+  ops: z.array(patchOp).min(1, "Yama en az bir işlem içermelidir.").max(50, "Yama en fazla 50 işlem içerebilir."),
   rationale: z.string().max(10000).default(""),
 });
 
 export const createProposalSchema = z.object({
-  kind: z.enum(["topic", "subtopic", "amendment", "deletion", "regulation"]),
-  title: z.string().max(1000).default(""),
-  body: z.string().max(40000).default(""),
-  categories: z.array(z.string().min(1).max(500)).max(30).default([]),
+  kind: z.enum(["topic", "subtopic", "amendment", "deletion", "regulation"], { error: "Öneri türü topic, subtopic, amendment, deletion ya da regulation olmalıdır." }),
+  title: z.string().max(1000, "Başlık çok uzun.").default(""),
+  body: z.string().max(40000, "Metin çok uzun.").default(""),
+  categories: z.array(z.string().min(1).max(500)).max(30, "En fazla 30 kategori seçilebilir.").default([]),
   parentTopicId: z.string().max(200).nullish(),
   amendment: z.object({ baseVersion: z.number().int().min(1), newTitle: z.string().optional(), newBody: z.string().optional() }).nullish(),
   deletion: z
     .object({
-      messageIds: z.array(z.string().min(1).max(200)).min(1, "En az bir mesaj seçilmelidir").max(20, "En çok 20 mesaj seçilebilir"),
+      messageIds: z.array(z.string().min(1).max(200)).min(1, "En az bir mesaj seçilmelidir.").max(20, "Bir talepte en fazla 20 mesaj seçilebilir."),
       ground: z.string().min(1).max(500),
       statement: z.string().max(5000).default(""),
     })
@@ -325,8 +414,8 @@ export const createProposalSchema = z.object({
 });
 export type CreateInput = z.infer<typeof createProposalSchema>;
 
-export const voteChoiceSchema = z.enum(["yes", "no", "abstain"]);
-export const stanceSchema = z.enum(["pro", "con", "neutral", "question"]);
+export const voteChoiceSchema = z.enum(["yes", "no", "abstain"], { error: "Oy “yes” (kabul), “no” (red) ya da “abstain” (çekimser) olmalıdır." });
+export const stanceSchema = z.enum(["pro", "con", "neutral", "question"], { error: "Tutum “pro”, “con”, “neutral” ya da “question” olmalıdır." });
 
 // ───────────── Çekirdek bağlam ─────────────
 

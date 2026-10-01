@@ -278,14 +278,14 @@ export function createLifecycle(core: ForumCore, parts: LifecycleParts): Lifecyc
       }
       case "deletion": {
         const d = parsed.deletion;
-        if (d) messages.hide(d.messageIds, p.id, d.ground, groundIsSealed(d.ground));
+        if (d) messages.hide(d.messageIds, p.id, d.ground, groundIsSealed(deps, d.ground));
         return applyTransition(core, p, "enacted", reason, { now, endsAt: null, set: { final_reason: reason } });
       }
       case "regulation": {
         if (!prep.bylaw) return close(p, "rejected", `Yönetmelik yaması uygulanamadı: ${prep.error ?? "bilinmeyen hata"}`, now);
         const v = prep.bylaw;
         const tx = core.submit("BYLAW_VERSION", { version: v.version, hash: v.hash, proposalId: p.id });
-        db.run("UPDATE bylaw_versions SET ledger_tx = ? WHERE version = ? AND ledger_tx IS NULL", tx, v.version);
+        deps.ontology.setLedgerTx(v.version, tx);
         return applyTransition(core, p, "enacted", reason, { now, endsAt: null, set: { enacted_entity_id: String(v.version), final_reason: reason } });
       }
     }
