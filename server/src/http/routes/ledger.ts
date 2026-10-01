@@ -32,6 +32,7 @@ export function registerLedgerRoutes(app: FastifyInstance, { services }: RouteDe
   app.get("/api/ledger/validators", async (): Promise<ValidatorKeys> => ({
     chainId: CHAIN_ID,
     validators: ledger.status().validators.map((v) => ({ id: v.id, publicKey: v.publicKey })),
+    appPublicKey: ledger.appPublicKey,
   }));
 
   app.get("/api/ledger/blocks", async (req): Promise<BlockListResponse> => {

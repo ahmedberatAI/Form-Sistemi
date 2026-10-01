@@ -429,6 +429,8 @@ export interface FaultRequest {
 export interface ValidatorKeys {
   chainId: string;
   validators: { id: string; publicKey: string }[];
+  /** Uygulama sunucusunun işlem imzalama açık anahtarı (tx.sig = Ed25519(hexToBytes(tx.hash))) */
+  appPublicKey: string;
 }
 
 // ───────────── Yönetim ─────────────

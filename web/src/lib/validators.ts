@@ -9,6 +9,8 @@ import { getJsonPref, PREF_KEYS, setJsonPref } from "./prefs";
 export interface PinnedValidators {
   chainId: string;
   validators: { id: string; publicKey: string }[];
+  /** Uygulama sunucusunun işlem imzalama anahtarı (eski sabitlemelerde olmayabilir) */
+  appPublicKey?: string;
   pinnedAt: number;
   serverUrl: string;
 }
@@ -46,6 +48,7 @@ export async function pinValidators(keys: ValidatorKeys): Promise<PinnedValidato
   const pinned: PinnedValidators = {
     chainId: keys.chainId,
     validators: keys.validators.map((v) => ({ id: v.id, publicKey: v.publicKey.toLowerCase() })),
+    appPublicKey: keys.appPublicKey?.toLowerCase(),
     pinnedAt: Date.now(),
     serverUrl: url,
   };

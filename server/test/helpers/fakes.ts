@@ -65,6 +65,7 @@ export function insertUser(
  * findTxs, getTx, latestBlock, proof (imzasız) çalışır — modül testleri için yeterlidir.
  */
 export class FakeLedger implements LedgerService {
+  readonly appPublicKey = "00".repeat(32);
   readonly txs: CommittedTx[] = [];
   private byHash = new Map<string, CommittedTx>();
   private prev = "0".repeat(64);

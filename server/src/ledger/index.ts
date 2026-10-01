@@ -397,7 +397,7 @@ export class InProcessLedger implements LedgerService {
 
   /** İstemcinin ilk kullanımda sabitleyeceği doğrulayıcı anahtarları (GET /api/ledger/validators). */
   validatorKeys(): ValidatorKeys {
-    return { chainId: CHAIN_ID, validators: this.ids.map((id) => ({ id, publicKey: this.params.validators.get(id)! })) };
+    return { chainId: CHAIN_ID, validators: this.ids.map((id) => ({ id, publicKey: this.params.validators.get(id)! })), appPublicKey: this.appPublicKey };
   }
 
   status(): LedgerStatus {

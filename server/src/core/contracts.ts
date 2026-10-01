@@ -53,6 +53,8 @@ export interface CommittedTx extends LedgerTxView {
 }
 
 export interface LedgerService {
+  /** Uygulama sunucusunun işlem imzalama açık anahtarı (hex). tx.sig = Ed25519(hexToBytes(tx.hash)). */
+  readonly appPublicKey: string;
   start(): Promise<void>;
   stop(): Promise<void>;
   /**

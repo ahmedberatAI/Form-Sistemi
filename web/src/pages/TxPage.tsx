@@ -2,7 +2,7 @@
 // cihazda sabitlenmiş doğrulayıcı anahtarlarıyla) ve işlem özetinin yeniden hesaplanması.
 import { useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
-import { hashCanonical, merkleLeaf, verifyInclusionProof } from "@forum/shared";
+import { ed25519Verify, hashCanonical, hexToBytes, merkleLeaf, verifyInclusionProof } from "@forum/shared";
 import { getProof, getTx } from "../api/endpoints";
 import { txTypeLabel, TxTypeBadge, VerifyMark } from "../components/system/marks";
 import { PinNotice, usePinnedValidators } from "../components/system/pinned";
@@ -32,6 +32,10 @@ export default function TxPage() {
     if (!proof.data || !pin.data) return null;
     return safe(() => verifyInclusionProof(proof.data!, pin.data!.pinned.validators), { ok: false, reasons: ["Kanıt doğrulanırken hata oluştu"] });
   }, [proof.data, pin.data]);
+
+  // Uygulama imzası: tx.sig = Ed25519(hexToBytes(tx.hash)), cihazda sabitlenmiş uygulama anahtarıyla
+  const appKey = pin.data?.pinned.appPublicKey ?? null;
+  const sigOk = useMemo(() => (t && appKey ? safe(() => ed25519Verify(t.sig, hexToBytes(t.hash), appKey), false) : false), [t, appKey]);
 
   const payloadJson = t ? JSON.stringify(t.payload, null, 2) : "";
   const proposalId = t && typeof t.payload.proposalId === "string" ? t.payload.proposalId : null;
@@ -99,7 +103,16 @@ export default function TxPage() {
                 { label: "Blok zamanı", value: formatDateTime(t.blockTime) },
                 { label: "Gönderim zamanı", value: formatDateTime(t.submittedAt) },
                 { label: "Tekilleştirme (nonce)", value: <code>{t.nonce}</code> },
-                { label: "Uygulama imzası", value: <HashText hash={t.sig} chars={16} label="İmza" />, hint: "Uygulama sunucusunun Ed25519 imzası (özet ve gönderim zamanı imzaya dahil değildir)." },
+                {
+                  label: "Uygulama imzası",
+                  value: (
+                    <span className="row">
+                      <HashText hash={t.sig} chars={16} label="İmza" />
+                      {appKey ? <span className="small">{sigOk ? "✔ sabitlenmiş uygulama anahtarıyla doğrulandı" : "✘ imza doğrulanamadı"}</span> : null}
+                    </span>
+                  ),
+                  hint: "Uygulama sunucusunun işlem özeti üzerindeki Ed25519 imzası; cihazda sabitlenmiş uygulama anahtarıyla tarayıcıda doğrulanır.",
+                },
                 proposalId ? { label: "İlgili öneri", value: <Link to={routes.proposal(proposalId)}>Öneriyi aç</Link> } : null,
               ]}
             />
