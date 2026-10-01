@@ -7,6 +7,8 @@
 
 **Okuma notu:** Köşeli parantez içindeki numaralar [n], Bölüm 15'teki Kaynakça'yı gösterir. "Tasarım önerisi" veya "bizim değerimiz" diye işaretlenen sayılar kaynaklardan alınmamıştır. Bunlar simülasyonla ayarlanması gereken başlangıç değerleridir. Özel adlar (LiquidFeedback, Polis, Schulze vb.) özgün biçimleriyle bırakılmıştır.
 
+**Uygulama notu:** Bu rapor tasarımdan önce yazıldı. "Bizim sisteme etkisi" başlıklarındaki "…acağız / …eceğiz" cümleleri araştırma aşamasındaki niyetleri gösterir; hepsi uygulanmadı. Hangi önerinin alındığı, hangisinin bilerek alınmadığı ve nedeni **Bölüm 13.4**'tedir. Sistemin bağlayıcı tanımı [ALGORITMA.md](ALGORITMA.md)'dir.
+
 ## İçindekiler
 
 1. Yönetici Özeti
@@ -48,7 +50,7 @@ Temel bulgular:
    - azınlığı hesaba katan ölçüm: Polis [49] ve X Community Notes [63];
    - "hiçbir şey kaybolmaz" ilkesi: Wikipedia'nın revizyon gizleme düzeni [40].
 2. **Yaşam döngüsü:** Tek bir durum makinesi kurulmalı ve politika tablosuyla yönetilmeli. Kaynakları şunlar: LiquidFeedback'in dört evresi (kabul, tartışma, dondurma, oylama) [1], CONSUL'ün belli destek sayısından sonra düzenlemeyi kilitlemesi [25] ve OpenGov'un onay penceresi [125].
-3. **"Çoğunluk" tanımı:** Rakip alternatifler varsa, mevcut durumun (statüko) da seçenek olarak eklendiği Schulze yöntemi kullanılır [1][109][111]. Tek seçenekli oylarda kural "evet/(evet+hayır) > 1/2" ve katılım yeter sayısıdır.
+3. **"Çoğunluk" tanımı:** Literatür, rakip alternatifler varsa mevcut durumun (statüko) da seçenek olarak eklendiği Schulze yöntemini önerir [1][109][111]; tek seçenekli oylarda kural "evet/(evet+hayır) > 1/2" ve katılım yeter sayısıdır. Uygulamada her öneri tek bir metin olarak ikili (evet/hayır/çekimser) oylanır ve Köprülü Çoğunluk kullanılır; Schulze değerlendirildi ama alınmadı (Bölüm 13.4).
 4. **Çoğunluk tiranlığının tek bir çaresi yok; savunma katmanlı olmalı.** Literatür, nitelikli çoğunluğun tek başına azınlığı değil statükoyu koruduğu konusunda açıkça uyarıyor [1]. Önerdiğimiz katmanlar (ayrıntı Bölüm 11'de):
    - ontolojide, çoğunluğun değiştiremeyeceği bir haklar çekirdeği;
    - görüş kümelerinin eşzamanlı rızası (köprü testi);
@@ -141,10 +143,10 @@ Araştırma sekiz paralel alana bölündü. Her alanda birincil kaynaklar (makal
 **Bizim sisteme etkisi:**
 
 - Dört evreli makineyi konu, alt konu ve silme talepleri için kopyalayacağız. Süreler ve yeter sayılar kategori başına bir politika tablosunda tutulacak.
-- Düzenleme tekliflerini aynı mesele içinde rakip alternatif olarak modelleyeceğiz.
-- Oylamada statükolu Schulze kullanacağız. "Ters yenme yolu olmama" (no reverse beat path) güvencesini uygulayacağız. Beraberlikte en eski alternatif kazanacak.
+- Düzenleme tekliflerini aynı mesele içinde rakip alternatif olarak modellemeyi değerlendirdik. *(Uygulanmadı: düzenleme teklifi ayrı bir öneridir; bkz. 13.4.)*
+- Oylamada statükolu Schulze'yi ("ters yenme yolu olmama" güvencesi, beraberlikte en eski alternatif) değerlendirdik. *(Uygulanmadı: ikili oy + Köprülü Çoğunluk; bkz. 13.4.)*
 - Gündeme kabulde yalnızca olumlu destek sayılacak; nihai oydan önce eksi oy olmayacak.
-- Alternatifler ham beğeni sayısına göre değil, Harmonic Weighting ile sıralanacak.
+- Alternatiflerin ham beğeni sayısına göre değil, Harmonic Weighting ile sıralanması önerildi. *(Uygulanmadı: rakip alternatif olmadığı için gerekmedi.)*
 - Nitelikli çoğunluğu azınlık koruması olarak değil, yönetmeliğin istikrarını koruyan bir araç olarak sunacağız.
 - Azınlık haklarını, sistemin "anayasası" işlevini gören ontoloji ve bilirkişi katmanına yerleştireceğiz.
 
@@ -184,7 +186,7 @@ Araştırma sekiz paralel alana bölündü. Her alanda birincil kaynaklar (makal
 
 **Bizim sisteme etkisi:**
 
-- Emendation durumlarını ve "promote" kapısını alacağız. Ancak tartışmalı teklifleri yazara bırakmak yerine rakip alternatif olarak oylamaya göndereceğiz.
+- Emendation durumlarını ve "promote" kapısını alacağız. Tartışmalı teklifleri rakip alternatif olarak oylamaya göndermek de önerildi. *(Uygulamada: yazar kabul ederse yeni sürüm olur; reddedilen teklif herkese açık kalır ve öneren onu ayrı bir öneri olarak açabilir; bkz. 13.4.)*
 - Her tartışma girdisine lehte/aleyhte/nötr işareti ekleyeceğiz.
 - Yumuşak silme, yer tutucu ve sürüm geçmişi uygulayacağız.
 - Sıradan içerikte "N şikâyette otomatik gizleme" yapmayacağız. Yalnızca kişisel veri ve tehdit gibi acil kategorilerde içeriği geçici olarak katlayacağız.
@@ -252,7 +254,7 @@ Araştırma sekiz paralel alana bölündü. Her alanda birincil kaynaklar (makal
 
 - "Ret" oylarında ve silme taleplerinde gerekçe zorunlu olacak.
 - Çalışan sonuçlar kapanışa kadar gizli kalacak.
-- Yapılandırılmış bir "itiraz" türü ekleyeceğiz. İtiraz, bir ontoloji sınıfına veya somut bir zarara atıf yapmak zorunda olacak. Geçerli bir itiraz oyla ezilmeyecek; konuyu bilirkişi incelemesine kadar duraklatacak. Bu bir veto değil, sınırlı bir azınlık sesidir.
+- Yapılandırılmış bir "itiraz" türü ekleyeceğiz. İtiraz, bir ontoloji sınıfına veya somut bir zarara atıf yapmak zorunda olacak. Geçerli bir itiraz oyla ezilmeyecek; konuyu bilirkişi incelemesine kadar duraklatacak. Bu bir veto değil, sınırlı bir azınlık sesidir. *(Uygulamada: geçerli itiraz tek seferlik bir uzlaşma turu açar, gerekirse yeni bilirkişi paneli çekilir; sonuç ρ eşikli yeniden oylamayla kesinleşir — ALGORITMA §6–7.)*
 - Sonuç beyanının taslağını YZ yazacak, insan onaylayacak; beyanın özeti deftere yazılacak.
 
 ### 3.5 Your Priorities / Better Reykjavik (Citizens Foundation)
@@ -304,7 +306,7 @@ AGPLv3 lisanslı, kendi sunucunuzda barındırabileceğiniz modüler bir platfor
 
 Bir argüman haritalama platformu [39]. Kökte bir tez, altında lehte ve aleyhte iddialardan oluşan bir ağaç vardır; her iddianın da kendi lehte ve aleyhte iddiaları olabilir. Kullanıcılar iddialara etki puanı verir; kardeş iddialar ortalama puana göre sıralanır. Birbirini tekrar eden iddialar birbirine bağlanır. Sahip, yönetici, editör, yazar ve öneren rolleri vardır; "yazar" yetkisi olmayanların iddiaları bekçi onayından geçer. İddialar yaklaşık 500 karakterlik kısa metinlerdir. Etki puanı ölçeği kaynaklarda doğrulanamadı.
 
-**Bizim sisteme etkisi:** Tartışmayı DESTEKLER ve SALDIRIR kenarlarıyla bağlı iddia düğümlerinden oluşan bir graf olarak saklayacağız; bu, "insanları ve tartışmayı grafta tut" gereksinimine uyuyor. YZ serbest metni bu ağaca yerleştirmeyi önerebilir. Tek moderatörlü bekçilikten kaçınacağız.
+**Bizim sisteme etkisi:** Tartışmayı DESTEKLER ve SALDIRIR kenarlarıyla bağlı iddia düğümlerinden oluşan bir graf olarak saklamayı değerlendirdik; YZ serbest metni bu ağaca yerleştirmeyi önerebilirdi. *(Uygulanmadı: tartışma yanıt zinciri olarak tutulur — grafta `REPLIED_TO` kenarı —, her mesaj lehte/aleyhte/nötr/soru tutumu ve katılıyorum/katılmıyorum ile köprü skoru taşır; bkz. 13.4.)* Tek moderatörlü bekçilikten kaçınacağız.
 
 ### 3.10 Polis / vTaiwan
 
@@ -466,7 +468,7 @@ QS-MF adlı bir varyant, her değerlendiriciye bir kalite kapısı ekleyerek %26
 
 **Bizim sisteme etkisi:**
 
-- MF'yi ikinci bir köprü sinyali olarak, yalnızca veri yeterince yoğunsa (öneri başına ≥5, kullanıcı başına ≥10 oy) kullanacağız.
+- MF'yi ikinci bir köprü sinyali olarak, yalnızca veri yeterince yoğunsa (öneri başına ≥5, kullanıcı başına ≥10 oy) kullanmayı değerlendirdik. *(Uygulanmadı: köprü sinyali PCA + k-means görüş kümelerinden gelir; bkz. 13.4.)*
 - Asimetrik eşikleri ve "her taraftan asgari kanıt" kuralını kopyalayacağız.
 - Oylama penceresi kapanınca sonucu kilitleyip deftere yazacağız.
 - Kimlik doğrulama, sentetik uzlaşı saldırısının ana maliyet kalemi olan hesap maliyetini zaten yükseltiyor.
@@ -506,7 +508,7 @@ Blair ve arkadaşları [74], GAC sıralamalarının kümeleme değişince deği�
 **Bizim sisteme etkisi:**
 
 - Özet modülü "tartışma haritaları" üretecek; her cümle yorum kimliğine bağlanacak. Kaynağı olmayan cümle otomatik olarak reddedilecek.
-- Habermas desenini yalnızca "tartışmalı" durumda (çoğunluk var ama köprü yok) uzlaşma metni taslağı yazmak için kullanacağız. Adayları insanlar sıralayacak, Schulze seçecek, sonuç yine bağlayıcı oylamaya gidecek.
+- Habermas desenini yalnızca "tartışmalı" durumda (çoğunluk var ama köprü yok) uzlaşma metni taslağı yazmak için kullanacağız. Adayların insanlarca sıralanıp Schulze ile seçilmesi de önerildi. *(Uygulamada: YZ 4–8 köprü taslağı üretir, taslağı yazar onaylayarak metne uygular ve sonuç yine bağlayıcı yeniden oylamaya gider; ayrı bir sıralama oylaması yoktur — bkz. 13.4.)*
 - Yönetmelik değişiklikleri yüksek köprü puanı isteyecek. CCAI'de K=2 için kesim değeri yaklaşık 0,72 idi (geometrik ortalamayla yaklaşık 0,85).
 - Bilirkişi, Meta'daki gibi oylamadan önce imzalı ve kaynaklı bir görüş yazacak; ek oy gücü almayacak.
 
@@ -1037,7 +1039,7 @@ Gösterim: **+** var veya güçlü, **~** kısmen veya dolaylı, **−** yok, **
 | Community Notes | ~ (not) | − | − | − | − | − | − | + (MF ile köprü) | − | − | ~ (algoritmik) | ~ (değerlendirici faktörü) | ? |
 | DAO'lar (Compound, OpenGov, Snapshot) | + | ~ | + | − | − | − | − | ~ (veto, onay penceresi) | + | − | − | − | ? |
 | Kleros | − | − | + (jüri) | − | − | − | − | − | + | + (kura jürisi) | − | − | ? |
-| **Bizim sistem (hedef)** | **+** | **+** | **+ (köprülü)** | **+** | **+** | **+** | **+** | **+** | **+** | **+** | **+ (danışman)** | **+** | **+ (Capacitor)** |
+| **Bizim sistem (uygulanan; ayrıntı 13.4)** | **+** | **+** | **+ (köprülü)** | **+** | **+** | **+** | **+** | **+** | **+** | **+** | **+ (danışman)** | **+** | **+ (Capacitor)** |
 
 **Gözlemler:**
 
@@ -1136,20 +1138,22 @@ Gösterim: **+** var veya güçlü, **~** kısmen veya dolaylı, **−** yok, **
    - en fazla 2/3 ile aşılabilmeli,
    - ve kullanımı herkese açık istatistiklerle yayımlanmalıdır.
 
-### 11.4 Seçtiğimiz katmanlı savunma ve gerekçeleri
+### 11.4 Önerilen katmanlı savunma, gerekçeleri ve uygulama durumu
 
 | # | Katman | Ne yapar | Neden seçtik |
 |---|---|---|---|
 | 1 | **Değiştirilemez haklar çekirdeği** | Eşit oy, önerme hakkı, görüş nedeniyle silinmeme, itiraz hakkı, kimlik mahremiyeti gibi 5–8 madde `fy:Degistirilemez` olarak işaretlenir. Bunları hedefleyen bir öneri, kabul aşamasında SHACL ihlaliyle reddedilir. Koruma maddesi kendini de korur | Anayasa md. 4 ve Nomic. LiquidFeedback'e göre bunu bir algoritma değil, ancak bir anayasa sağlayabilir |
 | 2 | **Gündeme erişim** | Kabulde yalnızca olumlu destek sayılır; yeter sayı düşük ve görelidir; Issue Limiter uygulanır. Her önemli kümeye her döngüde bir gündem slotu garanti edilir | Azınlık konusunu her zaman tartışmaya açabilmeli (Guinier, LiquidFeedback) |
 | 3 | **Görünürlük** | Alternatifler Harmonic Weighting ile, tartışma girdileri köprü önceliğiyle sıralanır. Lehte ve aleyhte sütunlar ayrı sıralanır. Ham beğeni veya "hot score" hiç kullanılmaz | Decide Madrid'deki Matthew etkisi |
-| 4 | **Rakip alternatifler ve klon-bağımsız Schulze** | Düzenleme teklifleri aynı mesele içinde yarışır. Birbirine benzeyen azınlık seçenekleri oyu bölmez | LiquidFeedback, Debian, Schulze |
+| 4 | **Rakip alternatifler ve klon-bağımsız Schulze** *(değerlendirildi, uygulanmadı)* | Düzenleme teklifleri aynı mesele içinde yarışır. Birbirine benzeyen azınlık seçenekleri oyu bölmez | LiquidFeedback, Debian, Schulze |
 | 5 | **Gizli oy; sonuçlar kapanışa kadar gizli** | Taahhüt-açıklama yöntemi. Toplumsal baskıyı ve sürü etkisini azaltır | Mill, Loomio, Shutter |
 | 6 | **Köprülü çoğunluk (eşzamanlı rıza)** | Çoğunluk gereklidir ama yeterli değildir. Köprü testi başarısız olursa öneri reddedilmez, UZLAŞMA turuna gider | Polis, Kuzey İrlanda ağırlıklı çoğunluğu, Calhoun'un yumuşatılmış hâli |
 | 7 | **Askıya alıcı azınlık itirazı ("alarm zili")** | Yürürlük gecikmesi süresince bir kez kullanılabilir. Soğuma süresi, bilirkişi raporu ve kurayla seçilmiş bir panel devreye girer. Yeniden oylamada eşik %60 veya %66,7'dir | Belçika md. 54, Almanya md. 77, Lido |
 | 8 | **Konuşma koruması** | Silme yalnızca sayılı gerekçelerle yapılabilir. 2/3 çoğunluk ve yazarın kendi kümesinde ≥ %50 destek gerekir. Yazara bildirim, cevap hakkı ve itiraz vardır | Mill, Wikipedia RD2 |
 | 9 | **Bilirkişi ve kura** | Bilirkişi kurayla seçilir. Azınlık bir kez ücretsiz karşı uzmanlık isteyebilir. Kutuplaşmış konularda kurayla seçilen bir panel devreye girer | Çoğunluk uzman kanalını kendi adamlarıyla dolduramaz |
 | 10 | **Kayıt ve şeffaflık** | Ret gerekçeleri ve azınlık raporu resmî sonuca eklenir. Her kararın bir kontrol listesi yayımlanır. İtiraz ve veto kullanım istatistikleri ile "kalıcı kaybeden" ölçüsü deftere yazılır | Loomio, Guinier, Colorado kararı |
+
+**Uygulama durumu:** 1, 5, 6, 7, 8 ve 10. katmanlar uygulandı (ALGORITMA §4, §6, §7, §10, §11; değiştirilemez çekirdek Madde 3–6). 2. katmandan yalnız olumlu destekle gündeme kabul ve göreli destekçi eşiği (K_s) alındı; Issue Limiter ve küme başına gündem slotu yok. 3. katmandan mesaj tutumu ve köprü skoru alındı; Harmonic Weighting yok. 9. katman (kurayla bilirkişi, karşı bilirkişi talebi) uygulandı. 4. katman bilerek alınmadı; gerekçe Bölüm 13.4'te.
 
 **Hocaya cevap (özet):** "Çoğunluk azınlığı tüketebilir" sorusunun tek bir algoritmik cevabı yok. Anayasal demokrasiler bu problemi yüzyıllardır katmanlar hâlinde çözüyor. Sistemimiz de beş düzeyde çözüyor:
 
@@ -1165,7 +1169,7 @@ Azınlık tiranlığına karşı da önlem var: Azınlığa verilen her yetki s�
 
 ## 12. Algoritmalar
 
-Bu bölümdeki formüller kaynaklardan alındığı şekliyle verilmiştir. Kaynakta olmayan değerler "bizim değerimiz" diye işaretlenmiştir. Tüm sayılar tam sayı aritmetiği veya sabit tohumlu deterministik hesapla uygulanmalıdır; çünkü defter doğrulayıcıları hesabı yeniden yapıp aynı sonuca ulaşmalıdır.
+Bu bölüm araştırmada incelenen algoritmaları anlatır; hepsi uygulanmadı (uygulananlar ve gerekçeler: Bölüm 13.4, bağlayıcı tanım: ALGORITMA.md). Bu bölümdeki formüller kaynaklardan alındığı şekliyle verilmiştir. Kaynakta olmayan değerler "bizim değerimiz" diye işaretlenmiştir. Tüm sayılar tam sayı aritmetiği veya sabit tohumlu deterministik hesapla uygulanmalıdır; çünkü defter doğrulayıcıları hesabı yeniden yapıp aynı sonuca ulaşmalıdır.
 
 ### 12.1 Konu yaşam döngüsü (durum makinesi)
 
@@ -1666,6 +1670,7 @@ Defter: {tür: AI_CALL veya MOD_ADVICE, model, istemSürümü, SHA-256(girdi), S
 Düzenleme metni:
   YZ 4–8 uzlaşma taslağı yazar; asıl insan metni de aday listesine eklenir → insanlar sıralar → Schulze seçer
   → kazanan normal bağlayıcı oylamaya gider
+  (uygulamada: sıralama/Schulze adımı yok; yazar bir taslağı onaylar, metin yeniden oylamaya gider — Bölüm 13.4)
 KVKK sarmalayıcısı:
   yalnızca rıza vermiş yazarların girdileri gönderilir ; takma adlar istek başına K1, K2… ile değiştirilir ; kişisel veri maskelenir
   yurt dışına aktarım için hukuki dayanak yoksa çevrimdışı yol kullanılır
@@ -1689,13 +1694,13 @@ QV: kişi başına ayda B = 100 kredi ; v oy = v² kredi ; ham öncelik = Σ v
 
 | Gereksinim | Tasarım kararı | Dayanak |
 |---|---|---|
-| 1. Herkes konu açabilir; düzenleme teklifi | Eş-sponsor kapısı. Emendation: yazar kabul ederse yeni sürüm olur ve teklif sahibine atfedilir; reddederse veya T süresinde cevap vermezse teklif rakip alternatife yükseltilir. LiquidFeedback tarzı öneri derecelendirme. Dondurma evresinde ve N destekten sonra metin kilidi | Decidim [8], LiquidFeedback [1], CONSUL [25], Birleşik Krallık dilekçeleri [47] |
-| 2. Kabul için çoğunluk | Statükolu Schulze; evet/(evet+hayır) > 1/2; katılım yeter sayısı; köprülü çoğunluk | [1][109][111][49] |
+| 1. Herkes konu açabilir; düzenleme teklifi | Eş-sponsor kapısı. Emendation: yazar kabul ederse yeni sürüm olur ve teklif sahibine atfedilir; reddederse veya T süresinde cevap vermezse teklif rakip alternatife yükseltilir. LiquidFeedback tarzı öneri derecelendirme. Dondurma evresinde ve N destekten sonra metin kilidi. Uygulanan: reddedilen teklif herkese açık kalır ve ayrı öneri olarak açılabilir; rakip alternatif ve öneri derecelendirmesi alınmadı (13.4) | Decidim [8], LiquidFeedback [1], CONSUL [25], Birleşik Krallık dilekçeleri [47] |
+| 2. Kabul için çoğunluk | Önerilen: statükolu Schulze; evet/(evet+hayır) > 1/2; katılım yeter sayısı; köprülü çoğunluk. Uygulanan: ikili oy + Köprülü Çoğunluk (Schulze alınmadı, 13.4) | [1][109][111][49] |
 | 3. Kimlik + takma ad | Şifreli kimlik kasası; TCKN için kör indeks (UNIQUE); L1/L2/L3 doğrulama seviyeleri; kefil durum makinesi; herkese yalnızca takma ad görünür | CONSUL [26], Decidim [14], Proof of Humanity [238], CipherSweet [284] |
 | 4. Oylamaya giren konu kabul edilirse resmî konu olur | Politika tablosuyla yönetilen durum makinesi (Bölüm 12.1) | LiquidFeedback, Compound, OpenGov |
 | 5. Alt konular | `parentId`; ebeveyn kabul edilmeden alt konu açılmaz; politika kalıtımı; CONLEVEL denetimi | [1][42] |
 | 6. Ontoloji denetimi | N3 + SHACL + TypeScript; ELI; kademeler; en koruyucu kuralın kazanması; değiştirilemez çekirdek | [164]–[201] |
-| 7. Tartışmalar silinmez | Yalnızca ekleme yapılan girdiler; sürüm geçmişi; deftere bağlı özet zinciri; IBIS/argüman grafı | Wikipedia [40], Decidim [21], Kialo [39], Deliberatorium [89] |
+| 7. Tartışmalar silinmez | Yalnızca ekleme yapılan girdiler; sürüm geçmişi; deftere bağlı özet zinciri; IBIS/argüman grafı (argüman grafı alınmadı; yanıt zinciri + tutum, 13.4) | Wikipedia [40], Decidim [21], Kialo [39], Deliberatorium [89] |
 | 8. Silme oylaması | Karartma durum makinesi (Bölüm 12.10) | Wikipedia, Citizen OS, Loomio |
 | Çoğunluk tiranlığı | 10 katmanlı savunma (Bölüm 11.4) | Bölüm 11 |
 | Android + web | React + TypeScript + Capacitor 8 | [288]–[294] |
@@ -1745,6 +1750,43 @@ Değerler ödev ölçeği içindir (N ≈ 30–500). Hepsi ayarlanabilir; kendil
   - saldırı kenarı başına kabul edilen sahte hesap;
   - köprü kuralının yalnızca çoğunluğa dayanan önerileri hangi oranda durdurduğu;
   - 3–5 hesaplık koordineli bir bloğun sonucu değiştirip değiştiremediği.
+
+### 13.4 Araştırmadan uygulamaya: neler alındı, neler bilerek alınmadı
+
+Araştırma birçok mekanizma önerdi; uygulama bunların bir kısmını aldı, bir kısmını sadeleştirdi, bir kısmını bilerek dışarıda
+bıraktı. Ölçüt üç gereksinimdi: (1) her sonuç tarayıcıda bültenden **bağımsız olarak yeniden sayılabilmeli** (`verifyTally`),
+(2) azınlığın gücü **erteleyici ve tek seferlik** kalmalı, (3) kullanıcıya yüklenen iş az olmalı. Bağlayıcı tanım
+[ALGORITMA.md](ALGORITMA.md)'dir.
+
+**Alınanlar (uyarlanarak):**
+
+| Araştırma önerisi | Uygulamadaki karşılığı | Nerede |
+|---|---|---|
+| LiquidFeedback evreleri, politika tablosu | Taslak → destek → ontoloji denetimi → tartışma → oylama → itiraz/uzlaşma → yürürlük; süreler katman ve kategori kurallarında (ontoloji) | ALGORITMA §2–3 |
+| Polis görüş kümeleme, GAC | PCA (2 bileşen) + k-means + siluet + permütasyon sıfır modeli; GAC yalnız gösterge | ALGORITMA §9, §1 |
+| Eşzamanlı rıza / köprü (Calhoun, Polis, Community Notes) | Köprülü Çoğunluk: anlamlı her kümede Laplace desteği P_g ≥ φ | ALGORITMA §4 |
+| Alarm zili (Belçika md. 54) | Tek seferlik itiraz → uzlaşma turu → ρ eşikli yeniden oylama | ALGORITMA §6–7 |
+| Habermas Machine | YZ 4–8 köprü taslağı üretir; yazar onaylarsa metin değişir; sonuç bağlayıcı yeniden oylamadır | ALGORITMA §7 |
+| Wikipedia revizyon gizleme | Karartma, mezar taşı, denetçiye erişim kaydıyla açık metin; veritabanında `DELETE` yok | ALGORITMA §10 |
+| Decidim emendation ve tutum işareti | Tartışma içi metin önerisi (yazar kabul ederse yeni sürüm, öneren anılır); mesajlarda lehte/aleyhte/nötr/soru tutumu | ALGORITMA §3 |
+| Likit demokrasi (sınırlı) | Vekâlet: delege başına sınır, zincir ≤ 3, doğrudan oy önceliği | ALGORITMA §5 |
+| Tendermint, RFC 6962 | 4 doğrulayıcılı BFT, Merkle kanıtı, oy taahhüdü ve açıklama | ALGORITMA §11 |
+| 6754 s. Kanun, kura | Tohumu önceden taahhüt edilen blok hash'inden alınan ağırlıklı bilirkişi kurası, karşı bilirkişi talebi | ALGORITMA §8 |
+| N3 + SHACL ayrımı, değiştirilemez çekirdek | Yönetmelik ontolojisi, en koruyucu kural, T3, meta-kurallar | YONETMELIK.md |
+
+**Bilerek alınmayanlar ya da sadeleştirilenler:**
+
+| Araştırma önerisi | Yerine ne var | Neden |
+|---|---|---|
+| Statükolu Schulze ve rakip alternatifler (aynı mesele içinde yarışan metinler) | Her öneri tek bir metindir ve ikili (evet/hayır/çekimser) oylanır; kabul kuralı Köprülü Çoğunluktur. Düzenleme teklifi ayrı bir öneridir (taban sürüm + sürüm çakışması kuralı); reddedilen metin önerisi ayrı öneri olarak açılabilir, yazarın tek başına vetosu yoktur | Köprü testinin küme bazlı Laplace desteği ikili oyda tanımlıdır ve herkes bültenden yeniden sayabilir; çok seçenekli tercih sıralamasında küme tabanının anlamı belirsizleşir. Schulze'nin klon-bağımsızlık üstünlüğü rakip seçenek yoksa devreye girmez |
+| Harmonic Weighting, Issue Limiter, küme başına gündem slotu | Gündeme kabul yalnız olumlu destekle ve göreli destekçi eşiğiyle (K_s); salam taktiğine karşı benzer öneri uyarısı | Rakip alternatif olmadığı için sıralama gerekmedi; gündem kotası küçük toplulukta katılımı gereksiz yere kısıtlardı |
+| Argüman grafı (DESTEKLER/SALDIRIR kenarlı iddia düğümleri; Kialo, Deliberatorium) | Yanıt zinciri (grafta `REPLIED_TO`), mesaj tutumu, katılıyorum/katılmıyorum ve mesaj köprü skoru; YZ özetinde azınlık görüşleri bölümü | İddiaları ayrıştırmayı kullanıcıya yüklemek katılımı düşürür; "insanları grafta tut" gereksinimi takip, kefalet, vekâlet, yakınlık ve yanıt kenarlarıyla karşılanır |
+| Community Notes matris ayrıştırması (MF) ikinci köprü sinyali | Köprü sinyali yalnız PCA + k-means kümeleri | Veri yoğunluğu şartı (öneri başına ≥ 5, kullanıcı başına ≥ 10 oy) demo ölçeğinde sağlanmaz; ikinci bir model yeniden sayımı ve açıklamayı zorlaştırırdı |
+| Köprü taslaklarının insanlarca sıralanıp Schulze ile seçilmesi | Yazar bir taslağı onaylar; metin bağlayıcı yeniden oylamaya gider | Ayrı bir sıralama oylaması ikinci bir oy turu ve ek gizlilik yüzeyi demekti; bağlayıcı karar zaten yeniden oylamadır |
+| Geçerli itirazın konuyu bilirkişi incelemesine kadar süresiz duraklatması | İtiraz tek seferlik uzlaşma turu açar; sonuç ρ eşikli yeniden oylamayla kesinleşir | Süresiz duraklatma azınlığa fiilî veto verirdi (liberum veto) |
+| drand gibi harici rastgelelik işareti | Tohum, önceden taahhüt edilen blok hash'inden | Harici ağ bağımlılığı olmadan aynı öğütme direnci (ALGORITMA §12.9) |
+| LKIF hizalama dosyası (`fy:Yasak`, `fy:Yukumluluk`, `fy:Izin`) | Kendi T-kutusu (madde, koruma düzeyi, kural, katman) | Denetim için gerekmedi; kapsamı büyütürdü |
+| MACI benzeri zorlama direnci, cihazda imzalı oy | Sunucu oy gizliliği için güvenilir kabul edilir | Düşük riskli topluluk yönetişimi kapsamı (ALGORITMA §11) |
 
 ---
 

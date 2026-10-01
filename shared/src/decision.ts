@@ -285,7 +285,10 @@ export function decide(input: DecisionInput): DecisionResult {
         detail = `${formula} ${passes ? "≥" : "<"} ${fmtRat(p.clusterFloor)}. İtiraz sonrası yeniden oylamada küme tabanları uygulanmaz, yalnızca gösterilir.`;
       } else if (exempt.has(cr.clusterId)) {
         passed = true;
-        detail = `Küme yeterince katılmadı (en az ${p.minVotesPerCluster} kabul/red oyu toplanamadı); uzatmadan sonra nötr sayıldı ve köprü tabanından muaf tutuldu.`;
+        // Dürüst gösterim: muafiyetin sonucu değiştirip değiştirmediği de yazılır.
+        detail =
+          `Küme yeterince katılmadı (en az ${p.minVotesPerCluster} kabul/red oyu toplanamadı); uzatmadan sonra nötr sayıldı ve köprü tabanından muaf tutuldu. ` +
+          `Bilgi: ${formula} ${passes ? "≥" : "<"} ${fmtRat(p.clusterFloor)}${passes ? "." : "; muafiyet olmasaydı bu grup tabanın altında kalırdı."}`;
       } else if (cr.yes + cr.no < p.minVotesPerCluster) {
         detail = `Küme yeterince katılmadı; oylama bir kez uzatılır. ${formula}`;
       }
@@ -309,7 +312,9 @@ export function decide(input: DecisionInput): DecisionResult {
     authorOk = ratGe(pa, p.authorClusterFloor);
     checks.push({
       key: "author_cluster",
-      label: `Mesaj yazarının kümesi (${clusterLabel(input.authorClusterId)})`,
+      // Grup adı etikette anılmaz: yazarın görüş grubu özel nitelikli veridir (KVKK.md §4.3). authorClusterId yalnız
+      // yeniden sayım için TALLY'de durur (zorunlu istisna).
+      label: "Mesaj yazarının kendi görüş grubu",
       passed: authorOk,
       value: `P=${fmtRatVs(pa, p.authorClusterFloor)} (${c.yes} kabul / ${c.no} red)`,
       required: `≥ ${fmtRat(p.authorClusterFloor)}`,
@@ -342,6 +347,9 @@ export function decide(input: DecisionInput): DecisionResult {
     });
   }
 
+  // Nötr sayılan (muaf) anlamlı kümeler: gerekçe metni bunları açıkça anar, "tüm gruplarda destek" demez.
+  const neutralNames = clusters.filter((c) => exempt.has(c.clusterId)).map((c) => c.label);
+
   // 5. Karar
   let outcome: DecisionResult["outcome"];
   let overrideMet: boolean | null = null;
@@ -365,9 +373,13 @@ export function decide(input: DecisionInput): DecisionResult {
       reason = `Genel çoğunluk sağlandı ancak ${failing.join(", ")} tabanın altında kaldı; uzlaşma turu başlıyor.`;
     } else {
       outcome = "accept";
-      reason = bridgeApplicable
-        ? `Genel onay (${fmtPct(approval)}) ve tüm anlamlı görüş gruplarında köprü desteği sağlandı.`
-        : `Nitelikli çoğunluk (${fmtApprovalVs(Y, Y + N, threshold)} ≥ ${ratToPercent(threshold)}) sağlandı (soğuk başlangıç).`;
+      reason = !bridgeApplicable
+        ? `Nitelikli çoğunluk (${fmtApprovalVs(Y, Y + N, threshold)} ≥ ${ratToPercent(threshold)}) sağlandı (soğuk başlangıç).`
+        : neutralNames.length === 0
+          ? `Genel onay (${fmtPct(approval)}) ve tüm anlamlı görüş gruplarında köprü desteği sağlandı.`
+          : neutralNames.length >= significant.length
+            ? `Genel onay (${fmtPct(approval)}) sağlandı. Anlamlı görüş gruplarının hiçbiri uzatmadan sonra da yeterli oya ulaşmadığı için hepsi nötr sayıldı; köprü desteği hiçbir grupta sınanamadı.`
+            : `Genel onay (${fmtPct(approval)}) sağlandı; köprü desteği yalnız yeterince katılan anlamlı görüş gruplarında arandı ve sağlandı. ${neutralNames.join(", ")} uzatmadan sonra da yeterli oya ulaşmadığı için nötr sayıldı.`;
     }
   } else {
     const rv = input.revote!;
@@ -386,7 +398,9 @@ export function decide(input: DecisionInput): DecisionResult {
       reason = pass
         ? overrideMet && !(thresholdMet && bridgeMet !== false)
           ? `Yeniden oylamada aşma eşiği (${ratToPercent(p.overrideThreshold)}) sağlandı.`
-          : "Yeniden oylamada genel onay ve köprü desteği sağlandı."
+          : neutralNames.length === 0
+            ? "Yeniden oylamada genel onay ve köprü desteği sağlandı."
+            : `Yeniden oylamada genel onay sağlandı; köprü desteği yalnız yeterince katılan anlamlı gruplarda arandı (${neutralNames.join(", ")} nötr sayıldı).`
         : "Yeniden oylamada ne köprü desteği ne de aşma eşiği sağlandı.";
     } else {
       const rho = rv.strongObjection ? ratMax(p.revoteThreshold, rat(2, 3)) : p.revoteThreshold;

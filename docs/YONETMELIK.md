@@ -91,7 +91,8 @@ Başlıca sınıflar:
 - **Koruma sınırları** — değiştirilemez maddelere dayanan, dolayısıyla hiçbir yamayla değiştirilemeyen üç parametre kümesi:
   - `fy:EsitOySinirlari` (Madde 3 (2)): oy ağırlığı 1; vekâlet sınırı oranı ≤ 0,10; vekâlet zinciri ≤ 5.
   - `fy:AzinlikKorumaSinirlari` (Madde 5): küme tabanı φ ≥ 0,20; yazar kümesi tabanı ≥ 0,50; aşma eşiği ω ≥ 2/3;
-    T0–T2 itiraz penceresi ≥ 24 saat; σ_share ≤ 0,20; σ_min ≤ 5; n_C,min ≤ 30.
+    T0–T2 itiraz penceresi ≥ 24 saat; σ_share ≤ 0,20; σ_min ≤ 5; n_C,min ≤ 30; μ_votes ≤ 3; her katmanda tartışma,
+    oylama ve uzatma ≥ 24 saat; T0–T2 uzlaşma ≥ 24 saat.
   - `fy:KalicilastirmaSinirlari` (Madde 6 (2)): τ, ω, ρ ≤ 3/4; q ≤ 0,60; her süre ≤ 720 saat.
 - **Kurallar** (`fy:Kural`) — her biri bir maddeye dayanır:
 
@@ -106,7 +107,7 @@ Başlıca sınıflar:
 | `fy:KuralCekirdekHak` | Madde 4 (1) ⛔ | N3: özü oylanamaz hakkın bağlayıcı kaynaklı kısıtlaması | T3 (ihlal) |
 | `fy:KuralDanismaYukseltmesi` | Madde 14 (2) ⛔ | N3: aynı kısıtlama danışma kaynağından | T1 + bilirkişi (uyarı) |
 | `fy:KuralBilirkisiKategorisi` | Madde 13 (1) | N3: bilirkişi gerektiren kategori (miras) | bilirkişi |
-| `fy:KuralIcerikEtiketi` | Madde 12 (2) | N3: içerik etiketi (yüksek güven 0,70 / orta güven 0,40) | ihlal / uyarı + bilirkişi |
+| `fy:KuralIcerikEtiketi` | Madde 12 (2) | N3: içerik etiketi (yüksek güven 0,70 / orta güven 0,40) | kural tabanlı ya da bilirkişi teyitli yüksek güven: ihlal; YZ kaynaklı yüksek güven ve orta güven: uyarı + bilirkişi |
 | `fy:KuralGorusAyriligi` | Madde 20 (2) ⛔ | N3: geçersiz silme gerekçesi | ihlal |
 | `fy:KuralAcilSilme` | Madde 20 (3) | `fy:AcilSilmeTalebi` | bilgi (daraltma) |
 | `fy:KuralDegistirilemezHedef` | Madde 6 (1) ⛔ | N3: yama değiştirilemez hükmü hedefliyor | T3 (ihlal) |
@@ -122,9 +123,15 @@ Başlıca sınıflar:
 
 ## 4. N3 çıkarım kuralları
 
-`yonetmelik-kurallar.n3` 34 Horn kuralı içerir ve n3 paketinin `Reasoner`'ı ile (yerleşik, ileri zincirleme, sabit nokta)
+`yonetmelik-kurallar.n3` 38 Horn kuralı içerir ve n3 paketinin `Reasoner`'ı ile (yerleşik, ileri zincirleme, sabit nokta)
 T-kutusu + A-kutusu + öneri alt grafı üzerinde çalışır. Sayısal karşılaştırma yapılmaz: içerik etiketlerinin güven düzeyi
 (yüksek/orta/düşük) denetimden önce rasyonel karşılaştırmayla atanır, sürüm eşitliği SHACL `sh:equals` ile denetlenir.
+
+**Motor düzeltmesi.** n3@2.7 `Reasoner`'ı, öncülün öznesi ve nesnesi bağlıyken yüklemi denetlemiyordu: `?g fy:muhurlu true`
+öncülü, `?g` başka bir yüklemle `true` değerine bağlıysa da eşleşiyordu (Tehdit'in `fy:acil true`'su yüzünden Tehdit gerekçeli
+talep "mühürlenir" görünüyordu). `server/src/ontology/reasoner.ts` bu durumda anahtarın dizinde bulunduğunu denetleyen bir alt
+sınıf kullanır; K7 de sabit nesneli boolean öncül yerine sınıf üyeliğine (`fy:AcilGerekce`, `fy:MuhurluGerekce`) bakar. Olumsuz
+testler: `server/test/ontology/reasoner.test.ts`, `audit.test.ts` ("Tehdit acildir ama mühürlenmez").
 
 | Grup | Kural (özet) |
 |---|---|
@@ -133,8 +140,8 @@ T-kutusu + A-kutusu + öneri alt grafı üzerinde çalışır. Sayısal karşıl
 | K3 alt konu / düzenleme | `durum "active"` ⇒ `fy:EtkinKonu`; üst/hedef konunun kategorileri miras kalır (`fy:mirasKategori`) |
 | K4 bilirkişi | öneri (üst sınıftan miras dahil) `fy:bilirkisiGerekli true` bir kategorinin örneğiyse ⇒ `fy:bilirkisiAlani` + `fy:KuralBilirkisiKategorisi`; yazar talebi ⇒ bilirkişi |
 | K5 temel haklar | kısıtlanan hak ⇒ `fy:HakKisitlayanOneri` (T1); özü oylanamaz hakkın **bağlayıcı** kaynaklı kısıtlaması ⇒ `fy:kisitlananCekirdekHak` (ihlal, T3); **danışma** kaynaklı ⇒ `fy:danismaCekirdekHakUyarisi` (uyarı, T1 + bilirkişi) |
-| K6 içerik etiketleri | yüksek güven ⇒ `fy:yuksekGuvenliEtiket` (ihlal); orta güven ⇒ `fy:ortaGuvenliEtiket` (uyarı) + bilirkişi |
-| K7 silme | `fy:GecersizGerekce` ⇒ `fy:gecersizSilmeGerekcesi` (ihlal); acil / mühürlü gerekçe ⇒ `fy:AcilSilmeTalebi` / `fy:MuhurluSilmeTalebi` |
+| K6 içerik etiketleri | yüksek güven + kural tabanlı tespit (`fy:KaynakKural`) ya da bilirkişi teyidi (`fy:KaynakBilirkisi`) ⇒ `fy:yuksekGuvenliEtiket` (ihlal); yüksek güven + yapay zekâ (`fy:KaynakYZ`) ⇒ `fy:danismaYuksekGuvenliEtiket` (uyarı) + bilirkişi; orta güven ⇒ `fy:ortaGuvenliEtiket` (uyarı) + bilirkişi |
+| K7 silme | `fy:GecersizGerekce` ⇒ `fy:gecersizSilmeGerekcesi` (ihlal); `fy:acil true` / `fy:muhurlu true` ⇒ `fy:AcilGerekce` / `fy:MuhurluGerekce`; bu sınıftaki gerekçe ⇒ `fy:AcilSilmeTalebi` / `fy:MuhurluSilmeTalebi` |
 | K8 değiştirilemez hedef | yama işleminin hedefi değiştirilemez madde **ya da** değiştirilemez maddeye dayanan kural/taşıyıcı ⇒ `fy:degistirilemezHedef` (T3) |
 | K9 yeni değiştirilemez | `yeniKoruma Degistirilemez`, değiştirilemez maddeye `dayanak` bağlama, `asgariKatman T3` ⇒ `fy:yeniDegistirilemez` (T3) |
 | K10 iki adımlı atlatma | `overrides` değeri değiştirilemez madde ya da ona dayanan kural ⇒ `fy:degistirilemezAtlatma` (T3) |
@@ -146,7 +153,8 @@ T-kutusu + A-kutusu + öneri alt grafı üzerinde çalışır. Sayısal karşıl
 `yonetmelik-sekiller.ttl` iki grup şekil içerir (`fy:sekilGrubu`):
 
 - **"oneri"** şekilleri her denetimde **birleştirilmiş veri kümesi** (T-kutusu + yönetmelik + öneri + çıkarımlar) üzerinde çalışır:
-  başlık uzunluğu, gerekçe kısalığı (uyarı), N3 ihlal/uyarı bayrakları (`sh:maxCount 0`), kategori yokluğu (uyarı), alt konunun
+  başlık (5–200) ve metin (20–20000 karakter) uzunluğu — sunucunun kayıt denetimiyle aynı sınırlar (`PROPOSAL_TEXT_LIMITS`,
+  `shared/src/vocab.ts`; bir test SHACL şekli, Madde 7 (1) ve sabitin eşitliğini denetler) —, N3 ihlal/uyarı bayrakları (`sh:maxCount 0`), kategori yokluğu (uyarı), alt konunun
   etkin üst konusu (`sh:class fy:EtkinKonu`), düzenlemenin taban sürümü (`sh:equals fy:guncelSurum` → sürüm çakışması uyarısı),
   silme talebinde tam olarak bir tanımlı gerekçe ve en az bir mesaj, yönetmelik yamasında en az bir işlem.
 - **"yonetmelik"** (meta) şekilleri yönetmeliğin kendisini denetler: her maddenin numarası, metni ve tek koruma düzeyi; her kuralın
@@ -160,12 +168,12 @@ Her şekil `fy:bulguKodu` (makine kodu) ve `fy:dayanak` (madde) taşır. SHACL s
 `article` (madde IRI'si) ve `articleLabel` ("Madde 10 (2)"). İlgili değerler (ör. kısıtlanan hakkın ya da etiketin adı) mesajın
 sonuna eklenir.
 
-Başlıca bulgu kodları: `title_length`, `body_short`, `no_category`, `unknown_category`, `core_right_restricted`,
-`advisory_core_right_flag`, `content_label_high`, `content_label_medium`, `parent_missing`, `parent_inactive`,
+Başlıca bulgu kodları: `title_length`, `body_length`, `no_category`, `unknown_category`, `core_right_restricted`,
+`advisory_core_right_flag`, `content_label_high`, `content_label_ai_high` (uyarı), `content_label_medium`, `parent_missing`, `parent_inactive`,
 `amendment_base_missing`, `version_conflict`, `amendment_target_inactive`, `deletion_ground_count`, `deletion_ground_unknown`,
 `deletion_ground_invalid`, `deletion_no_messages`, `patch_empty`, `immutable_target`, `new_immutable`, `immutable_bypass`,
 `protection_floor`, `entrenchment_cap`, `equal_vote_limit`, `param_range`, `overrides_cycle`, `overrides_target`,
-`rule_without_article`, `patch_*` (yapısal yama hataları). Bilgi kodları: `tier`, `expert_required`, `inherited_categories`,
+`rule_without_article`, `article_text_stale`, `patch_*` (yapısal yama hataları). Bilgi kodları: `tier`, `expert_required`, `inherited_categories`,
 `deletion_urgent`, `deletion_sealed`, `qualified_change`, `sponsors`, `rule_overridden`, `advisory_right_flag`.
 
 ## 6. Denetim akışı ve katman belirleme
@@ -199,8 +207,19 @@ ya da `member` (yazar dışındaki üyenin eklediği bayrak) olan aynı kısıtl
 bilirkişi incelemesi gerektirir; öneriyi asla geçersiz kılmaz (Madde 14 (2)). Böylece ne bir yapay zekâ yanlış pozitifi ne de
 herhangi bir üye bir bayrakla öneriyi düşüremez; ama hiçbir bayrak sessizce yok sayılmaz.
 
-**İçerik etiketleri:** güven ≥ 0,70 → ihlal (Madde 12 (2)); 0,40 ≤ güven < 0,70 → uyarı + bilirkişi; daha düşük → etkisiz.
-Eşikler `fy:KuralIcerikEtiketi` parametreleridir ve rasyonel olarak karşılaştırılır.
+**Kategori etiketleri (Madde 8 (2)):** "yalnızca yükseltme" mekanizması hak etkisi etiketleri içindir. Önerinin kategorilerini
+yazar seçer (alt konu ve düzenleme teklifleri üst konunun kategorilerini ayrıca miras alır); yapay zekânın kategori tahminleri ön
+denetimde yalnızca öneri olarak gösterilir, üyeler başkasının önerisine kategori ekleyemez. Madde 8 (2) metni bu davranışa göre
+daraltılmıştır (önceki metin üyelere kategori ekleme hakkı tanıyordu ama uygulamada karşılığı yoktu). Yazarın eksik kategoriyle
+daha sıkı bir kategori kuralından kaçmasına karşı üyeler hak etkisi bayrağı ekleyebilir, tartışmada itiraz edebilir ve bilirkişi
+incelemesi talep edebilir (Madde 13 (1)).
+
+**İçerik etiketleri:** güven ≥ 0,70 ve kaynağı `rule` (kural tabanlı tespit) ya da `expert` (bilirkişi teyidi) → ihlal
+(Madde 12 (2)); güven ≥ 0,70 ve kaynağı `ai` (Claude ya da çevrimdışı sezgisel) → **uyarı** (`content_label_ai_high`) + bilirkişi
+incelemesi; 0,40 ≤ güven < 0,70 → uyarı + bilirkişi; daha düşük → etkisiz. Yapay zekâ etiketi tek başına bir öneriyi kabul
+edilemez kılamaz (Madde 14 (1)): hak bayraklarındaki "yalnızca yükseltme" ilkesi içerik etiketlerine de uygulanır, böylece bir
+sözlük yanlış pozitifi (ör. korunan bir grubu destekleyen metin) öneriyi düşüremez; karar insan bilirkişiye kalır. Eşikler
+`fy:KuralIcerikEtiketi` parametreleridir ve rasyonel olarak karşılaştırılır.
 
 **Alt konu:** üst konu yoksa ya da etkin değilse ihlal; üst konunun kategorileri mirasa eklenir (ve onların kuralları uygulanır).
 **Düzenleme:** `baseVersion ≠ currentVersion` → uyarı (yürürlüğe girişte "sürüm çakışması" ile reddedilecek).
@@ -259,17 +278,31 @@ Yama işlemleri (`RegulationPatchOp`):
 4. **İki adımlı atlatma yasağı** (Madde 6 (2), T3): değiştirilemez bir hükmü `overrides` eden yeni madde/kural (aynı yamada ya da
    önce madde ekleyip sonraki yamada bağlama — her yama yürürlükteki duruma göre denetlendiği için ikisi de yakalanır).
 5. **Koruma tabanları** (Madde 5, T3): φ ≥ 0,20; yazar kümesi tabanı ≥ 0,50; ω ≥ 2/3; T0–T2 itiraz penceresi ≥ 24 saat;
-   σ_share ≤ 0,20; σ_min ≤ 5; n_C,min ≤ 30 (köprü testini "teknik olarak" kapatmayı önler).
+   σ_share ≤ 0,20; σ_min ≤ 5; n_C,min ≤ 30; **μ_votes ≤ 3**; her katmanda tartışma, oylama ve uzatma ≥ 24 saat; T0–T2
+   uzlaşma ≥ 24 saat (köprü testini "teknik olarak" kapatmayı önler). μ_votes sınırı şart: nötr küme kuralı (ALGORITMA §4.1)
+   uzatmadan sonra μ_votes altında kalan kümeyi tabandan muaf tuttuğu için μ_votes her kümeden büyük seçilirse köprü testi
+   dolaylı olarak kapanırdı. Süre tabanları da uzatmayı, azınlık raporunu ve köprü taslaklarını sıfır saate indirerek aynı
+   sonuca varılmasını engeller. DEL'in tasarım gereği 0 olan itiraz ve uzlaşma süreleri (ALGORITMA §12.5) bu tabanların
+   dışındadır. Sınır üçlüsü bulunmayan eski bir sürümde (bu sınırlardan önce kurulmuş veritabanı) kod aynı değerleri varsayılan
+   olarak uygular; koruma taşıyıcısı değiştirilemez olduğu için eksik sınır yamayla eklenemezdi.
 6. **Kalıcılaştırma sınırları** (Madde 6 (2), T3): τ, ω, ρ ≤ 3/4; q ≤ 0,60; süreler ≤ 720 saat — çoğunluğun değişikliği
    imkânsızlaştırarak kendini kilitlemesini ve azınlığın mutlak veto kazanmasını önler.
 7. **Eşit oy sınırları** (Madde 3 (2), T3): vekâlet sınırı oranı ≤ 0,10, vekâlet zinciri ≤ 5.
 8. **`overrides` döngüsüz** (Madde 6 (3)): döngü ya da tanımsız hedef ihlaldir (T2, kabul edilemez).
 9. **Her kural bir maddeye dayanır** (Madde 11 (2)).
-10. **Nitelikli hüküm** (Madde 23 (1)): hedef ya da hedefin dayanağı *Nitelikli* ise — ya da yama nitelikli bir hükmü `overrides` ile devre dışı bırakıyor, bir kuralı nitelikli maddeye dayandırıyor veya nitelikli koruma veriyorsa — τ 3/4, q 0,50 uygulanır (dolaylı yoldan nitelikli korumayı aşmak da nitelikli çoğunluk ister).
+10. **Madde metni ↔ parametre tutarlılığı** (Madde 23 (1), `article_text_stale`): bir kuralın ya da parametre kümesinin
+    sayısal değerini değiştiren yama, eski değeri metninde anan dayanak maddeyi (ör. Madde 24 (4) "en az 96 saat") aynı yamada
+    `amendArticleText` ile güncellemelidir; aksi halde yama kabul edilemez (T2). Değer; tamsayı, Türkçe ondalık ("0,30"), kesir
+    ("2/3") ya da yüzde ("%10") yazımıyla aranır. Metninde sayı geçmeyen dayanaklar (ör. katmanların dayandığı Madde 9 (2)) ek
+    adım gerektirmez. Yama oluşturucu bu adımı hatırlatır.
+11. **Nitelikli hüküm** (Madde 23 (1)): hedef ya da hedefin dayanağı *Nitelikli* ise — ya da yama nitelikli bir hükmü `overrides` ile devre dışı bırakıyor, bir kuralı nitelikli maddeye dayandırıyor veya nitelikli koruma veriyorsa — τ 3/4, q 0,50 uygulanır (dolaylı yoldan nitelikli korumayı aşmak da nitelikli çoğunluk ister).
 
 `applyPatch(patch, proposalId)` yamayı yeniden denetler, geçersizse 422 `bylaw_patch_invalid` fırlatır; geçerliyse yeni sürümü
 (`version + 1`, yeni Turtle, yeni özet, `via_proposal_id`) yazar ve `BylawVersionInfo` döndürür (`ledgerTx: null` — `BYLAW_VERSION`
-defter kaydını çağıran yapar ve `bylaw_versions.ledger_tx`'i günceller). Sonraki `audit` çağrıları yeni sürümü kullanır. Oylamaya açılmış
+defter kaydını çağıran yapar ve `bylaw_versions.ledger_tx`'i günceller). **Kurucu sürüm (1)** de deftere sabitlenir: bileşim kökü
+(`createApp`) ilk açılışta ya da tohumlamada, sürüm 1'in defter kaydı yoksa `anchorFoundingBylaw` ile
+`BYLAW_VERSION {version: 1, hash, proposalId: null}` gönderir ve özeti sürüme bağlar (idempotent). Böylece kurucu metnin de
+sonradan değiştirilmediği defterden kanıtlanır. Sonraki `audit` çağrıları yeni sürümü kullanır. Oylamaya açılmış
 önerilerin parametreleri sabitlendiği için değişiklik geriye etkili değildir (Madde 9 (4)).
 
 ## 9. Forum Yönetmeliği — tam metin
@@ -307,9 +340,9 @@ Koruma düzeyleri: **Değiştirilemez** (oylanamaz; T3), Nitelikli (değişikli�
 #### Madde 5 — Azınlığın korunması
 
 - **Madde 5 (1)** · **Değiştirilemez** · `fy:Madde_5_1`  
-  Bir öneri, genel çoğunluğun yanında anlamlı her görüş kümesinden asgari destek almadıkça ilk oylamada kabul edilemez (köprü testi). Küme tabanı hiçbir katmanda 0,20'nin, silme kararlarında mesaj yazarının kendi kümesi için aranan taban 0,50'nin altına indirilemez; anlamlı küme payı 0,20'nin, anlamlı küme asgari üye sayısı 5'in, köprü testi için gereken asgari kümelenmiş üye sayısı 30'un üzerine çıkarılamaz.
+  Bir öneri, genel çoğunluğun yanında anlamlı her görüş kümesinden asgari destek almadıkça ilk oylamada kabul edilemez (köprü testi). Küme tabanı hiçbir katmanda 0,20'nin, silme kararlarında mesaj yazarının kendi kümesi için aranan taban 0,50'nin altına indirilemez; anlamlı küme payı 0,20'nin, anlamlı küme asgari üye sayısı 5'in, köprü testi için gereken asgari kümelenmiş üye sayısı 30'un, anlamlı bir kümede uzatma için aranan asgari kabul/red oyu sayısı 3'ün üzerine çıkarılamaz. Tartışma, oylama ve uzatma süreleri hiçbir katmanda 24 saatten kısa olamaz.
 - **Madde 5 (2)** · **Değiştirilemez** · `fy:Madde_5_2`  
-  Köprü testini geçemeyen öneri için uzlaşma turu açılır. Yeniden oylamada aşma eşiği hiçbir katmanda 2/3'ün altına indirilemez; böylece azınlığın gücü erteleyicidir ve kararın yeniden düşünülmesini sağlar.
+  Köprü testini geçemeyen öneri için uzlaşma turu açılır; T0, T1 ve T2 katmanlarında uzlaşma süresi 24 saatten kısa olamaz. Yeniden oylamada aşma eşiği hiçbir katmanda 2/3'ün altına indirilemez; böylece azınlığın gücü erteleyicidir ve kararın yeniden düşünülmesini sağlar.
 - **Madde 5 (3)** · **Değiştirilemez** · `fy:Madde_5_3`  
   İlk oylamada kabul edilen karara karşı red oyu veren üyelerin itiraz hakkı kaldırılamaz; T0, T1 ve T2 katmanlarında itiraz penceresi 24 saatten kısa olamaz.
 
@@ -327,7 +360,7 @@ Koruma düzeyleri: **Değiştirilemez** (oylanamaz; T3), Nitelikli (değişikli�
 #### Madde 7 — Öneri hakkı
 
 - **Madde 7 (1)** · Olağan · `fy:Madde_7_1`  
-  Her üye konu açabilir, kabul edilmiş bir konuya alt konu önerebilir ve yürürlükteki bir konu için düzenleme teklif edebilir. Önerinin 3 ile 200 karakter arasında anlaşılır bir başlığı ve gerekçesi bulunur.
+  Her üye konu açabilir, kabul edilmiş bir konuya alt konu önerebilir ve yürürlükteki bir konu için düzenleme teklif edebilir. Önerinin 5 ile 200 karakter arasında anlaşılır bir başlığı ve 20 ile 20000 karakter arasında bir metni (gerekçesi) bulunur.
 - **Madde 7 (2)** · Olağan · `fy:Madde_7_2`  
   Öneri, Madde 9 (3)'te belirtilen sayıda üyenin desteğini (eş imza) toplayınca denetime girer; destek toplama süresi dolan öneri düşer.
 
@@ -336,7 +369,7 @@ Koruma düzeyleri: **Değiştirilemez** (oylanamaz; T3), Nitelikli (değişikli�
 - **Madde 8 (1)** · Olağan · `fy:Madde_8_1`  
   Konu, alt konu, düzenleme ve Yönetmelik önerileri en az bir kategoriye bağlanır. Kategoriler bir sınıf ağacı oluşturur; bir alt kategoriye bağlanan öneri, üst kategorilerine de bağlı sayılır ve onların kurallarına tabidir. Silme (karartma) talepleri kategori kurallarına tabi değildir.
 - **Madde 8 (2)** · Nitelikli · `fy:Madde_8_2`  
-  Kategori ve hak etkisi etiketleri yalnızca yükseltilebilir: her üye ve yapay zekâ etiket ekleyebilir; eklenen bir etiketi yalnızca bilirkişi kaldırabilir. Danışma niteliğindeki bu etiketler öneriyi en çok nitelikli katmana yükseltir, tek başına geçersiz kılmaz.
+  Hak etkisi etiketleri yalnızca yükseltilebilir: her üye ve yapay zekâ hak etkisi etiketi ekleyebilir; eklenen bir etiketi yalnızca ilgili alandaki bilirkişi veya yönetici kaldırabilir. Danışma niteliğindeki bu etiketler öneriyi en çok nitelikli katmana yükseltir, tek başına geçersiz kılmaz. Önerinin kategorilerini yazar seçer; yapay zekânın kategori tahminleri yazara yalnızca öneri olarak gösterilir.
 
 #### Madde 9 — Katmanlar
 
@@ -368,7 +401,7 @@ Koruma düzeyleri: **Değiştirilemez** (oylanamaz; T3), Nitelikli (değişikli�
 - **Madde 12 (1)** · Olağan · `fy:Madde_12_1`  
   Öneriler ve tartışma mesajları kişisel veri ifşası, tehdit, hakaret veya iftira, korunan gruplara yönelik nefret söylemi, spam veya reklam ve telif ihlali içeremez.
 - **Madde 12 (2)** · Nitelikli · `fy:Madde_12_2`  
-  Otomatik içerik etiketlemesinde güveni yüksek güven eşiğine (0,70) ulaşan yasak içerik etiketi öneriyi kabul edilemez kılar; yazar metni düzelterek yeniden sunabilir. Güveni orta güven eşiği (0,40) ile yüksek güven eşiği arasında kalan etiketler uyarı olarak gösterilir ve bilirkişi incelemesi gerektirir.
+  Kural tabanlı tespitte ya da bilirkişi teyidinde güveni yüksek güven eşiğine (0,70) ulaşan yasak içerik etiketi öneriyi kabul edilemez kılar; yazar metni düzelterek yeniden sunabilir. Yapay zekânın verdiği içerik etiketi öneriyi tek başına kabul edilemez kılamaz: yüksek güven eşiğine ulaşan yapay zekâ etiketleri ile güveni orta güven eşiği (0,40) ile yüksek güven eşiği arasında kalan etiketler uyarı olarak gösterilir ve bilirkişi incelemesi gerektirir.
 
 #### Madde 13 — Bilirkişi
 
@@ -445,7 +478,7 @@ Koruma düzeyleri: **Değiştirilemez** (oylanamaz; T3), Nitelikli (değişikli�
 - **Madde 21 (1)** · **Değiştirilemez** · `fy:Madde_21_1`  
   Ad, soyad, T.C. kimlik numarası, adres, doğum tarihi, e-posta ve telefon gibi kişisel veriler, şifreli halleri dahil, dağıtık defterde tutulmaz; defterde yalnızca özetler, taahhütler ve kimlik içermeyen sayılar bulunur.
 - **Madde 21 (2)** · Nitelikli · `fy:Madde_21_2`  
-  Kimlik verileri alan bazında şifreli kasada saklanır; bunlara yalnızca yetkili kayıt memuru veya denetçi, amacını belirterek ve erişim kaydı bırakarak ulaşabilir.
+  Kimlik verileri alan bazında şifreli kasada saklanır; bunlara yalnızca yetkili kayıt memuru, denetçi veya yönetici, amacını belirterek ve erişim kaydı bırakarak ulaşabilir.
 - **Madde 21 (3)** · **Değiştirilemez** · `fy:Madde_21_3`  
   Üyenin kendi kişisel verilerinin silinmesi talebi oylamaya konulmaz; kripto-imha yoluyla yerine getirilir.
 
@@ -459,7 +492,7 @@ Koruma düzeyleri: **Değiştirilemez** (oylanamaz; T3), Nitelikli (değişikli�
 #### Madde 23 — Değişiklik usulü
 
 - **Madde 23 (1)** · Nitelikli · `fy:Madde_23_1`  
-  Yönetmelik değişikliği yapılandırılmış bir yama olarak önerilir ve T2 katmanında karara bağlanır. “Nitelikli” koruma düzeyindeki bir hükmü ya da ona dayanan bir kural veya parametreyi değiştiren önerilerde onay eşiği en az 3/4, yeter sayı en az 0,50'dir.
+  Yönetmelik değişikliği yapılandırılmış bir yama olarak önerilir ve T2 katmanında karara bağlanır. “Nitelikli” koruma düzeyindeki bir hükmü ya da ona dayanan bir kural veya parametreyi değiştiren önerilerde onay eşiği en az 3/4, yeter sayı en az 0,50'dir. Bir kuralın ya da parametre kümesinin değerini değiştiren yama, bu değeri metninde anan dayanak maddeyi de aynı yamada günceller; madde metni yürürlükteki parametreyle çelişemez.
 - **Madde 23 (2)** · Nitelikli · `fy:Madde_23_2`  
   Hiçbir değişiklik yeter sayıyı 0 veya altına ya da 1'in üzerine, onay eşiğini 0,50'nin altına ya da 1'in üzerine çekemez; diğer oranlar 0 ile 1, süreler 0 ile 8760 saat arasında olur.
 - **Madde 23 (3)** · Olağan · `fy:Madde_23_3`  
@@ -644,6 +677,11 @@ yama T3'tür.
 | `fy:AzinlikKorumaSinirlari` | `anlamliKumePayiAzami` | Azınlık koruması sınırları · Anlamlı küme payı üst sınırı | 0,2 | evet |
 | `fy:AzinlikKorumaSinirlari` | `anlamliKumeAsgariUyeAzami` | Azınlık koruması sınırları · Anlamlı küme asgari üye üst sınırı | 5 | evet |
 | `fy:AzinlikKorumaSinirlari` | `kopruIcinAsgariKumelenmisAzami` | Azınlık koruması sınırları · Köprü için asgari kümelenmiş üye üst sınırı | 30 | evet |
+| `fy:AzinlikKorumaSinirlari` | `kumeBasinaAsgariOyAzami` | Azınlık koruması sınırları · Küme başına asgari oy üst sınırı | 3 | evet |
+| `fy:AzinlikKorumaSinirlari` | `sureTartismaAsgari` | Azınlık koruması sınırları · Tartışma süresi alt sınırı (saat) | 24 | evet |
+| `fy:AzinlikKorumaSinirlari` | `sureOylamaAsgari` | Azınlık koruması sınırları · Oylama süresi alt sınırı (saat) | 24 | evet |
+| `fy:AzinlikKorumaSinirlari` | `sureUzatmaAsgari` | Azınlık koruması sınırları · Uzatma süresi alt sınırı (saat) | 24 | evet |
+| `fy:AzinlikKorumaSinirlari` | `sureUzlasmaAsgari` | Azınlık koruması sınırları · Uzlaşma süresi alt sınırı (saat, T0–T2) | 24 | evet |
 | `fy:KalicilastirmaSinirlari` | `yeterSayiAzami` | Kalıcılaştırma yasağı sınırları · Yeter sayı üst sınırı | 0,6 | evet |
 | `fy:KalicilastirmaSinirlari` | `esikAzami` | Kalıcılaştırma yasağı sınırları · Onay eşiği üst sınırı | 0,75 | evet |
 | `fy:KalicilastirmaSinirlari` | `asmaEsigiAzami` | Kalıcılaştırma yasağı sınırları · Aşma eşiği üst sınırı | 0,75 | evet |

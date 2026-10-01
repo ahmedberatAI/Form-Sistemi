@@ -44,7 +44,7 @@ describe("AiRecordSink", () => {
     expect(a.approvedBy).toBeNull();
 
     const row = ctx.db.get<Record<string, unknown>>("SELECT * FROM ai_analyses WHERE id = ?", a.id)!;
-    expect(row.prompt_version).toBe("fy-ai/1");
+    expect(row.prompt_version).toBe("fy-ai/2");
     expect(row.input_hash).toBe(hashCanonical(input));
     expect(row.output_hash).toBe(hashCanonical(out));
     expect(row.offline).toBe(1);
@@ -54,7 +54,7 @@ describe("AiRecordSink", () => {
     const tx = ledger.txs[0];
     expect(tx.type).toBe("AI_ANALYSIS");
     expect(Object.keys(tx.payload).sort()).toEqual(["analysisId", "inputHash", "model", "offline", "outputHash", "promptVersion", "targetId", "targetType", "task"]);
-    expect(tx.payload).toMatchObject({ analysisId: a.id, task: "summarize", targetType: "proposal", targetId: "p-1", model: OFFLINE_MODEL, offline: true, promptVersion: "fy-ai/1", ...hashes });
+    expect(tx.payload).toMatchObject({ analysisId: a.id, task: "summarize", targetType: "proposal", targetId: "p-1", model: OFFLINE_MODEL, offline: true, promptVersion: "fy-ai/2", ...hashes });
     const payload = JSON.stringify(tx.payload);
     expect(payload).not.toContain("Gizli özet");
     expect(payload).not.toContain("akşam");

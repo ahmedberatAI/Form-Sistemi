@@ -152,6 +152,8 @@ const ASSESSMENTS: readonly ExpertAssessment[] = ["feasible", "infeasible", "unc
 const PENDING_SQL = "('invited','accepted')";
 const MAX_DOMAINS = 10;
 const MAX_PANEL = 15;
+/** Azınlık güvenceli soruya verilecek yanıtın asgari uzunluğu (soru da en az 10 karakterdir). */
+export const MIN_GUARANTEED_ANSWER = 10;
 /** Genişletmede kullanılmayan kök sınıflar (her bilirkişiyi kapsardı). */
 const ROOT_CATEGORIES = new Set([fy("Kategori"), "http://www.w3.org/2002/07/owl#Thing", "http://www.w3.org/2000/01/rdf-schema#Resource"]);
 
@@ -952,6 +954,20 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
         const answer = x.answer.trim();
         if (answer.length > 5000) throw badRequest("answer_too_long", "Bir yanıt en fazla 5000 karakter olabilir.");
         answers.push({ questionId: x.questionId, answer });
+      }
+      // Azınlık güvenceli soru (öneride en küçük anlamlı kümeden sorulan ilk soru) yanıtlanmadan rapor kabul edilmez:
+      // arayüzün verdiği "yanıtlanması zorunludur" güvencesi sunucuda uygulanır. Diğer sorular yalnız itibar ölçütüdür.
+      const unanswered = questions.filter(
+        (q) => q.minority_guaranteed === 1 && (answers.find((x) => x.questionId === q.id)?.answer.length ?? 0) < MIN_GUARANTEED_ANSWER,
+      );
+      if (unanswered.length > 0) {
+        throw badRequest(
+          "minority_question_unanswered",
+          unanswered.length === 1
+            ? `Azınlık güvenceli soru yanıtlanmadan rapor gönderilemez (yanıt en az ${MIN_GUARANTEED_ANSWER} karakter olmalıdır).`
+            : `${unanswered.length} azınlık güvenceli soru yanıtlanmadan rapor gönderilemez (her yanıt en az ${MIN_GUARANTEED_ANSWER} karakter olmalıdır).`,
+          { questionIds: unanswered.map((q) => q.id) },
+        );
       }
       if (input.dissent !== undefined && input.dissent !== null && typeof input.dissent !== "string") {
         throw badRequest("invalid_dissent", "Karşı görüş metin olmalıdır.");

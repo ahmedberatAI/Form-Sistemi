@@ -70,6 +70,10 @@ fy:GecersizGerekce a owl:Class ; rdfs:subClassOf fy:Gerekce ; rdfs:label "Geçer
 fy:IcerikEtiketi a owl:Class ; rdfs:label "İçerik etiketi"@tr .
 fy:acil a owl:DatatypeProperty ; rdfs:range xsd:boolean ; rdfs:label "acil (talep anında daraltılır)"@tr .
 fy:muhurlu a owl:DatatypeProperty ; rdfs:range xsd:boolean ; rdfs:label "mühürlenir (kişisel veri)"@tr .
+# fy:acil / fy:muhurlu bayrakları N3 kuralıyla bu sınıflara çevrilir; silme kuralları (K7) sabit nesneli
+# boolean öncül yerine sınıf üyeliğine bakar (bkz. yonetmelik-kurallar.n3).
+fy:AcilGerekce a owl:Class ; rdfs:subClassOf fy:Gerekce ; rdfs:label "Acil gerekçe (talep anında daraltma)"@tr .
+fy:MuhurluGerekce a owl:Class ; rdfs:subClassOf fy:Gerekce ; rdfs:label "Mühürlenen gerekçe (kişisel veri)"@tr .
 fy:icerikEtiketiAdi a owl:DatatypeProperty ; rdfs:range xsd:string ; rdfs:label "içerik etiketi adı"@tr .
 
 # ───────────────────────── Parametre taşıyıcıları ─────────────────────────
@@ -135,6 +139,11 @@ fy:sureItirazAsgari a owl:DatatypeProperty, fy:Parametre ; rdfs:label "İtiraz p
 fy:anlamliKumePayiAzami a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Anlamlı küme payı üst sınırı"@tr ; fy:parametreTuru fy:OranTuru .
 fy:anlamliKumeAsgariUyeAzami a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Anlamlı küme asgari üye üst sınırı"@tr ; fy:parametreTuru fy:SayiTuru .
 fy:kopruIcinAsgariKumelenmisAzami a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Köprü için asgari kümelenmiş üye üst sınırı"@tr ; fy:parametreTuru fy:SayiTuru .
+fy:kumeBasinaAsgariOyAzami a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Küme başına asgari oy üst sınırı"@tr ; fy:parametreTuru fy:SayiTuru .
+fy:sureTartismaAsgari a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Tartışma süresi alt sınırı (saat)"@tr ; fy:parametreTuru fy:SaatTuru .
+fy:sureOylamaAsgari a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Oylama süresi alt sınırı (saat)"@tr ; fy:parametreTuru fy:SaatTuru .
+fy:sureUzatmaAsgari a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Uzatma süresi alt sınırı (saat)"@tr ; fy:parametreTuru fy:SaatTuru .
+fy:sureUzlasmaAsgari a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Uzlaşma süresi alt sınırı (saat, T0–T2)"@tr ; fy:parametreTuru fy:SaatTuru .
 fy:yeterSayiAzami a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Yeter sayı üst sınırı"@tr ; fy:parametreTuru fy:OranTuru .
 fy:esikAzami a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Onay eşiği üst sınırı"@tr ; fy:parametreTuru fy:OranTuru .
 fy:asmaEsigiAzami a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Aşma eşiği üst sınırı"@tr ; fy:parametreTuru fy:OranTuru .
@@ -173,6 +182,8 @@ fy:KaynakBilirkisi a fy:BaglayiciKaynak ; rdfs:label "bilirkişi"@tr .
 fy:KaynakYZ a fy:DanismaKaynagi ; rdfs:label "yapay zekâ"@tr .
 fy:KaynakUye a fy:DanismaKaynagi ; rdfs:label "üye bayrağı"@tr .
 fy:KaynakKural a fy:DanismaKaynagi ; rdfs:label "kural tabanlı tespit"@tr .
+# İçerik etiketlerinde (K6) yalnızca kural tabanlı tespit ve bilirkişi teyidi yüksek güvende ihlal doğurur;
+# yapay zekâ etiketi her güven düzeyinde danışmadır (uyarı + bilirkişi incelemesi, Madde 12 (2) ve 14 (1)).
 
 fy:IcerikEtiketiAtamasi a owl:Class .
 fy:GuvenDuzeyi a owl:Class .
@@ -218,7 +229,10 @@ fy:kisitladigiHak a owl:ObjectProperty ; rdfs:range fy:TemelHak .
 fy:kisitlananCekirdekHak a owl:ObjectProperty ; rdfs:range fy:TemelHak ; rdfs:label "özü oylanamaz hakkın bağlayıcı kısıtlaması (ihlal)"@tr .
 fy:danismaCekirdekHakUyarisi a owl:ObjectProperty ; rdfs:range fy:TemelHak ; rdfs:label "özü oylanamaz hak için danışma bayrağı (uyarı)"@tr .
 fy:bilirkisiAlani a owl:ObjectProperty ; rdfs:label "bilirkişi gerektiren kategori"@tr .
-fy:yuksekGuvenliEtiket a owl:ObjectProperty ; rdfs:range fy:IcerikEtiketi .
+fy:yuksekGuvenliEtiket a owl:ObjectProperty ; rdfs:range fy:IcerikEtiketi ;
+    rdfs:label "kural tabanlı ya da bilirkişi teyitli yüksek güvenli içerik etiketi (ihlal)"@tr .
+fy:danismaYuksekGuvenliEtiket a owl:ObjectProperty ; rdfs:range fy:IcerikEtiketi ;
+    rdfs:label "yapay zekâ kaynaklı yüksek güvenli içerik etiketi (uyarı + bilirkişi)"@tr .
 fy:ortaGuvenliEtiket a owl:ObjectProperty ; rdfs:range fy:IcerikEtiketi .
 fy:gecersizSilmeGerekcesi a owl:ObjectProperty ; rdfs:range fy:GecersizGerekce .
 fy:degistirilemezHedef a owl:ObjectProperty ; rdfs:label "değiştirilemez hüküm hedefi (ihlal)"@tr .

@@ -180,7 +180,7 @@ CREATE TABLE IF NOT EXISTS proposal_suggestions (
   proposal_id TEXT NOT NULL REFERENCES proposals(id),
   author_id TEXT NOT NULL REFERENCES users(id),
   body TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'open',       -- open|accepted|rejected
+  status TEXT NOT NULL DEFAULT 'open',       -- open|accepted|rejected|lapsed (lapsed: karar verilmeden tartışma kapandı)
   created_at INTEGER NOT NULL,
   decided_at INTEGER
 );

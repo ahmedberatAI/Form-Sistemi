@@ -53,6 +53,7 @@ Yönetici her rolün yetkisine sahiptir; denetçi `R`'nin okuma uç noktaların�
 | GET | `/api/me` | U | | `Me` |
 | PATCH | `/api/me/consents` | U | `ConsentsRequest` | `Me` |
 | POST | `/api/me/password` | U | `ChangePasswordRequest` | `OkResponse` |
+| PATCH | `/api/me/nickname` | U | `ChangeNicknameRequest` (yeni takma ad + mevcut şifre) | `Me` (yanlış şifre 400 `wrong_password`; 409 `duplicate_nickname` / `similar_nickname`; 30 günde bir → 422 `nickname_change_limit`, `details.nextAllowedAt`) |
 | GET | `/api/me/export` | U | | KVKK döküm JSON (kendi verisi, şifresi çözülmüş) |
 | POST | `/api/me/erase` | U | `EraseRequest` (`confirm` = `"SİL"`) | `OkResponse` (kripto-imha; oylamaya konmaz) |
 | POST | `/api/me/corrections` | U | `CorrectionRequestInput` | `CorrectionRequestView` (KVKK md. 11/1-d düzeltme talebi; aynı anda tek bekleyen, 409 `correction_pending`) |
@@ -84,6 +85,14 @@ gerekçesini gönderir; değerler kayıt formuyla aynı kurallarla doğrulanır,
 gerekçe kişinin DEK'iyle şifreli saklanır. Kayıt memuru talebi amaç belirterek inceler, sonra onaylar ya da reddeder. Onayda
 yalnız değişen kasa alanları yeni IV ile yeniden şifrelenir, kör indeksler ve (adres/doğum tarihi değiştiyse) il/ilçe ve
 reşitlik güncellenir; öneri her kararda imha edilir. Denetim günlüğüne (`identity.correction_*`) yalnız alan adları yazılır.
+
+**Takma ad kuralları:** Tekillik anahtarı NFKC + tr-TR küçük harf + I/ı/İ/i katlamasıdır (`nicknameKey`): `YONETICI`,
+`Yonetici` ve `yonetici` aynı hesaptır (409 `duplicate_nickname`); giriş de bu anahtarla yapılır. Ayrıca benzerlik iskeleti
+(`nicknameSkeleton`: ş→s, ç→c, ğ→g, ö→o, ü→u, şapkalı harfler, 0→o, 1 ve l→i, `.`/`_`/`-` atılır) kayıtlı bir takma adınkiyle
+aynıysa (ör. `Yönetici`, `y0netici`, `yonetici_`) kayıt ve değişiklik 409 `similar_nickname` ile reddedilir. Takma ad
+değişikliği (`PATCH /api/me/nickname`) mevcut şifreyle teyit edilir, 30 günde en çok bir kez yapılabilir ve
+`identity.nickname_change` olarak günlüğe yazılır (eski/yeni takma ad günlüğe yazılmaz). Takma ad deftere hiç yazılmaz.
+`PublicUser.joinedAt` herkese açık yanıtlarda güne (Türkiye saati) yuvarlanır; tam kayıt anı yalnız `Me`'de (sahibine) döner.
 
 ## Yönetim
 
@@ -135,7 +144,7 @@ günlüğünde (`graph.relation_revoked`) görünür. Kefaletin geri alınması 
 | POST | `/api/proposals/:id/sponsor` | V | | `ProposalDetail` |
 | POST | `/api/proposals/:id/withdraw` | V (yazar) | | `ProposalDetail` |
 | POST | `/api/proposals/:id/suggestions` | V | `SuggestionRequest` | `Suggestion` |
-| POST | `/api/proposals/:id/suggestions/:sid/decide` | V (yazar) | `SuggestionDecisionRequest` | `ProposalDetail` |
+| POST | `/api/proposals/:id/suggestions/:sid/decide` | V (yazar) | `SuggestionDecisionRequest` | `ProposalDetail` (kabul ve ret yalnız tartışma/uzlaşma evresinde; oylama başlarken karar verilmemiş öneri `lapsed` olur → 409 `suggestion_lapsed`) |
 | POST | `/api/proposals/:id/rights-flags` | V | `RightsFlagRequest` | `ProposalDetail` (yalnızca yükseltme; kaldırma E/A) |
 | POST | `/api/proposals/:id/vote` | VV (uygun seçmen) | `VoteRequest` | `BallotReceipt` |
 | GET | `/api/proposals/:id/receipts` | U | | `BallotReceipt[]` |
@@ -174,7 +183,7 @@ günlüğünde (`graph.relation_revoked`) görünür. Kefaletin geri alınması 
 | POST | `/api/experts/:userId/decide` | A | `ExpertDecisionRequest` | `ExpertInfo` |
 | POST | `/api/experts/:userId/sanction` | A | `ExpertSanctionRequest` | `ExpertInfo` |
 | POST | `/api/experts/assignments/:id/respond` | E | `AssignmentRespondRequest` | `ExpertPanelInfo` |
-| POST | `/api/experts/assignments/:id/report` | E | `ExpertReportRequest` | `ExpertReportView` |
+| POST | `/api/experts/assignments/:id/report` | E | `ExpertReportRequest` | `ExpertReportView` (azınlık güvenceli soru yanıtsızsa 400 `minority_question_unanswered`, `details.questionIds`) |
 | POST | `/api/experts/lint` | U | `LintRequest` | `LintResponse` (hukuki nitelendirme denetimi) |
 
 ## Graf ve görüş kümeleri
@@ -209,4 +218,6 @@ günlüğünde (`graph.relation_revoked`) görünür. Kefaletin geri alınması 
 | GET | `/api/ai/status` | — | | `{mode: "claude" \| "offline", model: string}` |
 
 Tüm YZ çıktıları `AiAnalysisInfo.label` ("Yapay zekâ ile üretildi · model · tarih") taşır. YZ hiçbir durumu değiştirmez;
-yalnızca danışmandır. `ANTHROPIC_API_KEY` tanımlı değilse çevrimdışı sezgisel mod kullanılır.
+yalnızca danışmandır. Ontoloji denetiminde YZ kaynaklı içerik etiketi (yüksek güvenli olsa bile) ihlal değil uyarıdır
+(`content_label_ai_high`) ve bilirkişi incelemesi gerektirir; öneriyi "yönetmeliğe aykırı" yalnızca kural tabanlı tespit ya da
+bilirkişi teyidi yapabilir (Madde 12 (2), 14 (1)). `ANTHROPIC_API_KEY` tanımlı değilse çevrimdışı sezgisel mod kullanılır.

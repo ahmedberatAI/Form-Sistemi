@@ -49,6 +49,13 @@ export interface ChangePasswordRequest {
   newPassword: string;
 }
 
+/** PATCH /api/me/nickname — takma ad değişikliği (30 günde bir; şifre teyidi zorunlu). */
+export interface ChangeNicknameRequest {
+  nickname: string;
+  /** Mevcut şifre (hesabı ele geçiren birinin takma adı değiştirmesine karşı yeniden doğrulama) */
+  password: string;
+}
+
 export interface EraseRequest {
   /** Kullanıcı onay için tam olarak "SİL" yazmalıdır. */
   confirm: string;
@@ -73,7 +80,7 @@ export interface VerifyUserRequest {
 
 // ───────────── Kimlik verisi düzeltme talebi (KVKK md. 11/1-d) ─────────────
 
-/** Düzeltilebilen kimlik alanları (takma ad ve şifre bu akışın konusu değildir). */
+/** Düzeltilebilen kimlik alanları (takma ad ve şifre bu akışın konusu değildir; üye onları Profil'den kendisi değiştirir). */
 export type CorrectableField = "firstName" | "lastName" | "tckn" | "birthDate" | "email" | "phone" | "address";
 
 /** Önerilen (ya da incelemede gösterilen) değerler; yalnız düzeltilen alanlar bulunur. İncelemede TCKN maskelidir. */

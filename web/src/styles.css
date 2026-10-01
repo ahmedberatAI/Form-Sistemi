@@ -2691,6 +2691,20 @@ a.list-item:hover,
 .pre-similar > li:last-child {
   border-bottom: 0;
 }
+/* Android: benzer öneri sayfadan ayrılmadan alt sayfada önizlenir (form kaybolmaz); bağlantı görünümlü düğme. */
+.pre-similar-open {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: var(--primary);
+  text-align: start;
+  text-decoration: underline;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
 .pre-summary {
   display: flex;
   flex-wrap: wrap;

@@ -1,6 +1,6 @@
 // Herkese açık uçlarda görüş (siyasi görüş = özel nitelikli veri) ve oy gizliliği.
 import { afterEach, describe, expect, it } from "vitest";
-import type { ClusterSnapshotView, GraphVisNode } from "@forum/shared";
+import { publicJoinDay, type ClusterSnapshotView, type GraphVisNode, type PublicUser } from "@forum/shared";
 import { boot, type Harness } from "./harness";
 
 let h: Harness | null = null;
@@ -59,5 +59,25 @@ describe("http: görüş ve oy gizliliği", () => {
 
     const pub = await h.ok<{ nodes: GraphVisNode[] }>("GET", "/api/graph");
     expect(pub.nodes.every((n) => n.cluster === null && n.community === null)).toBe(true);
+  });
+
+  it("üyelik defter kayıtları zaman taşımaz; herkese açık katılım tarihi güne yuvarlanır (takma ad ↔ memberRef eşleştirilemez)", async () => {
+    h = await boot();
+    h.clock.advance(5 * 3_600_000 + 4321);
+    const a = await h.member("Ece_Zaman");
+    h.clock.advance(7_000);
+    const b = await h.member("Fuat_Zaman");
+    await h.services.ledger.flush();
+    const txs = await h.ok<{ payload: Record<string, unknown> }[]>("GET", "/api/ledger/txs?type=MEMBER_REGISTERED&limit=50");
+    expect(txs.length).toBeGreaterThanOrEqual(2);
+    for (const t of txs) expect(Object.keys(t.payload)).toEqual(["memberRef"]);
+
+    const users = await h.ok<PublicUser[]>("GET", "/api/users?limit=50");
+    const pubA = users.find((u) => u.id === a.user.id)!;
+    const pubB = users.find((u) => u.id === b.user.id)!;
+    expect(pubA.joinedAt).toBe(publicJoinDay(a.user.joinedAt));
+    expect(pubA.joinedAt).not.toBe(a.user.joinedAt); // Me (sahibine) tam an, herkese açık yanıt gün başı
+    expect(pubA.joinedAt).toBe(pubB.joinedAt); // aynı gün kaydolanlar ayırt edilemez
+    expect((await h.ok<PublicUser>("GET", `/api/users/${a.user.id}`)).joinedAt).toBe(pubA.joinedAt);
   });
 });

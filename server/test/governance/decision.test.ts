@@ -238,6 +238,30 @@ describe("decide — T0 olağan", () => {
     expect(check(ext, "bridge:g2")!.detail).toContain("oylama bir kez uzatılır");
   });
 
+  it("gerekçe metni dürüst: nötr sayılan küme anılır, 'tüm gruplarda köprü desteği' denmez; muafiyetin sonucu değiştirdiği yazılır", () => {
+    // T1: φ = 0,40; tek "hayır" P = 1/3 < 0,40 olurdu
+    const r = decide(input({ params: T("T1"), votes: votes({ g0: [40, 5], g1: [15, 5], g2: [0, 1] }) }));
+    expect(r.outcome).toBe("accept");
+    expect(r.reason).not.toContain("tüm anlamlı görüş gruplarında");
+    expect(r.reason).toContain("Görüş Grubu C");
+    expect(r.reason).toContain("nötr sayıldı");
+    expect(check(r, "bridge:g2")!.detail).toContain("muafiyet olmasaydı bu grup tabanın altında kalırdı");
+    // Boykotta (0 oy, P = 1/2 ≥ φ) muafiyet sonucu değiştirmez; bu da açıkça yazılır
+    const boycott = decide(input({ votes: votes({ g0: [40, 5], g1: [15, 5] }) }));
+    expect(check(boycott, "bridge:g2")!.detail).not.toContain("muafiyet olmasaydı");
+    // Denetim bulgusu (gap 1): μ_votes çok büyük olsaydı her küme nötr sayılırdı — gerekçe bunu gizlemez
+    const all = decide(input({ params: { ...T("T0"), minVotesPerCluster: 50 }, votes: votes({ g0: [14, 0], g1: [10, 0], g2: [0, 6] }), clusterSizes: { g0: 14, g1: 10, g2: 6 }, clusteredTotal: 30, eligibleCount: 30 }));
+    expect(all.outcome).toBe("accept");
+    expect(all.reason).toContain("hiçbir grupta sınanamadı");
+    expect(all.reason).not.toContain("köprü desteği sağlandı");
+    // Nötr küme yoksa metin değişmez
+    expect(decide(input({ votes: votes({ g0: [40, 5], g1: [15, 5], g2: [5, 2] }) })).reason).toContain("tüm anlamlı görüş gruplarında köprü desteği sağlandı");
+    // contested kökenli yeniden oylamada da nötr küme anılır
+    const rv = decide(input({ round: 2, revote: { origin: "contested", strongObjection: false }, params: T("T1"), votes: votes({ g0: [27, 10], g1: [10, 8], g2: [0, 1] }) }));
+    expect(rv.outcome).toBe("accept");
+    expect(rv.reason).toContain("Görüş Grubu C nötr sayıldı");
+  });
+
   it("nötr kural yalnız μ_votes altında: tam 2 'hayır' (P = 1/4) T1'de contested", () => {
     const r = decide(input({ params: T("T1"), votes: votes({ g0: [40, 5], g1: [15, 5], g2: [0, 2] }) }));
     expect(r.outcome).toBe("contested");
@@ -404,7 +428,9 @@ describe("decide — DEL (silme) yazar kümesi koruması", () => {
   it("yazarın kümesinde P < 0,50 → contested (köprü tabanı 0,30 geçilse bile)", () => {
     const r = decide(del({ authorClusterId: "g1", votes: votes({ g0: [40, 2], g1: [4, 6], g2: [3, 1] }) }));
     expect(check(r, "bridge:g1")!.passed).toBe(true); // 5/12 ≥ 0,30
-    expect(check(r, "author_cluster")).toMatchObject({ label: "Mesaj yazarının kümesi (Görüş Grubu B)", passed: false, value: "P=0,42 (4 kabul / 6 red)", required: "≥ 0,50" });
+    // Etiket yazarın görüş grubunu adıyla anmaz (KVKK.md §4.3); yeniden sayım için authorClusterId girdide durur.
+    expect(check(r, "author_cluster")).toMatchObject({ label: "Mesaj yazarının kendi görüş grubu", passed: false, value: "P=0,42 (4 kabul / 6 red)", required: "≥ 0,50" });
+    expect(check(r, "author_cluster")!.label).not.toMatch(/Görüş Grubu [A-Z]/);
     expect(r.bridgeMet).toBe(false);
     expect(r.outcome).toBe("contested");
     expect(r.reason).toContain("mesaj yazarının kümesi");

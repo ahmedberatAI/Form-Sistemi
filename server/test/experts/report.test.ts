@@ -77,11 +77,12 @@ describe("rapor teslimi, lint ve itibar", () => {
   });
 
   it("hukuki nitelendirme (YZ bulgusu) ve yanıtsız soru: S = 0,5, R' = 0,7", async () => {
-    const { w, byExpert, input, q1, rep } = await setup();
+    const { w, byExpert, input, q2, rep } = await setup();
+    // Azınlık güvenceli soru (q2) yanıtlanmak zorunda; olağan soru (q1) yanıtsız kalabilir ama puanı düşürür.
     const view = await w.svc.submitReport(
       byExpert["e-b"].id,
       "e-b",
-      input({ body: `${LONG_BODY} Ayrıca bu düzenleme hukuka aykırı niteliktedir.`, answers: [{ questionId: q1.id, answer: "On iki." }] }),
+      input({ body: `${LONG_BODY} Ayrıca bu düzenleme hukuka aykırı niteliktedir.`, answers: [{ questionId: q2.id, answer: "Yıllık bütçenin yüzde ikisi." }] }),
     );
     expect(view.lintIssues.map((i) => i.kind)).toEqual(["legal_qualification"]);
     expect(w.db.get<{ score: number }>("SELECT score FROM expert_reports WHERE id = ?", view.id)?.score).toBe(0.5);
@@ -99,8 +100,8 @@ describe("rapor teslimi, lint ve itibar", () => {
       input({
         dissent: "Bu konu alan dışı olsa da belirtmeliyim.",
         answers: [
-          { questionId: q1.id, answer: "On iki." },
-          { questionId: q2.id, answer: "   " },
+          { questionId: q1.id, answer: "   " },
+          { questionId: q2.id, answer: "Yıllık bütçenin yüzde ikisi." },
         ],
       }),
     );
@@ -108,6 +109,23 @@ describe("rapor teslimi, lint ve itibar", () => {
     // zamanında değil, tüm sorular yanıtlanmadı, alan dışı; hukuki nitelendirme yok → S = 0,25
     expect(w.db.get<{ score: number }>("SELECT score FROM expert_reports WHERE id = ?", view.id)?.score).toBe(0.25);
     expect(rep("e-c")).toBe(0.65);
+  });
+
+  it("azınlık güvenceli soru yanıtsız ya da çok kısa yanıtlıysa rapor reddedilir; hiçbir şey yazılmaz", async () => {
+    const { w, byExpert, input, q1, q2, rep } = await setup();
+    const a = byExpert["e-a"];
+    const sub = (answers: ExpertReportInput["answers"]) => catchAsync(w.svc.submitReport(a.id, "e-a", input({ answers })));
+    for (const answers of [[], [{ questionId: q1.id, answer: "On iki durak." }], [{ questionId: q2.id, answer: "   " }], [{ questionId: q2.id, answer: "Bilmem." }]]) {
+      const err = await sub(answers);
+      expect(err).toMatchObject({ status: 400, code: "minority_question_unanswered", details: { questionIds: [q2.id] } });
+      expect(err.message).toMatch(/Azınlık güvenceli soru yanıtlanmadan rapor gönderilemez/);
+    }
+    expect(w.db.all("SELECT * FROM expert_reports")).toHaveLength(0);
+    expect(rep("e-a")).toBe(0.75);
+    expect(w.svc.panel("p-1")!.assignments.find((x) => x.id === a.id)?.status).toBe("invited");
+    // Güvenceli soru yanıtlanınca olağan soru yanıtsız da olsa rapor kabul edilir (yalnız itibar ölçütü).
+    const view = await w.svc.submitReport(a.id, "e-a", input({ answers: [{ questionId: q2.id, answer: "Yıllık bütçenin yüzde ikisi." }] }));
+    expect(w.db.get<{ score: number }>("SELECT score FROM expert_reports WHERE id = ?", view.id)?.score).toBe(0.75);
   });
 
   it("sonucun içeriği puanı etkilemez: çoğunlukla aynı fikirde olmak ödüllendirilmez", async () => {

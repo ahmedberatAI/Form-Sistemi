@@ -53,6 +53,30 @@ export interface TransitionOpts {
  */
 const CLOSED_FOR_EXPERTS = new Set<ProposalStatus>(["withdrawn", "expired", "inadmissible", "rejected", "enacted"]);
 
+/** Yazarın metin önerilerine karar verebildiği evreler (ALGORITMA.md §3, "Tartışma içi öneriler"). */
+export const SUGGESTION_DECIDABLE = new Set<ProposalStatus>(["deliberation", "reconciliation"]);
+
+/**
+ * Yazarın karar vermediği açık metin önerileri, karar verilebilen evreden çıkılınca "lapsed" (karar verilmeden kapandı) olur:
+ * oylama başlarken metin kilitlenir; geri çekme, geçersizlik, süre dolumu ya da kesin sonuç da aynı etkiyi doğurur. Öneri
+ * herkese açık kalır ve öneren kişiye bildirim gider; öneren onu ayrı bir öneri olarak açabilir (yazarın sessiz vetosu yoktur).
+ */
+function lapseOpenSuggestions(core: ForumCore, p: ProposalRow, to: ProposalStatus, now: number): void {
+  const rows = core.db.all<{ author_id: string }>("SELECT author_id FROM proposal_suggestions WHERE proposal_id = ? AND status = 'open'", p.id);
+  if (rows.length === 0) return;
+  core.db.run("UPDATE proposal_suggestions SET status = 'lapsed', decided_at = ? WHERE proposal_id = ? AND status = 'open'", now, p.id);
+  const why =
+    to === "voting"
+      ? "Oylama başladığı için metin kilitlendi; yazar önerinize karar vermedi."
+      : `Öneri “${PROPOSAL_STATUS_LABELS[to] ?? to}” durumuna geçtiği için önerinize karar verilmedi.`;
+  core.notify([...new Set(rows.map((r) => r.author_id))], {
+    kind: "proposal_suggestion",
+    title: `${proposalRef(p)}: metin öneriniz karar verilmeden kapandı`,
+    body: `${why} Öneriniz herkese açık kalır; isterseniz ayrı bir öneri olarak açabilirsiniz.`,
+    link: proposalLink(p.id),
+  });
+}
+
 export function applyTransition(core: ForumCore, p: ProposalRow, to: ProposalStatus, reason: string, o: TransitionOpts): Transition {
   const set: Record<string, SqlValue> = { ...(o.set ?? {}), status: to, phase_ends_at: o.endsAt, updated_at: o.now };
   if (!o.keepStart) set.phase_started_at = o.now;
@@ -67,6 +91,8 @@ export function applyTransition(core: ForumCore, p: ProposalRow, to: ProposalSta
   if (r.changes !== 1) throw new StaleState();
   // Öneri kapandıysa bekleyen bilirkişi görevleri itibar cezası olmadan iptal edilir.
   if (CLOSED_FOR_EXPERTS.has(to)) core.deps.experts.cancelPending(p.id);
+  // Karar verilebilen evreden çıkılırken (oylama, geri çekme, kesin sonuç …) bekleyen metin önerileri kapanır.
+  if (!SUGGESTION_DECIDABLE.has(to)) lapseOpenSuggestions(core, p, to, o.now);
   const tx = core.submit("PHASE_CHANGED", { proposalId: p.id, from: p.status, to, textHash: textHash(p.title, p.body), at: o.now, reason });
   core.db.run(
     "INSERT INTO phase_events(id, proposal_id, from_status, to_status, reason, at, ledger_tx) VALUES (?, ?, ?, ?, ?, ?, ?)",

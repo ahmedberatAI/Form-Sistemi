@@ -50,7 +50,7 @@ export interface RegistrationInput {
   aiConsent: boolean; // içeriğin yapay zekâ analizine gönderilmesine açık rıza (varsayılan kapalı)
 }
 
-/** Yalnızca kayıt memuru / denetçi görebilir; her erişim kayıt altına alınır. */
+/** Yalnızca kayıt memuru / denetçi / yönetici, amaç belirterek görebilir; her erişim kayıt altına alınır. */
 export interface PiiRecord {
   userId: string;
   firstName: string;
@@ -304,8 +304,10 @@ export interface Suggestion {
   authorId: string;
   authorNickname: string;
   body: string;
-  status: "open" | "accepted" | "rejected";
+  /** lapsed: yazar karar vermeden tartışma evresi kapandı (oylama başladı ya da öneri kapandı); "karar verilmeden kapandı". */
+  status: "open" | "accepted" | "rejected" | "lapsed";
   createdAt: number;
+  /** Kabul/ret anı; lapsed için evrenin kapandığı an. */
   decidedAt: number | null;
 }
 

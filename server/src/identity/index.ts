@@ -4,7 +4,7 @@
 import { ageOn, maskTckn, ROLE_LABELS, type AddressInput, type LedgerTxType, type Me, type PiiRecord, type Role } from "@forum/shared";
 import type { AuditLogger } from "../core/audit";
 import type { CoreContext, IdentityService, LedgerService, Notifier } from "../core/contracts";
-import { AppError, badRequest, conflict, forbidden, notFound } from "../core/errors";
+import { AppError, badRequest, conflict, forbidden, notFound, unprocessable } from "../core/errors";
 import { newId } from "../core/ids";
 import { json, type SqlValue } from "../db";
 import { dummyVerify, hashPassword, INVALID_PASSWORD_HASH, verifyPassword } from "./password";
@@ -19,9 +19,11 @@ import {
   toMe,
   type UserRow,
 } from "./users";
-import { normalizeNickname, parsePassword, parseRegistration, validationError } from "./validation";
+import { normalizeNickname, parseNickname, parsePassword, parseRegistration, validationError } from "./validation";
 import { createVault, CURRENT_KEY_VERSION, openField, sealField, VaultIntegrityError, type VaultField } from "./vault";
 import { createCorrectionHandlers } from "./corrections";
+import { DAY } from "../core/clock";
+import { assertNotSimilar, isConflictKey, migrateNicknameKeys, NICKNAME_CHANGE_INTERVAL_MS, rewriteNicknameInNotifications } from "./nickname";
 
 export { isVoter, loadPublicUser, parseRoles, toAuthUser, toMe, toPublicUser, ALL_ROLES, type UserRow } from "./users";
 export { normalizeNickname, normalizePhone } from "./validation";
@@ -108,6 +110,8 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
   } catch {
     /* desteklenmiyorsa yok say */
   }
+  // Takma ad anahtarı kuralı değiştiyse (I/ı katlaması) kayıtlı nickname_norm değerlerini bir kez yeniden hesapla.
+  migrateNicknameKeys(db, deps.audit, deps.notifier);
 
   const getRow = (id: string) => loadUserRow(db, id);
   const requireRow = (id: string): UserRow => {
@@ -205,6 +209,7 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
     const tcknBidx = vault.tcknIndex(v.tckn);
     const emailBidx = vault.emailIndex(v.email);
     assertUnique(nicknameNorm, tcknBidx, emailBidx);
+    assertNotSimilar(db, v.nickname, null);
 
     const passwordHash = await hashPassword(v.password);
     const id = newId();
@@ -222,6 +227,7 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
       const seal = (f: VaultField, s: string) => sealField(dek, id, f, kv, s);
       db.tx(() => {
         assertUnique(nicknameNorm, tcknBidx, emailBidx);
+        assertNotSimilar(db, v.nickname, null);
         db.run(
           `INSERT INTO users(id, nickname, nickname_norm, password_hash, roles, status, is_adult, region_il, region_ilce,
              political_consent, ai_consent, kvkk_notice_at, created_at, verified_at, verified_by)
@@ -270,12 +276,17 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
     return requireRow(id);
   }
 
-  /** Kripto-imha: DEK ve tüm şifreli alanlar, kör indeksler silinir; hesap takma adsızlaştırılır. */
+  /**
+   * Kripto-imha: DEK ve tüm şifreli alanlar, kör indeksler silinir; hesap takma adsızlaştırılır. Başkalarına giden kayıtlı
+   * bildirimlerdeki eski takma ad da (ör. kayıt memuruna "\"ali\" takma adlı yeni üye…") yeni adla değiştirilir.
+   */
   function shred(userId: string, status: "erased" | "rejected"): void {
     const now = clock.now();
     const short = userId.replace(/-/g, "").slice(0, 6);
     const nickname = status === "erased" ? `Silinmiş üye #${short}` : `Reddedilen başvuru #${short}`;
+    const oldNickname = getRow(userId)?.nickname ?? "";
     db.tx(() => {
+      rewriteNicknameInNotifications(db, oldNickname, nickname);
       db.run(
         `UPDATE identity_vault SET wrapped_dek = NULL, enc_first_name = NULL, enc_last_name = NULL, enc_tckn = NULL,
            enc_birth_date = NULL, enc_email = NULL, enc_phone = NULL, enc_address = NULL,
@@ -364,7 +375,8 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
 
     async register(input) {
       const row = await createAccount(input, null);
-      submitLedger("MEMBER_REGISTERED", { memberRef: vault.memberRef(row.id), at: row.created_at });
+      // Yükte zaman yok: blok zamanı yeterli; tam kayıt anı herkese açık katılım tarihiyle eşleştirilip memberRef takma ada bağlanmasın.
+      submitLedger("MEMBER_REGISTERED", { memberRef: vault.memberRef(row.id) });
       for (const rid of registrarIds()) {
         deps.notifier.notify(rid, {
           kind: "registration_pending",
@@ -381,7 +393,7 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
       requireActor(actorId, STAFF_REGISTRAR, "Üyeyi sisteme yalnızca kayıt memuru ya da yönetici girebilir.");
       const row = await createAccount(input, actorId);
       const memberRef = vault.memberRef(row.id);
-      submitLedger("MEMBER_REGISTERED", { memberRef, at: row.created_at });
+      submitLedger("MEMBER_REGISTERED", { memberRef });
       submitLedger("MEMBER_VERIFIED", { memberRef });
       deps.notifier.notify(row.id, {
         kind: "account_verified",
@@ -403,7 +415,7 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
       const row = await createAccount(input, "kurulum");
       db.run(`UPDATE users SET roles = '["member","admin"]' WHERE id = ?`, row.id);
       const memberRef = vault.memberRef(row.id);
-      submitLedger("MEMBER_REGISTERED", { memberRef, at: row.created_at });
+      submitLedger("MEMBER_REGISTERED", { memberRef });
       submitLedger("MEMBER_VERIFIED", { memberRef });
       deps.audit.log(null, "identity.bootstrap_admin", row.id, { via: "kurulum" });
       return { user: meOf(requireRow(row.id)) };
@@ -730,6 +742,54 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
         body: "Hesabınızın şifresi değiştirildi ve diğer oturumlarınız kapatıldı. Bu işlemi siz yapmadıysanız kayıt memuruna başvurun.",
         link: "/profil",
       });
+    },
+
+    async changeNickname(userId, nicknameIn, password) {
+      const row = requireRow(userId);
+      if (isClosed(row)) throw closedAccount();
+      if (row.status === "suspended") throw forbidden("Askıdaki bir hesabın takma adı değiştirilemez.");
+      const pw = typeof password === "string" && password.length <= 1024 ? password : "";
+      if (!pw || !(await verifyPassword(row.password_hash, pw))) {
+        throw new AppError(400, "wrong_password", "Şifre hatalı.", { password: "Şifre hatalı." });
+      }
+      const nickname = parseNickname(nicknameIn);
+      if (nickname === row.nickname) throw validationError({ nickname: "Yeni takma ad mevcut takma adınızla aynı." });
+      const now = clock.now();
+      // Sıklık sınırı: 30 günde bir (taklit ve kimlik karmaşasına karşı). Göçte çakışan hesap bu sınırdan muaftır.
+      if (!isConflictKey(row.nickname_norm)) {
+        const last = db.get<{ at: number | null }>("SELECT MAX(at) AS at FROM audit_log WHERE action = 'identity.nickname_change' AND target = ?", userId)?.at ?? null;
+        if (last !== null && now - Number(last) < NICKNAME_CHANGE_INTERVAL_MS) {
+          const nextAt = Number(last) + NICKNAME_CHANGE_INTERVAL_MS;
+          const days = Math.ceil((nextAt - now) / DAY);
+          const msg = `Takma adınızı 30 günde en çok bir kez değiştirebilirsiniz; bir sonraki değişiklik ${days} gün sonra yapılabilir.`;
+          throw unprocessable("nickname_change_limit", msg, { nickname: msg, nextAllowedAt: nextAt });
+        }
+      }
+      const norm = normalizeNickname(nickname);
+      const assertFree = () => {
+        if (db.get("SELECT 1 FROM users WHERE nickname_norm = ? AND id != ?", norm, userId)) throw dupNickname();
+        assertNotSimilar(db, nickname, userId);
+      };
+      assertFree();
+      try {
+        db.tx(() => {
+          assertFree();
+          db.run("UPDATE users SET nickname = ?, nickname_norm = ? WHERE id = ?", nickname, norm, userId);
+          // Bildirimler metin olarak saklanır; başkalarının kutusundaki eski takma ad da güncel adla değişir.
+          rewriteNicknameInNotifications(db, row.nickname, nickname);
+        });
+      } catch (e) {
+        throw mapUniqueError(e);
+      }
+      // Eski ve yeni takma ad günlüğe yazılmaz: hesap sonradan silinirse eski takma ad kimliğe geri bağlanamasın (KVKK.md §6).
+      deps.audit.log(userId, "identity.nickname_change", userId, { caseOnly: norm === row.nickname_norm });
+      deps.notifier.notify(userId, {
+        kind: "nickname_changed",
+        title: "Takma adınız değiştirildi",
+        body: "Takma adınız değiştirildi; mesajlarınız ve önerileriniz yeni takma adınızla görünür. Bir sonraki değişiklik en erken 30 gün sonra yapılabilir. Bu işlemi siz yapmadıysanız şifrenizi değiştirip kayıt memuruna başvurun.",
+        link: "/profil",
+      });
+      return meOf(requireRow(userId));
     },
 
     async verifyPassword(userId, password) {

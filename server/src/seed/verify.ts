@@ -97,6 +97,18 @@ export function verifySeed(e: SeedEngine): Check[] {
   const sgPanel = e.ids.has(KEYS.deliberationExpert) ? s.experts.panel(e.proposalId(KEYS.deliberationExpert)) : null;
   add("Tartışmadaki öneride panel, rapor ve soru", !!sgPanel && sgPanel.reports.length >= 1 && sgPanel.questions.length >= 1, sgPanel ? `${sgPanel.reports.length} rapor, ${sgPanel.questions.length} soru` : "panel yok");
 
+  // Kura gösterilebilirliği: vitrin panellerinde uygun (dışlanmamış) adayların bir kısmı seçilmemiş olmalı; aksi halde
+  // "herkes seçildi" görünür ve tohumlu ağırlıklı kura gösterilemez (ARASTIRMA.md §13.3: alan başına en az 6 bilirkişi).
+  const draws = ([KEYS.expertClosed, KEYS.deliberationExpert] as const).map((key) => {
+    const p = key === KEYS.expertClosed ? enPanel : sgPanel;
+    if (!p) return { key, ok: false, text: `${key}: panel yok` };
+    const chosen = new Set(p.assignments.map((a) => a.expertId));
+    const eligible = p.candidates.filter((c) => !c.excludedReason && c.weight > 0);
+    const out = eligible.filter((c) => !chosen.has(c.userId)).length;
+    return { key, ok: out >= 1, text: `#K-${e.seq(key)}: ${eligible.length} uygun aday, ${chosen.size} seçildi, ${out} dışarıda` };
+  });
+  add("Vitrin kuraları uygun adayların bir kısmını dışarıda bırakır", draws.every((d) => d.ok), draws.map((d) => d.text).join("; "));
+
   // SybilRank kalibrasyonu: kefalet ağına bağlı dürüst tohum hesapları işaretlenmemeli; iki ayrı "şüpheli" kefalet alan
   // kerem_b doğrudan kanıtla işaretlenmeli (eski sürüm 56 hesabın 23'ünü işaretliyordu).
   const sybil = s.graph.sybilRank().flagged;
@@ -142,18 +154,19 @@ export function printSummary(e: SeedEngine, checks: Check[], meta: { seconds: nu
   line("Hesaplar (şifreler sabittir):");
   line(`  ${pad("Takma ad", 37)}${pad("Rol", 40)}Şifre`);
   const rows: [string, string, string][] = [
+    ["admin", "yönetici (+üye; demo girişi)", PASSWORDS.demoAdmin],
     ["yonetici", "yönetici (+üye)", PASSWORDS.admin],
     ["kayitmemuru", "kayıt memuru", PASSWORDS.registrar],
     ["denetci", "denetçi", PASSWORDS.auditor],
-    ["bk_enerji1, bk_enerji2", "bilirkişi (Enerji, Çevre)", PASSWORDS.expert],
-    ["bk_saglik1, bk_saglik2, bk_saglik3", "bilirkişi (Sağlık, Halk sağlığı)", PASSWORDS.expert],
+    ["bk_enerji1 … bk_enerji6", "bilirkişi (Enerji, Çevre)", PASSWORDS.expert],
+    ["bk_saglik1 … bk_saglik6", "bilirkişi (Sağlık, Halk sağlığı)", PASSWORDS.expert],
     ["bk_imar1, bk_imar2", "bilirkişi (İmar, Deprem güv., Bütçe)", PASSWORDS.expert],
   ];
   const members = PEOPLE.filter((p) => p.kind === "member").length;
   rows.push(["ayse, mehmet, zeynep", `üye (+${members - 3} üye daha)`, PASSWORDS.member]);
   for (const [n, r, p] of rows) line(`  ${pad(n, 37)}${pad(r, 40)}${p}`);
   const pending = s.identity.listPending().map((u) => u.nickname);
-  line(`  Bekleyen başvurular: ${pending.join(", ") || "—"}; reddedilen: 1; reşit olmayan: genc_ali, ada_k; siyasi rıza vermeyen: ozan_v, kerem_b, lale_y`);
+  line(`  Bekleyen başvurular: ${pending.join(", ") || "—"}; reddedilen: 1; reşit olmayan: genc_ali, ada_k; siyasi rıza vermeyen: ozan_v, kerem_b, lale_y (ve oy kullanmayan ek bilirkişiler bk_enerji3–6, bk_saglik4–6)`);
   line("");
   const counts = statusCounts(e);
   line("Öneriler (evreye göre):");

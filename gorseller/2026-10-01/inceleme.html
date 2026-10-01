@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Forum Sistemi — ayrıntılı inceleme</title>
+<style>
+:root{font:17px/1.7 system-ui,sans-serif;color:#18253a;background:#f1f4f8}body{margin:0}main{max-width:1040px;margin:auto;padding:54px 32px 90px;background:white}h1{font-size:42px;line-height:1.14;letter-spacing:-1.5px}h2{font-size:26px;line-height:1.3;margin-top:48px;padding-top:20px;border-top:1px solid #dce2eb}h3{margin-top:28px;font-size:20px}a{color:#2352c8}p{max-width:92ch}table{border-collapse:collapse;width:100%;font-size:15px}th,td{border:1px solid #dce2eb;padding:11px 14px;text-align:left;vertical-align:top}th{background:#eef3fc}code{background:#edf1f7;padding:2px 5px;overflow-wrap:anywhere}.lead{font-size:21px;color:#41546c}.label{font-size:13px;letter-spacing:2px;color:#42689f;font-weight:700}.note{padding:20px 24px;background:#edf4ff;border-left:4px solid #2856ce;border-radius:6px}.muted{color:#607188;font-size:14px}nav{display:flex;gap:20px;flex-wrap:wrap;margin:25px 0}.flow{padding:22px;background:#172941;color:white;font-weight:650;border-radius:10px}li{margin:7px 0}img{max-width:100%;border:1px solid #cdd5e1;border-radius:8px}.columns{display:grid;grid-template-columns:2fr 1fr;gap:24px;align-items:start}figure{margin:0}figcaption{font-size:14px;color:#54677e}@media(max-width:700px){main{padding:28px 18px}h1{font-size:32px}.columns{grid-template-columns:1fr}table{display:block;overflow:auto}}@media print{main{max-width:none;padding:0}nav{display:none}h2{break-after:avoid}table,figure{break-inside:avoid}}
+</style></head><body><main>
+<div class="label">UYGULAMA İNCELEMESİ · 1 EKİM 2026</div>
+<h1>Forum Sistemi ne yapıyor?</h1>
+<p class="lead">Topluluğun konu açmasını, ortak metin geliştirmesini, tartışmasını ve denetlenebilir oylamalarla karar almasını sağlayan bir katılımcı yönetişim uygulaması.</p>
+<nav><a href="index.html">Ekran görüntüsü galerisi</a><a href="#karar">Karar sistemi</a><a href="#ekranlar">Ekranlar</a><a href="#platform">Android / web</a><a href="#sinirlar">Sınırlar</a><a href="#kaynaklar">Kaynaklar</a></nav>
+<div class="note"><strong>“En güncel” kapsamı:</strong> Bilgisayardaki mevcut kaynak kodu, kaydedilmemiş Git değişiklikleriyle birlikte yeniden derlendi. Yerel HEAD ve uzak deponun HEAD değeri <code>2dae436bc2a840de9c6dd9d3487736eab6504173</code>; çalışma klasöründe bunun üzerine ek değişiklikler bulunuyor. Web ve APK aynı yeni web çıktısından üretildi. Bu incelemede yayımlanmış üretim web adresi veya Google Play sürümü doğrulanmadı. İncelenen Android uygulaması debug APK; cihaz Pixel 7 emülatörü, Android 14 / API 34. Bu, en son Android işletim sistemiyle test edildiği anlamına gelmez.</div>
+
+<h2>1. Uygulamanın amacı ve kapsamı</h2>
+<p>Uygulama, sıradan bir forumun tartışma özelliklerini karar alma mekanizmalarıyla birleştiriyor. Bir üye yeni konu öneriyor; başka üyeler destekliyor, metni tartışıyor ve değişiklik öneriyor. Kabul edilen öneri, yürürlükteki konular arasına giriyor. Alt konular ve mevcut konuların değişiklikleri de oylanıyor. Mahalle, dernek, topluluk veya benzeri düşük riskli ortak karar ortamlarını modelleyen bir prototip/demo niteliğinde.</p>
+<p>Temel iddia “çoğunluk karar versin ama aynı azınlık sürekli kaybetmesin”. Bunun için yalnız toplam kabul oranına bakılmıyor: önceki oy örüntülerinden hesaplanan anlamlı görüş gruplarında da destek aranıyor. Yapay zekâ ve bilirkişiler bilgi sağlıyor; kararın sahibi üyeler.</p>
+
+<h2>2. Kimler kullanabilir?</h2>
+<table><thead><tr><th>Kullanıcı</th><th>İşlev</th></tr></thead><tbody>
+<tr><td>Ziyaretçi</td><td>Konuları, yayımlanmış önerileri, tartışmaları, yönetmeliği, grafı ve defteri okuyabilir. Taslaklar herkese açık listede görünmez.</td></tr>
+<tr><td>Başvurusu bekleyen kişi</td><td>Hesap açıp profilini görebilir; katılım yetkileri kimlik doğrulamasıyla açılır.</td></tr>
+<tr><td>Doğrulanmış üye</td><td>Öneri oluşturma, destek verme, tartışma, metin değişikliği önerme ve ilişkileri yönetme işlevlerini kullanır.</td></tr>
+<tr><td>Uygun seçmen</td><td>Doğrulanmış, 18 yaşını doldurmuş, oy/görüş verisi rızası vermiş ve ilgili oylamanın seçmen anlık görüntüsüne girmiş üyedir. Silme oylamasında hedef mesajın yazarı oy vermez.</td></tr>
+<tr><td>Bilirkişi</td><td>Onaylanmış uzmanlık alanlarında kuraya katılır, görevlendirildiği öneriye rapor sunar ve soruları yanıtlar. Seçmen koşullarını ayrıca sağlıyorsa oyu diğer üyeler gibi birdir.</td></tr>
+<tr><td>Kayıt memuru</td><td>Kimlik doğrulama başvurularını ve kimlik düzeltme taleplerini inceler; kişi adına kayıt oluşturabilir. Kişisel veri görüntülemek amaç belirtmeyi gerektirir ve erişim kaydı bırakır.</td></tr>
+<tr><td>Denetçi</td><td>Denetim kayıtlarını ve yetkili salt okunur görünümleri inceler; gizlenmiş içerik için kontrollü erişim işlevleri vardır.</td></tr>
+<tr><td>Yönetici</td><td>Rolleri, bilirkişi onaylarını, demo saatini, bütünlük uyarılarını ve defter demo araçlarını yönetir.</td></tr>
+</tbody></table>
+
+<h2>3. Kayıt, profil ve kişisel veri işlemleri</h2>
+<p>Kayıtta takma ad, şifre, ad-soyad, T.C. kimlik numarası, doğum tarihi, e-posta, telefon ve adres isteniyor. T.C. kimlik numarası alanında biçim denetimi yapılıyor; arayüz gerçek kimlik doğrulamasını kayıt memuruna bırakıyor. Kamuya açık katılımda takma ad kullanılıyor.</p>
+<p>Aydınlatma metnini okuma teyidi, oy/görüş verisi için açık rıza ve yapay zekâ analizi için isteğe bağlı rıza ayrı alanlar. Oy rızası olmadan oylamaya katılınamıyor; YZ rızası vermemek diğer katılım haklarını kaldırmıyor. Profilde rızalar değiştirilebiliyor.</p>
+<p>Profil ayrıca takma ad ve şifre değiştirme, gerekçeli kimlik düzeltme talebi, bilirkişi başvurusu, vekâlet yönetimi, kişisel veri dökümü ve hesap silme işlevlerini içeriyor. Takma ad değişikliğinde şifre teyidi ve 30 günlük sınır var; benzer takma adlarla taklit yapılmasına karşı normalleştirme denetimi uygulanıyor. Bu incelemede bu formlar görüntülendi; hesap silme veya kimlik değişikliği yapılmadı.</p>
+
+<h2>4. Beş öneri türü</h2>
+<table><thead><tr><th>Tür</th><th>Ne sağlar?</th></tr></thead><tbody>
+<tr><td>Yeni konu</td><td>Yeni bir topluluk kararını tartışmaya ve oylamaya taşır. Kabul edilince resmî konu oluşur.</td></tr>
+<tr><td>Alt konu</td><td>Yürürlükteki bir konunun altında yeni dal açar; üst konunun kategorilerini miras alır.</td></tr>
+<tr><td>Düzenleme teklifi</td><td>Mevcut konunun metnini değiştirmeyi önerir. Dayanılan sürüm kayıtlıdır; kabul sırasında sürüm çakışması oluşursa değişiklik uygulanmaz.</td></tr>
+<tr><td>Silme talebi</td><td>Belirli tartışma mesajlarının gerekçeli olarak gizlenmesini ister. Kalıcı geçmişi koruyan özel kurallarla değerlendirilir.</td></tr>
+<tr><td>Yönetmelik değişikliği</td><td>Değiştirilebilir maddeler veya karar parametreleri için sürümlenen yama önerir. Değiştirilemez çekirdeğe dokunan öneri oylanamaz.</td></tr>
+</tbody></table>
+<p>Öneri hazırlarken kategori, hak etkisi, gerekçe ve hedefe göre ilgili alanlar gösteriliyor. Ön denetim; yönetmelik uygunluğu, katman, uyarılar ve benzer öneriler hakkında geri bildirim veriyor. Bu arşivde beş türün formu ayrı ayrı bulunuyor.</p>
+
+<h2 id="karar">5. Bir karar nasıl alınır?</h2>
+<div class="flow">Taslak → Destek toplama → Ontoloji denetimi → Tartışma → Oylama → İtiraz / uzlaşma gerekirse yeniden oylama → Kabul veya ret</div>
+<ol>
+<li><strong>Taslak:</strong> Öneri sahibi metni hazırlıyor. Özel taslak, yayımlanmış önerilerden ayrı tutuluyor.</li>
+<li><strong>Destek:</strong> Önerinin gündeme girmesi için eş imzacı aranıyor. Olağan destek sayısı doğrulanmış üye sayısına bağlı olarak 2–5 arasında; silme talebinde ek bir destekçi gerekiyor.</li>
+<li><strong>Otomatik denetim:</strong> Yönetmelik önerinin kabul edilebilirliğini, karar katmanını, sürelerini ve eşiklerini belirliyor.</li>
+<li><strong>Tartışma:</strong> Üyeler mesaj yazıyor, metin değişikliği öneriyor, hak etkisi işaretleyebiliyor. Gerekliyse bilirkişi raporu ve YZ özeti ekleniyor. Reddedilen metin önerileri görünür kalıyor ve ayrı öneriye dönüştürülebiliyor.</li>
+<li><strong>Oylama:</strong> Seçmen listesi, görüş kümeleri, metin ve karar parametreleri sabitleniyor. Kabul, red veya çekimser oy veriliyor. Süre dolmadan oy değiştirilebiliyor; son oy geçerli.</li>
+<li><strong>Sayım:</strong> Katılım tabanı, genel onay oranı ve gerekli görüş grubu destekleri hesaplanıyor. Eksik katılımda bir uzatma yapılabiliyor.</li>
+<li><strong>Sonuç:</strong> Öneri reddedilebiliyor, itiraz penceresine geçebiliyor veya uzlaşmaya yönlenebiliyor. Kabul kesinleşince konu ya da ilgili değişiklik uygulanıyor; süreç ve metin sürümleri korunuyor.</li>
+</ol>
+<p>Oylama sürerken yalnız katılım sayısı gösteriliyor; ara kabul/red sonuçları açıklanmıyor. Evre geçişlerini sunucu zamanlayıcısı yapıyor. Demo yönetim ekranında saat ileri alınabiliyor. İnceleme ortamı <code>TIME_SCALE=1</code> ile çalıştırıldı; mevcut uygulamanın varsayılan demo ayarı 60 kat hızlandırılmış zaman.</p>
+
+<h2>6. Köprülü Çoğunluk nasıl çalışır?</h2>
+<p>Üç kontrol birlikte kullanılıyor: yeterli katılım, gerekli genel kabul oranı ve anlamlı görüş kümelerinde asgari destek. Genel onay <code>kabul / (kabul + red)</code> üzerinden hesaplanıyor. Çekimser oy katılıma dahil, bu onay oranının paydasına dahil değil.</p>
+<table><thead><tr><th>Katman</th><th>Örnek</th><th>İlk tur genel eşik</th><th>Grup desteği tabanı</th></tr></thead><tbody>
+<tr><td>T0</td><td>Olağan konu</td><td>%50’den fazla</td><td>%30</td></tr>
+<tr><td>T1</td><td>Konu düzenlemesi veya hak kısıtlaması</td><td>En az %60</td><td>%40</td></tr>
+<tr><td>T2</td><td>Yönetmelik değişikliği</td><td>En az 2/3</td><td>%40</td></tr>
+<tr><td>T3</td><td>Değiştirilemez maddeye müdahale</td><td>Oylanamaz</td><td>Uygulanmaz</td></tr>
+<tr><td>DEL</td><td>Mesaj gizleme</td><td>En az 2/3</td><td>%30; ayrıca yazarın grubunda en az %50</td></tr>
+</tbody></table>
+<p>Bunlar dokümandaki temel kurallar; katılım tabanı, soğuk başlangıç, uzatma, sabitlenmiş yönetmelik sürümü ve yeniden oylama koşulları sonucu ayrıca etkiliyor. Grup desteği ham yüzde değil, <code>(1 + gruptaki kabul) / (2 + gruptaki kabul + gruptaki red)</code> formülüyle yumuşatılıyor. Anlamlı grup için varsayılan olarak en az 3 kişi ve kümelenmiş nüfusun en az %10’u aranıyor.</p>
+<p>Görüş kümeleri geçmiş oy örüntülerinden PCA ve k-means ile çıkarılıyor; oylama başlangıcında donduruluyor. Bu yapı üyelerin kendilerinin seçtiği parti/etiket değil. Yetersiz veri varsa soğuk başlangıç kuralı devreye giriyor. Sessiz grubun boykot yoluyla kalıcı veto oluşturmasını önlemek için uzatma sonrası nötr grup kuralları var.</p>
+<p>İlk turda köprü desteği sağlanamazsa sonuç “tartışmalı” olabiliyor. Geçerli azınlık itirazı da uzlaşma açabiliyor. İtirazın imza koşulları ve 30 günde iki imza bütçesi var. Her öneri en fazla bir uzlaşma turu yaşayabiliyor. Yeniden oylamada kökene ve katmana göre kurallar değişiyor; 2/3 veya bazı katmanlarda 3/4 aşma eşikleri bulunuyor. Böylece azınlık yeniden değerlendirme sağlayabiliyor ama süresiz veto kullanamıyor.</p>
+
+<h2>7. Tartışma, moderasyon ve uzlaşma</h2>
+<p>Her konu ve önerinin tartışma alanında mesajlar, yanıtlar, katılıyorum/katılmıyorum işaretleri ve köprü göstergeleri var. Mesaj düzenleme yeni sürüm oluşturuyor; önceki sürümler saklanıyor. Bir metnin geçmişi ve karara nasıl dönüştüğü izlenebiliyor.</p>
+<p>Silme talebi kabul edilirse mesaj herkese açık görünümde gizleniyor ve yerinde açıklayıcı kayıt kalıyor. Asıl içerik kontrollü denetim erişimine açık kalabiliyor; yazara karartılamayan tek bir cevap hakkı veriliyor. “Görüş ayrılığı” geçerli bir silme gerekçesi değil. Kişisel veri veya tehdit gibi acil gerekçelerde inceleme sürerken geçici daraltma uygulanabiliyor.</p>
+<p>Uzlaşma ekranı azınlık raporlarını, yapay zekânın köprü metni önerilerini, karşı bilirkişi ve revizyon seçeneklerini gösteriyor. Azınlık raporu kamusal bir beyan: takma ad ve görüş grubuyla görünmesi konusunda arayüz uyarıyor. İtiraz imzaları ise başkalarına anonim gösteriliyor.</p>
+
+<h2>8. Bilirkişiler ve yapay zekâ</h2>
+<p><strong>Bilirkişilik:</strong> Üye alanını ve yeterlilik bilgisini belirterek başvurabiliyor; yönetici başvuruyu değerlendiriyor. İlgili öneride adaylar uzmanlık alanı ve graf ilişkilerinden çıkar çatışması bakımından süzülüyor. Tohumu defterden gelen ağırlıklı kura ile panel seçiliyor. Aday havuzu, seçim kaydı, raporlar, uygulanabilirlik görüşü, güven düzeyi ve sorular görülebiliyor. Raporların itibara etkisi ve sınırlı askı mekanizması var. Bilirkişi bir karar mercii değil.</p>
+<p><strong>YZ danışmanı:</strong> Sınıflandırma, içerik uyarısı, benzer öneri bulma, tartışma özeti, azınlık görüşlerini özetleme, uzlaşma taslağı ve rapor denetimi işlevleri bulunuyor. YZ tek başına öneriyi reddedemiyor, oy kullanmıyor veya yaşam döngüsünü değiştiremiyor. Hak etkisi işaretleri korumayı artırabiliyor; kaldırma işlemi bilirkişi yetkisine bağlı.</p>
+<p>İncelemede YZ <strong>çevrimdışı, kural/sözlük tabanlı sezgisel modda</strong> çalıştı. Kodda Anthropic bağlantısı ve yapılandırılabilir model adı mevcut; canlı harici model çağrısı bu çalışma kapsamında denenmedi. “Çevrimdışı YZ”, bütün uygulamanın sunucusuz çalıştığı anlamına gelmiyor. Metinler harici hizmete gönderilecekse ayrı rıza, kişisel veri maskeleme ve takma adların geçici kodlarla değiştirilmesi tasarlanmış.</p>
+
+<h2>9. Graf, ilişkiler ve vekâlet</h2>
+<p>Üyeler arasında takip, kefalet, vekâlet ve yakınlık beyanları tutuluyor. İnsanlar grafı bu ilişkileri düğüm ve kenarlarla gösteriyor. Ayrı görüş haritası anonim oy örüntülerini gösteriyor; kişinin kendi kümesi kendisine açılıyor. PageRank, aracılık, Louvain toplulukları, vekâlet yoğunlaşması, şüpheli hesap göstergeleri ve kalıcı kaybeden grup ölçüleri sunuluyor. Bu göstergeler tek başına oy ağırlığı oluşturmuyor.</p>
+<p>Vekâlet kategori bazında veya genel olarak verilebiliyor. Kişi doğrudan oy kullanırsa vekâlet bu oylamada devre dışı kalıyor. Zincir en fazla üç adım izleniyor, döngüler engelleniyor; bir delegenin taşıyabileceği başkalarına ait oylar sınırlı. Her seçmen toplamda bir kez sayılıyor.</p>
+
+<h2>10. Yönetmelik, ontoloji ve dağıtık defter</h2>
+<p>Yönetmelik yalnız okunacak metin değil; RDF/Turtle verisi, N3 kuralları ve SHACL kontrolleriyle makinece işlenen bir model. Maddeler, alt fıkralar, kategoriler, haklar, gerekçeler, katmanlar, parametreler, sürümler ve Turtle görünümü ayrı sekmelerde. Kaynak belgelerde 24 ana maddeli yapı anlatılıyor; arayüzde alt hükümlerle birlikte “Maddeler” sayacı 58 öğe gösteriyor.</p>
+<p>Defter dört doğrulayıcı, Merkle kanıtı ve Ed25519 imzaları kullanıyor. Bloklar, işlemler, doğrulayıcı durumu ve zincir doğrulama arayüzden incelenebiliyor. Yönetici tarafında kurcalama, düğüm arızası ve onarım gösterimleri var. Bu çalışma sırasında bu bozucu demo araçları çalıştırılmadı.</p>
+<p>Oy verince cihazda makbuz oluşuyor. “Oyum kayıtlı mı?” ekranı doğrulayıcı anahtarlarını, Merkle dahil olma kanıtını, taahhüt eşleşmesini ve son oy olup olmadığını kontrol ediyor. Oylama kapanınca oy açıklaması ve sayıma dahil olma da denetlenebiliyor. Kesin karar sayfasındaki “Sayımı kendim doğrulayayım” bültenden bütün sayımı cihazda yeniden hesaplıyor. İlk güvenilen doğrulayıcı anahtarları cihazda sabitleniyor (TOFU); sonraki değişiklikler uyarı gerektiriyor.</p>
+<p>Demo kurulumunda dört doğrulayıcı aynı sunucu sürecinde, ayrı anahtar ve depolarla çalışıyor. Bu nedenle burada fiziksel olarak bağımsız dört kuruluşun işlettiği üretim ağı doğrulanmış değil.</p>
+
+<h2 id="ekranlar">11. Arayüzün ekran haritası</h2>
+<table><thead><tr><th>Bölüm</th><th>Görülebilen işler</th></tr></thead><tbody>
+<tr><td>Ana sayfa</td><td>Saat, YZ modu, defter yüksekliği, yönetmelik sürümü, üye sayıları; giriş sonrası kişisel görevler.</td></tr>
+<tr><td>Konular</td><td>Konu listesi, ayrıntı, konu ağacı, alt konu ve değişiklik önerme, sürümler, tartışma.</td></tr>
+<tr><td>Öneriler</td><td>Açık, destek bekleyen, tartışılan, oylanan, itiraz/uzlaşma, kabul ve ret filtreleri.</td></tr>
+<tr><td>Öneri ayrıntısı</td><td>Evre şeridi, metin, eylem paneli, oy, sonuçlar, uzman raporu, YZ, zaman çizelgesi, ontoloji, parametreler, geçmiş ve defter bağlantıları.</td></tr>
+<tr><td>Oy doğrulama</td><td>Cihaz makbuzları, JSON ile makbuz, kanıt adımları ve yerel kurcalama gösterimi.</td></tr>
+<tr><td>Bilirkişiler</td><td>Liste, başvuru, görevlerim, yönetim; rolüne göre görünür.</td></tr>
+<tr><td>Graf</td><td>İnsanlar grafı, görüş haritası, istatistikler.</td></tr>
+<tr><td>Defter</td><td>Durum, bloklar, zincir doğrulama, işlem arama; blok ve işlem ayrıntıları.</td></tr>
+<tr><td>Yönetmelik</td><td>Sekiz sekmede hukuk metni/modeli, karar parametreleri ve sürümler.</td></tr>
+<tr><td>Profil ve üye sayfası</td><td>Hesap, rızalar, düzeltme talebi, vekâlet, takma ad, şifre, veri hakları; kamusal ilişkiler.</td></tr>
+<tr><td>Bildirimler</td><td>Tümü ve okunmamış bildirimler; ilgili işleme geçiş.</td></tr>
+<tr><td>Kayıt memuru</td><td>Bekleyenler, düzeltme talepleri ve kişi adına üyelik formu.</td></tr>
+<tr><td>Yönetim</td><td>Saat/zamanlayıcı, roller, denetim günlüğü, bütünlük uyarıları, defter demosu.</td></tr>
+<tr><td>Ayarlar</td><td>Sunucu bağlantısı, bağlantı testi, açık/koyu/sistem teması, sabit anahtarlar, makbuzlar ve sürüm/platform bilgisi.</td></tr>
+</tbody></table>
+
+<h2 id="platform">12. Android ve web arasındaki farklar</h2>
+<table><thead><tr><th>Başlık</th><th>Web</th><th>Android</th></tr></thead><tbody>
+<tr><td>Arayüz</td><td>Masaüstünde üst gezinme, geniş kartlar ve yan sütunlar.</td><td>Dar alanda tek sütun; alt menü ve “Daha fazla” paneli.</td></tr>
+<tr><td>Teknoloji</td><td>React uygulaması tarayıcıda çalışıyor.</td><td>Aynı derlenmiş React uygulaması Capacitor WebView içinde çalışıyor.</td></tr>
+<tr><td>Depolama</td><td>Tarayıcı localStorage.</td><td>Capacitor Preferences; bazı değerlerin tarayıcı aynası.</td></tr>
+<tr><td>Sunucu</td><td>Varsayılan olarak sayfanın sunulduğu köken.</td><td>Emülatör varsayılanı <code>http://10.0.2.2:4000</code>; Ayarlar’dan değiştirilebilir.</td></tr>
+<tr><td>Dosya alma</td><td>JSON/Turtle/veri dökümü gibi indirmeler destekleniyor.</td><td>İndirme düğmeleri gizleniyor; kopyalama kullanılıyor.</td></tr>
+<tr><td>Geri gezinme</td><td>Tarayıcı ve uygulama bağlantıları.</td><td>Capacitor geri tuşu entegrasyonu; pencere/alt sayfa ve uygulama geçmişi.</td></tr>
+<tr><td>Bu arşiv</td><td>1440 × 1000 piksel Chrome ekran görüntüleri.</td><td>1080 × 2400 piksel, kurulu APK’dan ADB ile doğrudan alınmış cihaz ekranları.</td></tr>
+</tbody></table>
+<p>Android projesinin hedef SDK değeri 36, minimum SDK değeri 24. Android paket sürümü 1.0 (kod 1); uygulama istemci sürümü 1.0.0. Test cihazının saat dilimi GMT, web çekimininki Europe/Istanbul olduğu için aynı sunucu saati görüntülerde üç saat farklı yazılabiliyor. Ekranlar aynı demo sunucusunu kullanıyor.</p>
+
+<h2>13. Bu incelemede ne doğrulandı?</h2>
+<ul>
+<li>Güncel çalışma klasöründen web derlemesi, Capacitor eşitlemesi ve Android debug APK derlemesi tamamlandı; APK emülatöre kuruldu.</li>
+<li><code>npm run typecheck</code> ortak kod, sunucu ve web için başarılı oldu.</li>
+<li>Ayrı geçici veri dizininde demo oluşturuldu: 63 doğrulanmış hesap, 4 bekleyen başvuru, 14 konu, toplam 34 öneri ve 182 mesaj. Kamuya açık listede 33 öneri var; özel taslak sahibiyle girilince görülüyor.</li>
+<li>Tohum doğrulaması dört zinciri ve 27/27 kesin sayımı yeniden doğruladı; bütün öneri evreleri, uzman panelleri, gizlenmiş mesaj ve uzlaşma senaryoları oluştu.</li>
+<li>Web ve Android’de rol bazlı ekranlar, açık/koyu tema, bağlantı testi, cihaz makbuzu ve açık oylama kanıtı kontrol edildi. #K-24’ün ilk tur ve yeniden oylama sayımları iki arayüzde de “sayım doğrulandı” sonucu verdi.</li>
+<li>Ekran taramasında sayfa JavaScript hatası veya yatay taşma kaydedilmedi. Web tarayıcısının otomatik <code>/favicon.ico</code> isteği 404 dönüyor; bu küçük görsel kaynak eksiği ana ekranların açılmasını engellemedi.</li>
+</ul>
+<p>Mevcut <code>server/data</code> sıfırlanmadı. Var olan 4000 portundaki süreç kapatılmadı; bu süreç eski demo verisi gösterdiği için inceleme sunucusu <a href="http://localhost:4177">localhost:4177</a> üzerinde ayrı açıldı. Emülatörün önceki uygulama tercihleri çekimlerden sonra geri yüklendi. Yeni APK kurulu kaldı. Bu çalışma tam güvenlik denetimi veya tüm otomatik test paketinin yeniden çalıştırılması değildir.</p>
+
+<h2 id="sinirlar">14. Bilinmesi gereken sınırlar</h2>
+<p><strong>Sunucu güveni devam ediyor.</strong> Seçmen uygunluğu ve oy gizliliğinde sunucu güvenilir kabul ediliyor. Makbuz doğrulaması bu güven varsayımını tamamen kaldırmıyor. Bu ürün ulusal siyasi seçim veya yüksek riskli uzaktan seçim altyapısı olarak doğrulanmış değil.</p>
+<p><strong>Demo dağıtıklığı sınırlı.</strong> Dört doğrulayıcı aynı süreçte. Anahtarlar demo veri klasöründeki dosyalarda. Android HTTP bağlantısına izin veriyor. Personel için iki faktörlü kimlik doğrulama bulunmuyor. Bunlar üretime geçiş değerlendirmesinde önem taşıyan mevcut tasarım sınırları.</p>
+<p><strong>“Gizlilik” mutlak anonimlik değil.</strong> Kimlik kasası alan bazlı AES-256-GCM ve kullanıcı anahtarlarıyla tasarlanmış; defterde doğrudan ad, adres, T.C. kimlik numarası tutulmaması hedefleniyor. Buna karşılık silme talebinin hedefindeki yazarın görüş grubu açık sayım verisinden çıkarılabiliyor; azınlık raporu da takma ad/grup bağlantısını isteğe bağlı olarak alenileştiriyor. Kaynak belgeler bu istisnaları açıklıyor.</p>
+<p><strong>YZ sınırı:</strong> Sezgisel mod yanlış uyarı üretebilir. Canlı model kalitesi veya harici API erişimi bu incelemede doğrulanmadı. Uygulamanın “çevrimdışı” rozeti YZ modunu gösteriyor; veri işlemleri için uygulama sunucusu gerekiyor.</p>
+<p><strong>Gözlenen işlev ile gerçek dünyadaki etki farklıdır.</strong> Köprülü Çoğunluk ve simülasyonlar azınlığın sürekli kaybetmesini azaltmayı hedefliyor; bunun bütün topluluklarda adil sonuç vereceği veya hukuki uyumluluğun tamamlandığı sonucu bu incelemeden çıkarılamaz. Belgelerdeki KVKK metinleri ve güvenlik mekanizmaları bir hukuki uygunluk belgesi değildir.</p>
+
+<h2>15. İlk kullanım için önerilen gezi</h2>
+<ol><li><a href="http://localhost:4177">Web arayüzünü</a> açıp ana sayfadaki sistem özetini inceleyin.</li><li>Demo ortamında <code>ayse</code> / <code>Uye12345!</code> ile girin; bunlar proje belgelerinde yayımlanmış demo bilgileridir.</li><li>Öneriler’de #K-30 oylama ekranını, #K-32 bilirkişi/tartışma akışını, #K-28 uzlaşmayı ve #K-24 doğrulanabilir kesin sonucu açın.</li><li>Graf → Görüş haritası ile Yönetmelik → Katmanlar/Parametreler ekranlarını karşılaştırın.</li><li>Android’de güncel inceleme sunucusuna bağlanmak için Ayarlar’daki sunucu adresini <code>http://10.0.2.2:4177</code> yapıp bağlantıyı sınayın. Eski sunucuya ait makbuzlar yeni sunucunun makbuzları değildir.</li></ol>
+
+<h2 id="kaynaklar">16. Kaynaklar ve arşiv</h2>
+<p>İnceleme; kaynak kodu, proje belgeleri ve çalışan uygulamadaki gözlemlerin birlikte değerlendirilmesine dayanır. Dış kaynak olarak projenin <a href="https://github.com/ahmedberatAI/Form-Sistemi">GitHub deposu</a> kontrol edildi. Güncel yerel değişikliklerin ayrıntıları uzak README’den farklı olabildiği için işlev açıklamalarında mevcut çalışma klasörü esas alındı.</p>
+<ul><li><a href="../../README.md">Proje README</a> · <a href="../../docs/ALGORITMA.md">Karar algoritması</a> · <a href="../../docs/MIMARI.md">Mimari</a> · <a href="../../docs/API.md">API</a></li><li><a href="../../docs/YONETMELIK.md">Yönetmelik modeli</a> · <a href="../../docs/KVKK.md">Veri işleme ve sınırlar</a> · <a href="../../docs/TEST_RAPORU.md">Projenin önceki test raporu</a> · <a href="../../docs/SIMULASYON.md">Simülasyon</a></li><li><a href="../../web/src/App.tsx">Ekran rotaları</a> · <a href="../../web/src/pages/SettingsPage.tsx">Platform ve ayarlar</a> · <a href="../../shared/src/decision.ts">Ortak karar kodu</a></li><li><a href="index.html">Aranabilir ekran galerisi</a> · <a href="web-envanter.json">Web çekim envanteri</a> · <a href="android-envanter.json">Android çekim envanteri</a> · <a href="surum-ve-dogrulama.json">Sürüm ve dosya doğrulama kaydı</a></li></ul>
+<p class="muted">Görüntüler özgün ekran yakalamalarıdır. Arayüz yeniden çizilmedi, yapay zekâyla üretilmedi veya cihaz çerçevesi eklenmedi. Arşivde yalnız bu inceleme için oluşturulmuş demo içerik kullanıldı. JSON envanterleri her dosyanın ekranını, rolünü, yolunu, zamanını ve görünüm ölçülerini içerir.</p>
+</main></body></html>

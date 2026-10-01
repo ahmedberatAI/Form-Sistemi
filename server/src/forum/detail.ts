@@ -101,7 +101,8 @@ export function buildProposalDetail(core: ForumCore, clusters: ClusterServiceImp
     authorId: s.author_id,
     authorNickname: nick.get(s.author_id) ?? "",
     body: s.body,
-    status: s.status as Suggestion["status"],
+    // Eski veritabanlarında evre kapanırken "open" kalmış satırlar da "karar verilmeden kapandı" olarak gösterilir.
+    status: (s.status === "open" && p.status !== "deliberation" && p.status !== "reconciliation" ? "lapsed" : s.status) as Suggestion["status"],
     createdAt: Number(s.created_at),
     decidedAt: s.decided_at === null ? null : Number(s.decided_at),
   }));
@@ -124,7 +125,11 @@ export function buildProposalDetail(core: ForumCore, clusters: ClusterServiceImp
     body: r.body,
     createdAt: Number(r.created_at),
   }));
-  const results: DecisionResult[] = tallies.map((t) => json<DecisionResult>(t.result, null as unknown as DecisionResult)).filter(Boolean);
+  const results: DecisionResult[] = tallies
+    .map((t) => json<DecisionResult>(t.result, null as unknown as DecisionResult))
+    .filter(Boolean)
+    // Eski kayıtlarda DEL yazar satırı grubu adıyla anıyordu; artık anmaz (KVKK.md §4.3). Sayım değeri değişmez.
+    .map((r) => ({ ...r, checks: (r.checks ?? []).map((c) => (c.key === "author_cluster" ? { ...c, label: "Mesaj yazarının kendi görüş grubu" } : c)) }));
 
   // ── Görüntüleyene özel ──
   let myBallot: ProposalDetail["myBallot"] = null;

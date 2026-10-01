@@ -7,6 +7,7 @@ import {
   fracAtLeast,
   fy,
   hashCanonical,
+  PROPOSAL_TEXT_LIMITS as TEXT,
   rat,
   voteCommitment,
   type AiAnalysisInfo,
@@ -36,7 +37,7 @@ import { AppError, badRequest, conflict, forbidden, notFound, unprocessable } fr
 import type { LifecycleEngine, MessageService, ProposalService, Viewer } from "../core/forum-contracts";
 import { newId, newSalt } from "../core/ids";
 import { json, type SqlValue } from "../db";
-import { latestClusterOf, type ClusterServiceImpl } from "./clusters";
+import { type ClusterServiceImpl } from "./clusters";
 import { buildProposalDetail, receiptOf, visibleProposal } from "./detail";
 import { applyTransition, auditInputFor, findingsSummary } from "./lifecycle";
 import { assertNoPii, moderationContext } from "./messages";
@@ -144,11 +145,20 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
       return null;
     }
   }
-  /** İçerik etiketleri: risk ≥ 1 ise her etiket için güven = min(0,95; 0,4 + 0,2·risk). Yalnız danışma. */
+  /**
+   * İçerik etiketleri (yalnız danışma): her etiketin güveni, modelin ya da çevrimdışı sezgiselin o etiket için KENDİ
+   * bildirdiği güvendir (`labelConfidences`); risk düzeyinden türetilmez (eski 0,4 + 0,2·risk formülü tek bir sözlük
+   * eşleşmesini 0,95'e çıkarıyordu). Güven bildirilmemişse temkinli varsayılan 0,5 (orta güven: uyarı + bilirkişi).
+   */
   function contentLabelsOf(m: ModerationResult | null): ContentLabel[] {
     if (!m || m.risk < 1) return [];
-    const confidence = Math.min(0.95, Math.round((0.4 + 0.2 * m.risk) * 100) / 100);
-    return uniq(m.labels).map((label) => ({ label, confidence, source: "ai" as const }));
+    const own = new Map<string, number>();
+    for (const c of m.labelConfidences ?? []) if (Number.isFinite(c.confidence)) own.set(c.label, Math.max(own.get(c.label) ?? 0, c.confidence));
+    return uniq(m.labels).map((label) => ({
+      label,
+      confidence: Math.round(Math.max(0, Math.min(1, own.get(label) ?? 0.5)) * 100) / 100,
+      source: "ai" as const,
+    }));
   }
   /** YZ'nin kısıtlayıcı bulduğu haklar (güven ≥ 0,5) — "yalnızca yükseltme". */
   function aiRightsOf(c: ClassificationResult | null): RightsFlag[] {
@@ -237,13 +247,7 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
         }
         if (rows.some((m) => m.visibility === "hidden" || m.visibility === "sealed")) throw conflict("invalid_state", "Seçilen mesajlardan biri zaten gizlenmiş.");
         if (first.author_id === actor.id) throw unprocessable("own_message", "Kendi mesajınız için silme talebi açamazsınız; mesajınızı düzenleyebilirsiniz.");
-        const open = db.all<{ seq: number; deletion_payload: string }>(
-          `SELECT seq, deletion_payload FROM proposals WHERE kind = 'deletion' AND status IN ${ACTIVE_SQL}`,
-        );
-        for (const o of open) {
-          const targets = new Set(json<{ messageIds?: string[] }>(o.deletion_payload, {}).messageIds ?? []);
-          if (ids.some((id) => targets.has(id))) throw conflict("already_requested", `Bu mesaj için zaten açık bir silme talebi var (#K-${o.seq}).`);
-        }
+        assertDeletionTargetsFree(ids, ground, null);
         const now = core.now();
         const lim = db.get<{ open: number; day: number }>(
           `SELECT SUM(CASE WHEN status NOT IN ${CLOSED_SQL} THEN 1 ELSE 0 END) AS open,
@@ -280,8 +284,9 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
       if (categories.length === 0 && known.has(reg)) categories = [reg];
     }
     if (strict) {
-      title = checkLength(title, 5, 200, "title", "Başlık");
-      body = checkLength(body, 20, 20000, "body", "Metin");
+      // Madde 7 (1) ile aynı sınırlar (PROPOSAL_TEXT_LIMITS = SHACL title_length/body_length): ön denetim ve kayıt uyuşur.
+      title = checkLength(title, TEXT.titleMin, TEXT.titleMax, "title", "Başlık");
+      body = checkLength(body, TEXT.bodyMin, TEXT.bodyMax, "body", "Metin");
       if (categories.length === 0) throw fieldError("categories", "En az bir geçerli kategori seçilmelidir.");
     }
     if (amendment) amendment = { ...amendment, newTitle: title, newBody: body };
@@ -315,6 +320,37 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
 
   function requireStatus(p: ProposalRow, allowed: string[], msg: string): void {
     if (!allowed.includes(p.status)) throw conflict("invalid_state", msg, { status: p.status });
+  }
+
+  /**
+   * Bir mesaj için aynı anda tek bir etkin silme talebi (ALGORITMA.md §12 madde 12). İki istisna:
+   * - Geçersiz talep engel değildir: "Görüş ayrılığı" gerekçeli ya da gönderimdeki denetimde yönetmeliğe aykırı (T3) bulunmuş
+   *   talep, destekçi toplarken de olsa aynı mesaja yeni talep açılmasını engellemez.
+   * - Acil gerekçe beklemez: mevcut talep acil değilse (ör. Spam) kişisel veri ifşası ya da tehdit gerekçeli talep yine açılır
+   *   ve mesaj talep anında daraltılır (Yönetmelik Madde 20 (3)). Böylece bir mesajı en çok bir olağan ve bir acil talep hedefler.
+   */
+  function assertDeletionTargetsFree(ids: string[], ground: string, exceptId: string | null): void {
+    const urgent = groundIsUrgent(deps, ground);
+    const open = db.all<{ id: string; seq: number; tier: string | null; deletion_payload: string | null; audit_report: string | null }>(
+      `SELECT id, seq, tier, deletion_payload, audit_report FROM proposals WHERE kind = 'deletion' AND status IN ${ACTIVE_SQL} ORDER BY seq`,
+    );
+    for (const o of open) {
+      if (o.id === exceptId) continue;
+      const d = json<{ messageIds?: string[]; ground?: string }>(o.deletion_payload, {});
+      if (!(d.messageIds ?? []).some((id) => ids.includes(id))) continue;
+      const otherGround = normIri(d.ground ?? "");
+      const invalid = otherGround === GORUS_AYRILIGI || o.tier === "T3" || json<{ admissible?: boolean }>(o.audit_report, {}).admissible === false;
+      if (invalid) continue;
+      const otherUrgent = groundIsUrgent(deps, otherGround);
+      if (urgent && !otherUrgent) continue;
+      throw conflict(
+        "already_requested",
+        otherUrgent
+          ? `Bu mesaj için zaten açık bir acil silme talebi var (#K-${o.seq}); mesaj karar çıkana kadar daraltılmış durumda.`
+          : `Bu mesaj için zaten açık bir silme talebi var (#K-${o.seq}). Mesaj kişisel veri ya da tehdit içeriyorsa acil gerekçeli bir talep yine açılabilir.`,
+        { proposalId: o.id, seq: Number(o.seq) },
+      );
+    }
   }
 
   function isEligible(proposalId: string, userId: string): boolean {
@@ -360,8 +396,8 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
     requireStatus(p, ["draft", "deliberation", "reconciliation"], p.status === "sponsoring"
       ? "Destekçi toplama sürerken metin değiştirilemez: destekçiler belirli bir metni imzaladı. Değiştirmek için öneriyi geri çekip yeniden açın."
       : "Metin yalnızca taslakta, tartışma ve uzlaşma evrelerinde değiştirilebilir (oylama başlarken kilitlenir).");
-    const title = checkLength(rev.title, 5, 200, "title", "Başlık");
-    const body = checkLength(rev.body, 20, 20000, "body", "Metin");
+    const title = checkLength(rev.title, TEXT.titleMin, TEXT.titleMax, "title", "Başlık");
+    const body = checkLength(rev.body, TEXT.bodyMin, TEXT.bodyMax, "body", "Metin");
     if (title === p.title && body === p.body) {
       // Metin aynı: yeni sürüm yok (ör. kabul edilen öneri zaten güncel metinle aynı) — yalnız karar kaydı işlenir.
       if (rev.onCommit) core.tx(() => rev.onCommit!());
@@ -629,6 +665,9 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
       core.tx(() => {
         const cur = core.requireProposal(id);
         if (cur.status !== "draft" || cur.version !== p.version) throw conflict("version_conflict", "Öneri bu arada değişti; tekrar deneyin.");
+        // Taslak kaydedildikten sonra aynı mesaja başka bir talep gönderilmiş olabilir: kural gönderimde de uygulanır.
+        const pending = cur.kind === "deletion" ? parseProposal(cur).deletion : null;
+        if (pending) assertDeletionTargetsFree(pending.messageIds, pending.ground, cur.id);
         const now = core.now();
         const hours = report.params?.durationsHours.sponsoring ?? durationsOf(cur).sponsoring;
         applyTransition(core, cur, "sponsoring", "Yazar öneriyi destekçi toplamaya gönderdi.", {
@@ -744,7 +783,12 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
         id,
       );
       if (!s) throw notFound("Metin önerisi");
+      if (s.status === "lapsed") {
+        throw conflict("suggestion_lapsed", "Bu metin önerisi karar verilmeden kapandı (tartışma evresi bitti); öneren kişi onu ayrı bir öneri olarak açabilir.");
+      }
       if (s.status !== "open") throw conflict("already_decided", "Bu metin önerisi için zaten karar verildi.");
+      // Kabul de ret de aynı evre kuralına bağlıdır: oylama başlayınca metin kilitlenir, açık öneriler "lapsed" olur.
+      requireStatus(p, ["deliberation", "reconciliation"], "Metin önerisine yalnızca tartışma ya da uzlaşma evresinde karar verilebilir.");
       const mark = (status: "accepted" | "rejected") => {
         const r = db.run("UPDATE proposal_suggestions SET status = ?, decided_at = ? WHERE id = ? AND status = 'open'", status, core.now(), suggestionId);
         if (r.changes !== 1) throw conflict("already_decided", "Bu metin önerisi için zaten karar verildi.");
@@ -761,7 +805,6 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
       if (decision === "reject") {
         core.tx(() => mark("rejected"));
       } else {
-        requireStatus(p, ["deliberation", "reconciliation"], "Metin önerisi yalnızca tartışma ya da uzlaşma evresinde kabul edilebilir.");
         await applyRevision(actor, p, { title: p.title, body: s.body, viaSuggestionId: s.id, versionAuthorId: s.author_id, onCommit: () => mark("accepted") });
       }
       return detail(id, actor);
@@ -1015,8 +1058,16 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
       if (p.status === "draft") throw conflict("invalid_state", "Taslak önerinin tartışması yok.");
       const claude = deps.ai.mode() === "claude";
       const { rows, consent } = threadMessagesForAi(p);
-      const assign = latestClusterOf(core, rows.map((r) => r.author_id));
+      // Küme bilgisi: oylama açıldıysa sayımda kullanılan (dondurulmuş) anlık görüntü, açılmadıysa en son anlık görüntü.
+      // Böylece mesajların küme kimlikleri, nüfus büyüklükleri ve sayımın küme satırları aynı görüntüden gelir.
+      const snapId = p.cluster_snapshot_id ?? db.get<{ id: string }>("SELECT id FROM cluster_snapshots ORDER BY created_at DESC, rowid DESC LIMIT 1")?.id ?? null;
+      const snap = snapId ? clusters.data(snapId) : null;
+      const clusterOf = (userId: string): string | null => snap?.assignments[userId] ?? null;
       const pseudo = new Map<string, string>();
+      const pseudoOf = (userId: string): string => {
+        if (!pseudo.has(userId)) pseudo.set(userId, `K${pseudo.size + 1}`);
+        return pseudo.get(userId)!;
+      };
       const input: SummaryInputMessage[] = [];
       let skipped = 0;
       for (const m of rows) {
@@ -1024,17 +1075,67 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
           skipped++;
           continue;
         }
-        if (!pseudo.has(m.author_id)) pseudo.set(m.author_id, `K${pseudo.size + 1}`);
-        input.push({ id: m.id, pseudonym: pseudo.get(m.author_id)!, clusterId: assign.get(m.author_id) ?? null, stance: m.stance, body: m.body });
+        input.push({ id: m.id, pseudonym: pseudoOf(m.author_id), clusterId: clusterOf(m.author_id), stance: m.stance, body: m.body });
       }
+      // Azınlık raporları da özete girer (Claude kipinde yalnız YZ rızası veren yazarlarınki).
+      const reportRows = db.all<{ id: string; author_id: string; cluster_id: string | null; body: string }>(
+        "SELECT id, author_id, cluster_id, body FROM minority_reports WHERE proposal_id = ? ORDER BY created_at, rowid",
+        id,
+      );
+      const reportConsent = new Map(
+        db
+          .all<{ id: string; ai_consent: number }>("SELECT id, ai_consent FROM users WHERE id IN (SELECT value FROM json_each(?))", jsonList(reportRows.map((r) => r.author_id)))
+          .map((u) => [u.id, u.ai_consent === 1] as const),
+      );
+      const minorityReports: { id: string; pseudonym: string; clusterId: string | null; body: string }[] = [];
+      let skippedReports = 0;
+      for (const r of reportRows) {
+        if (claude && !reportConsent.get(r.author_id)) {
+          skippedReports++;
+          continue;
+        }
+        minorityReports.push({ id: r.id, pseudonym: pseudoOf(r.author_id), clusterId: r.cluster_id, body: r.body });
+      }
+      // Anlamlı kümelerin NÜFUS büyüklükleri (sayımın parametreleriyle; yoksa varsayılan pay 1/10 ve en az 3 üye).
+      let clusterSizes: Record<string, number> | undefined;
+      if (snap) {
+        clusterSizes = {};
+        if (snap.k >= 2) {
+          const parsed = parseProposal(p);
+          const params: DecisionParams | null = parsed.fixedParams ?? parsed.audit?.params ?? null;
+          const share = params?.significantShare ?? rat(1, 10);
+          const minMembers = params?.significantMinMembers ?? 3;
+          const sig = Object.keys(snap.sizes)
+            .sort()
+            .filter((g) => snap.sizes[g] >= minMembers && fracAtLeast(snap.sizes[g], snap.clusteredTotal, share));
+          if (sig.length >= 2) for (const g of sig) clusterSizes[g] = snap.sizes[g];
+        }
+      }
+      // Kesin sayım "tartışmalı" ise köprü testini geçemeyen anlamlı kümeler (bülten verisi).
+      const lastTally = db.get<{ result: string }>("SELECT result FROM tallies WHERE proposal_id = ? AND interim = 0 ORDER BY round DESC, created_at DESC, rowid DESC LIMIT 1", id);
+      const decision = lastTally
+        ? json<{ outcome?: string; clusters?: { clusterId: string; members: number; significant: boolean; yes: number; no: number; passed: boolean | null }[] } | null>(lastTally.result, null)
+        : null;
+      const failedClusters =
+        decision?.outcome === "contested"
+          ? (decision.clusters ?? []).filter((c) => c.significant && c.passed === false).map((c) => ({ clusterId: c.clusterId, members: c.members, yes: c.yes, no: c.no }))
+          : [];
       const topicTitle = !claude || consent.get(p.author_id) ? p.title : `Öneri ${proposalRef(p)}`;
-      const out = await deps.ai.summarize({ topicTitle, messages: input });
+      const summaryInput = {
+        topicTitle,
+        messages: input,
+        ...(clusterSizes ? { clusterSizes } : {}),
+        ...(failedClusters.length ? { failedClusters } : {}),
+        ...(minorityReports.length ? { minorityReports } : {}),
+      };
+      const out = await deps.ai.summarize(summaryInput);
       const notes: string[] = [];
       if (skipped > 0) notes.push(`${skipped} mesaj, yazarları yapay zekâ analizine rıza vermediği için özete dahil edilmedi.`);
+      if (skippedReports > 0) notes.push(`${skippedReports} azınlık raporu, yazarları yapay zekâ analizine rıza vermediği için özete dahil edilmedi.`);
       const collapsed = Number(db.get<{ c: number }>("SELECT COUNT(*) AS c FROM messages WHERE thread_type = 'proposal' AND thread_id = ? AND visibility <> 'visible'", id)?.c ?? 0);
       if (collapsed > 0) notes.push(`${collapsed} gizlenmiş ya da incelemedeki mesaj özete dahil edilmedi.`);
-      const output = { ...out, messageCount: input.length, excludedMessages: skipped + collapsed, note: notes.join(" ") || null };
-      const inputHash = hashCanonical({ topicTitle, messages: input });
+      const output = { ...out, messageCount: input.length, minorityReportCount: minorityReports.length, excludedMessages: skipped + collapsed, note: notes.join(" ") || null };
+      const inputHash = hashCanonical(summaryInput);
       return deps.aiSink.record({
         task: "summarize",
         targetType: "proposal",

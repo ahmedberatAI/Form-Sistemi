@@ -167,9 +167,10 @@ export function DeletionForm({ value, onChange, errors = {}, onMessagesLoaded }:
                     {m.threadType === "topic" ? "Konunun tartışmasına git" : "Önerinin tartışmasına git"}
                   </Link>
                   {m.pendingDeletionProposalId ? (
-                    <Link className="small" to={routes.proposal(m.pendingDeletionProposalId)}>
-                      Bu mesaj için zaten açık bir silme talebi var
-                    </Link>
+                    <span className="small">
+                      <Link to={routes.proposal(m.pendingDeletionProposalId)}>Bu mesaj için zaten açık bir silme talebi var</Link>
+                      {m.visibility === "collapsed" ? null : <span className="muted"> (kişisel veri ya da tehdit içeriyorsa acil talep yine açılabilir)</span>}
+                    </span>
                   ) : null}
                   <Button size="sm" variant="ghost" icon="close" onClick={() => removeId(m.id)}>
                     Listeden çıkar
@@ -314,6 +315,10 @@ export function DeletionForm({ value, onChange, errors = {}, onMessagesLoaded }:
                 Şu an: <strong>{limits.open}</strong>/{MAX_OPEN_DELETIONS} açık, son 24 saatte <strong>{limits.day}</strong>/{MAX_DELETIONS_PER_DAY}.
               </>
             ) : null}
+          </li>
+          <li>
+            Bir mesaj için aynı anda tek bir silme talebi açık olabilir. Mevcut talep acil değilse kişisel veri ifşası ya da tehdit gerekçeli talep yine
+            açılabilir ve mesaj hemen daraltılır; “Görüş ayrılığı” gibi geçersiz talepler başka talebi engellemez.
           </li>
           <li>
             Kendi kişisel verilerinizin silinmesi oylamaya konmaz; <Link to={routes.profile()}>Profil</Link> sayfasındaki KVKK bölümünden yapılır.

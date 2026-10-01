@@ -8,3 +8,4 @@ export * from "./tckn";
 export * from "./decision";
 export * from "./api";
 export * from "./vocab";
+export * from "./privacy";

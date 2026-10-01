@@ -91,6 +91,21 @@ describe("uç nokta duman testi (gerçek servisler)", () => {
     expect((await h.req("POST", "/api/me/password", { token: tmp.token, body: { oldPassword: "yanlis-1", newPassword: "Yeni-Sifre-2028" } })).json().error.code).toBe("wrong_password");
     expect(await h.ok("POST", "/api/auth/logout", { token: tmp.token })).toEqual({ ok: true });
     expect((await h.req("GET", "/api/me", { token: tmp.token })).statusCode).toBe(401);
+
+    // Takma ad değişikliği: şifre teyidi, tekillik (I/ı katlamalı) ve benzerlik denetimi, 30 günde bir.
+    const nick = await h.member("adini_degistiren");
+    expect((await h.req("PATCH", "/api/me/nickname", { token: nick.token, body: { nickname: "yeni_ad", password: "yanlis-1" } })).json().error.code).toBe("wrong_password");
+    expect((await h.req("PATCH", "/api/me/nickname", { token: nick.token, body: { nickname: "BERNA", password: PASSWORD } })).json().error.code).toBe("duplicate_nickname");
+    expect((await h.req("PATCH", "/api/me/nickname", { token: nick.token, body: { nickname: "Berna.", password: PASSWORD } })).json().error.code).toBe("similar_nickname");
+    expect((await h.req("PATCH", "/api/me/nickname", { token: nick.token, body: { nickname: "a b", password: PASSWORD } })).statusCode).toBe(400);
+    const renamed = await h.ok<Me>("PATCH", "/api/me/nickname", { token: nick.token, body: { nickname: "Yeni_Takma_Ad", password: PASSWORD } });
+    expect(renamed.nickname).toBe("Yeni_Takma_Ad");
+    expect((await h.ok<Me>("GET", "/api/me", { token: nick.token })).nickname).toBe("Yeni_Takma_Ad");
+    const again = await h.req("PATCH", "/api/me/nickname", { token: nick.token, body: { nickname: "ucuncu_ad", password: PASSWORD } });
+    expect(again.statusCode).toBe(422);
+    expect(again.json().error.code).toBe("nickname_change_limit");
+    expect((await h.login("YENI_TAKMA_AD")).user.id).toBe(nick.user.id);
+    expect((await h.req("POST", "/api/auth/login", { body: { login: "adini_degistiren", password: PASSWORD } })).statusCode).toBe(401);
   }, TIMEOUT);
 
   it("kullanıcılar ve graf ilişkileri", async () => {

@@ -5,6 +5,7 @@ import { useCallback, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   LEDGER_TX_LABELS,
+  expandIri,
   type AiAnalysisInfo,
   type LedgerTxType,
   type MessageView,
@@ -241,6 +242,56 @@ export default function ProposalDetailPage() {
   );
 }
 
+/** Değiştirilemez hükümlere dayanan bulgu kodları (ontoloji henüz yüklenmemişse yedek olarak kullanılır). */
+const ENTRENCHED_CODES = new Set([
+  "core_right_restricted",
+  "immutable_target",
+  "new_immutable",
+  "immutable_bypass",
+  "protection_floor",
+  "entrenchment_cap",
+  "equal_vote_limit",
+  "deletion_ground_invalid",
+]);
+
+/**
+ * "Yönetmeliğe aykırı" bildirimi: açıklama, ihlalin dayandığı maddenin koruma düzeyine göre seçilir. Yalnız değiştirilemez
+ * bir hükme aykırılık "kural gereği geçersiz" (Anayasa md. 4 modeli) sayılır; olağan ya da nitelikli bir hükme aykırı öneri
+ * (ör. Madde 12 (2) içerik etiketi, Madde 10 (1) üst konu) düzeltilip yeniden sunulabilir.
+ */
+function InadmissibleNotice({ proposal: p, lastReason }: { proposal: ProposalDetail; lastReason: string | null }) {
+  const { ontology } = useOntology();
+  const violations = p.audit?.violations ?? [];
+  const immutableArticles = new Set((ontology?.articles ?? []).filter((a) => a.protection === "Degistirilemez").map((a) => expandIri(a.iri)));
+  const entrenched =
+    p.audit?.tier === "T3" || violations.some((v) => ENTRENCHED_CODES.has(v.code) || (!!v.article && immutableArticles.has(expandIri(v.article))));
+  const articles = [...new Set(violations.map((v) => v.articleLabel).filter((l): l is string => !!l))];
+  const where = articles.length ? ` (${articles.join(", ")})` : "";
+  return (
+    <Alert tone="error" title="Yönetmeliğe aykırı — oylanamaz">
+      {lastReason ? <p>{lastReason}</p> : null}
+      {violations.length ? (
+        <ul>
+          {violations.map((v, i) => (
+            <li key={i}>{v.message}</li>
+          ))}
+        </ul>
+      ) : null}
+      {entrenched ? (
+        <p className="small">
+          Öneri değiştirilemez bir hükme aykırı{where}. Böyle öneriler oylamaya hiç girmeden kural gereği geçersizdir (Anayasa md. 4 modeli). Ayrıntılar ontoloji
+          denetimi kartında.
+        </p>
+      ) : (
+        <p className="small">
+          Öneri, değiştirilemez olmayan bir yönetmelik hükmüne aykırı bulundu{where}. Bu bir oylama sonucu değil, otomatik denetimin sonucudur; yazar metni düzeltip
+          yeni bir öneri olarak yeniden sunabilir. Ayrıntılar ontoloji denetimi kartında.
+        </p>
+      )}
+    </Alert>
+  );
+}
+
 function StatusNotice({ proposal: p, lastReason }: { proposal: ProposalDetail; lastReason: string | null }) {
   switch (p.status) {
     case "enacted":
@@ -253,19 +304,7 @@ function StatusNotice({ proposal: p, lastReason }: { proposal: ProposalDetail; l
         </Alert>
       );
     case "inadmissible":
-      return (
-        <Alert tone="error" title="Yönetmeliğe aykırı — oylanamaz">
-          {lastReason ? <p>{lastReason}</p> : null}
-          {p.audit?.violations.length ? (
-            <ul>
-              {p.audit.violations.map((v, i) => (
-                <li key={i}>{v.message}</li>
-              ))}
-            </ul>
-          ) : null}
-          <p className="small">Değiştirilemez maddelere aykırı öneriler kural gereği geçersizdir (Anayasa md. 4 modeli). Ayrıntılar ontoloji denetimi kartında.</p>
-        </Alert>
-      );
+      return <InadmissibleNotice proposal={p} lastReason={lastReason} />;
     case "withdrawn":
       return (
         <Alert tone="info" title="Öneri geri çekildi">

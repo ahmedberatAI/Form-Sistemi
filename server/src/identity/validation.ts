@@ -1,6 +1,6 @@
 // Kayıt girdisi doğrulaması (zod 4). Hata mesajları Türkçe; AppError 400 "validation", details alan bazlı.
 import { z } from "zod";
-import { isValidTckn, type RegistrationInput } from "@forum/shared";
+import { isValidTckn, nicknameKey, type RegistrationInput } from "@forum/shared";
 import { badRequest } from "../core/errors";
 
 const trLocale = z.locales.tr();
@@ -19,9 +19,12 @@ export function normalizeNicknameDisplay(nickname: string): string {
   return nickname.normalize("NFKC").trim();
 }
 
-/** Benzersizlik anahtarı: NFKC + tr-TR küçük harf */
+/**
+ * Benzersizlik (ve giriş/arama) anahtarı: NFKC + tr-TR küçük harf + I/ı/İ/i katlaması (shared `nicknameKey`).
+ * "YONETICI", "Yonetici" ve "yonetici" aynı anahtarı alır. Benzerlik (taklit) denetimi ayrıca `nicknameSkeleton` ile yapılır.
+ */
 export function normalizeNickname(nickname: string): string {
-  return normalizeNicknameDisplay(nickname).toLocaleLowerCase("tr-TR");
+  return nicknameKey(nickname);
 }
 
 /** Türkiye telefon numarasını +90XXXXXXXXXX biçimine getirir; geçersizse null. */
@@ -83,17 +86,27 @@ export const addressSchema = z.object(
   { error: "Adres bilgileri zorunludur." },
 );
 
+/** Takma ad kuralı (kayıt ve takma ad değişikliği aynı kuralı kullanır). */
+const nicknameSchema = z
+  .string({ error: "Takma ad zorunludur." })
+  .transform(normalizeNicknameDisplay)
+  .refine((s) => s.length >= 3 && s.length <= 32, { error: "Takma ad 3–32 karakter olmalıdır." })
+  .refine((s) => NICKNAME_RE.test(s), {
+    error: "Takma ad yalnızca harf (Türkçe harfler dahil), rakam, nokta, alt çizgi ve tire içerebilir.",
+    abort: true,
+  });
+
+/** Takma ad değişikliği girdisi: kayıt formuyla aynı kural; görüntülenecek (NFKC, kırpılmış) biçimi döndürür. */
+export function parseNickname(raw: unknown, field = "nickname"): string {
+  const r = nicknameSchema.safeParse(raw, { error: fallbackError });
+  if (!r.success) throw validationError({ [field]: r.error.issues[0].message });
+  return r.data;
+}
+
 export function registrationSchema(now: number) {
   const today = new Date(now).toISOString().slice(0, 10);
   return z.object({
-    nickname: z
-      .string({ error: "Takma ad zorunludur." })
-      .transform(normalizeNicknameDisplay)
-      .refine((s) => s.length >= 3 && s.length <= 32, { error: "Takma ad 3–32 karakter olmalıdır." })
-      .refine((s) => NICKNAME_RE.test(s), {
-        error: "Takma ad yalnızca harf (Türkçe harfler dahil), rakam, nokta, alt çizgi ve tire içerebilir.",
-        abort: true,
-      }),
+    nickname: nicknameSchema,
     password: passwordSchema,
     firstName: personName("Ad"),
     lastName: personName("Soyad"),
@@ -173,7 +186,7 @@ export function parseCorrection(input: unknown, now: number): { changes: ValidCo
     throw validationError(details);
   }
   for (const k of Object.keys(rawChanges)) {
-    if (!(CORRECTABLE_FIELDS as readonly string[]).includes(k)) details[k] = "Bu alan düzeltme talebiyle değiştirilemez (takma ad ve şifre profil ayarlarındadır).";
+    if (!(CORRECTABLE_FIELDS as readonly string[]).includes(k)) details[k] = "Bu alan düzeltme talebiyle değiştirilemez (takma adınızı ve şifrenizi Profil sayfasından kendiniz değiştirebilirsiniz).";
   }
   const present = Object.fromEntries(Object.entries(rawChanges).filter(([k, v]) => (CORRECTABLE_FIELDS as readonly string[]).includes(k) && v !== undefined && v !== null));
   if (Object.keys(present).length === 0 && !Object.keys(details).some((k) => k !== "reason")) details.changes = "Düzeltilecek en az bir alan belirtin.";

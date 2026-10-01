@@ -97,6 +97,9 @@ describe("forum: silme (karartma) yolu", () => {
     const hidden = h.forum.messages.readHidden(auditor, msg.id);
     expect(hidden.body).toBe("Şikâyet için muhtarlığa başvurun.");
     expect(hidden.versions.map((v) => v.version)).toEqual([1, 2]);
+    // Özgün (ilk) metin de denetçiye açıktır; arayüz sürümleri bu sırayla (özgün önce) gösterir.
+    expect(hidden.versions[0].body).toBe("Şikâyet için Ayşe Hanım'ı arayın: 0532 123 45 67");
+    expect(hidden.versions.at(-1)?.body).toBe(hidden.body);
     expect(hidden.accessLogged).toBe(true);
     expect(h.ctx.db.get<{ c: number }>("SELECT COUNT(*) AS c FROM hidden_access_log WHERE message_id = ? AND actor_id = ?", msg.id, auditor.id)!.c).toBe(1);
     const log = h.forum.community.auditLog({ action: "message.read_hidden" });
@@ -151,5 +154,45 @@ describe("forum: silme (karartma) yolu", () => {
     expect(drafts).toHaveLength(3);
     await h.forum.proposals.withdraw(m[8], drafts[0].id);
     await del(m[8], [msgs[3].id], "Spam", false);
+  });
+
+  it("tek etkin talep kuralı: geçersiz talep engel değildir; acil talep olağan talebin arkasında beklemez ve mesajı hemen daraltır", async () => {
+    const msg = await h.forum.messages.post(target, "topic", topicId, { body: "Toplantıya gelmeyenlerin kapısını tek tek çalacağım, ona göre davranın.", stance: "con" });
+    // "Görüş ayrılığı" talebi destekçi beklerken (sponsoring) aynı mesaja geçerli talep açılabilir.
+    const invalid = await del(m[10], [msg.id], "GorusAyriligi");
+    expect(invalid.status).toBe("sponsoring");
+    const spam = await del(m[11], [msg.id], "Spam");
+    expect(spam.status).toBe("sponsoring");
+    expect(h.forum.messages.get(msg.id, null).visibility).toBe("visible"); // olağan gerekçe daraltmaz
+    // Geçerli olağan talep varken ikinci olağan talep açılamaz (ileti acil yolu da anlatır).
+    const dup = await del(m[12], [msg.id], "HakaretIftira").catch((e) => e);
+    expect(dup).toMatchObject({ status: 409, code: "already_requested" });
+    expect(dup.message).toContain(`#K-${spam.seq}`);
+    expect(dup.message).toMatch(/acil gerekçeli bir talep yine açılabilir/);
+    // Acil gerekçe (tehdit) beklemez: talep açılır ve mesaj talep anında daraltılır; mesaj acil talebe bağlanır.
+    const threat = await del(m[13], [msg.id], "Tehdit");
+    expect(threat.status).toBe("sponsoring");
+    let mv = h.forum.messages.get(msg.id, null);
+    expect(mv.visibility).toBe("collapsed");
+    expect(mv.pendingDeletionProposalId).toBe(threat.id);
+    // İkinci acil talep açılamaz.
+    const dup2 = await del(m[14], [msg.id], "KisiselVeriIfsasi").catch((e) => e);
+    expect(dup2).toMatchObject({ status: 409, code: "already_requested" });
+    expect(dup2.message).toMatch(/acil silme talebi var/);
+    // Acil talep geri çekilince daraltma kalkar; olağan talep sürer ve mesaj ona bağlanır.
+    await h.forum.proposals.withdraw(m[13], threat.id);
+    mv = h.forum.messages.get(msg.id, null);
+    expect(mv.visibility).toBe("visible");
+    expect(mv.pendingDeletionProposalId).toBe(spam.id);
+    // Geçersiz talep destek alınca denetimde düşer; olağan talep etkilenmez.
+    expect((await h.forum.proposals.sponsor(m[15], invalid.id)).status).toBe("inadmissible");
+    expect(h.forum.proposals.get(spam.id, null).status).toBe("sponsoring");
+
+    // Kural gönderimde de uygulanır: taslak beklerken aynı mesaja başka talep gönderildiyse taslak gönderilemez.
+    const msg2 = await h.forum.messages.post(target, "topic", topicId, { body: "İkinci reklam mesajı: kampanya kodu burada!", stance: "neutral" });
+    const draft = await del(m[16], [msg2.id], "Spam", false);
+    await del(m[17], [msg2.id], "Spam");
+    await expect(h.forum.proposals.submit(m[16], draft.id)).rejects.toMatchObject({ status: 409, code: "already_requested" });
+    expect(h.forum.proposals.get(draft.id, m[16]).status).toBe("draft");
   });
 });

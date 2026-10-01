@@ -3,7 +3,7 @@
 // Ön doldurma: ?tur=<kind>&konu=<topicId>&mesaj=<messageId> (routes.newProposal).
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { expandIri, PROPOSAL_KIND_LABELS, type CreateProposalRequest, type MessageView, type ProposalKind, type TopicSummary } from "@forum/shared";
+import { expandIri, PROPOSAL_KIND_LABELS, PROPOSAL_TEXT_LIMITS, type CreateProposalRequest, type MessageView, type ProposalKind, type TopicSummary } from "@forum/shared";
 import { ApiError } from "../api/client";
 import { createProposal, getTopic, listTopics, precheckProposal } from "../api/endpoints";
 import { useAuth } from "../auth/AuthContext";
@@ -39,7 +39,8 @@ import {
 type FieldKey = "title" | "body" | "categories" | "parentTopicId" | "messageIds" | "ground" | "statement" | "regulationPatch";
 type PiiItem = { kind: string; masked: string };
 
-const TITLE_MAX = 200;
+// Madde 7 (1) ile aynı sınırlar (sunucu ve SHACL de PROPOSAL_TEXT_LIMITS'i kullanır).
+const { titleMin: TITLE_MIN, titleMax: TITLE_MAX, bodyMin: BODY_MIN } = PROPOSAL_TEXT_LIMITS;
 const BODY_MAX = 20000;
 
 /** Etkin konuları ağaç sırasıyla (derinlikle) düzleştirir. */
@@ -243,9 +244,9 @@ export default function NewProposalPage() {
     if (kind !== "deletion") {
       const t = title.trim();
       const b = body.trim();
-      if (t.length < 5) e.title = "Başlık en az 5 karakter olmalıdır.";
+      if (t.length < TITLE_MIN) e.title = `Başlık en az ${TITLE_MIN} karakter olmalıdır.`;
       else if (t.length > TITLE_MAX) e.title = `Başlık en çok ${TITLE_MAX} karakter olabilir.`;
-      if (b.length < 20) e.body = kind === "regulation" ? "Gerekçe en az 20 karakter olmalıdır." : "Metin en az 20 karakter olmalıdır.";
+      if (b.length < BODY_MIN) e.body = kind === "regulation" ? `Gerekçe en az ${BODY_MIN} karakter olmalıdır.` : `Metin en az ${BODY_MIN} karakter olmalıdır.`;
     }
     if (kind === "topic" && !categories.length) e.categories = "En az bir kategori seçin.";
     if (needsTopic && !parentTopicId) e.parentTopicId = kind === "subtopic" ? "Üst konuyu seçin." : "Hedef konuyu seçin.";
@@ -326,7 +327,7 @@ export default function NewProposalPage() {
       maxLength={TITLE_MAX}
       required
       error={errors.title}
-      hint={`5–${TITLE_MAX} karakter; kısa ve açıklayıcı olsun.`}
+      hint={`${TITLE_MIN}–${TITLE_MAX} karakter; kısa ve açıklayıcı olsun.`}
     />
   );
   const bodyField = (label: string, hint: string) => (

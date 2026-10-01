@@ -1,9 +1,10 @@
-// Profilim: hesap özeti, rızalar, vekâletler, KVKK (döküm / kripto-imha), şifre değiştirme, bilirkişi durumu.
+// Profilim: hesap özeti, rızalar, vekâletler, KVKK (döküm / kripto-imha), takma ad ve şifre değiştirme, bilirkişi durumu.
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { clusterLabel, type AddressInput, type CorrectableField, type CorrectionStatus, type IdentityCorrectionValues, type Me } from "@forum/shared";
 import { ApiError, errorMessage } from "../api/client";
 import {
+  changeNickname,
   changePassword,
   eraseMe,
   exportMyData,
@@ -21,7 +22,7 @@ import { DomainChips } from "../components/community/DomainChips";
 import { DelegationForm, OutgoingDelegations, useScopeLabel } from "../components/community/delegation";
 import { ReputationBar } from "../components/community/ReputationBar";
 import "../components/community/community.css";
-import { downloadJson } from "../lib/download";
+import { canDownloadFiles, downloadJson } from "../lib/download";
 import { formatDate } from "../lib/format";
 import { routes } from "../lib/routes";
 import { useAsync } from "../lib/useAsync";
@@ -66,6 +67,7 @@ export default function ProfilePage() {
       <ConsentsCard me={me} />
       <DelegationsCard />
       <ExpertStatusCard me={me} />
+      <NicknameCard me={me} />
       <PasswordCard />
       <KvkkCard me={me} />
       <CorrectionCard me={me} />
@@ -528,6 +530,86 @@ function ExpertStatusCard({ me }: { me: Me }) {
   );
 }
 
+function NicknameCard({ me }: { me: Me }) {
+  const auth = useAuth();
+  const toast = useToast();
+  const [nickname, setNickname] = useState("");
+  const [password, setPassword] = useState("");
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    const next = nickname.normalize("NFKC").trim();
+    const errs: Record<string, string> = {};
+    if (next.length < 3 || next.length > 32) errs.nickname = "Takma ad 3–32 karakter olmalıdır.";
+    else if (next === me.nickname) errs.nickname = "Yeni takma ad mevcut takma adınızla aynı.";
+    if (!password) errs.password = "Şifrenizi yazın.";
+    setErrors(errs);
+    if (Object.keys(errs).length) return;
+    setBusy(true);
+    try {
+      const updated = await changeNickname({ nickname: next, password });
+      auth.setUser(updated);
+      toast.success(`Takma adınız @${updated.nickname} olarak değiştirildi.`);
+      setNickname("");
+      setPassword("");
+    } catch (err) {
+      if (err instanceof ApiError && err.details && typeof err.details === "object") {
+        const d = err.details as Record<string, unknown>;
+        const mapped: Record<string, string> = {};
+        if (typeof d.nickname === "string") mapped.nickname = d.nickname;
+        if (typeof d.password === "string") mapped.password = d.password;
+        setErrors(mapped);
+      }
+      toast.error(err, "Takma ad değiştirilemedi");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (me.status === "suspended") {
+    return (
+      <Card title="Takma ad değiştir">
+        <p className="muted small">Hesabınız askıdayken takma adınız değiştirilemez.</p>
+      </Card>
+    );
+  }
+  return (
+    <Card
+      title="Takma ad değiştir"
+      subtitle="Forumda yalnızca takma adınız görünür. Mesajlarınız, önerileriniz ve size ait kayıtlar yeni takma adınızla görünür; takma ad deftere yazılmaz."
+    >
+      <form className="stack" onSubmit={submit} noValidate>
+        <div className="form-grid">
+          <Input
+            label="Yeni takma ad"
+            autoComplete="username"
+            value={nickname}
+            maxLength={32}
+            hint="3–32 karakter: harf (Türkçe harfler dahil), rakam, nokta, alt çizgi, tire. 30 günde en çok bir kez değiştirilebilir. Kayıtlı bir takma ada çok benzeyenler (büyük/küçük harf, ş/s, 0/o, ayraç farkı) kabul edilmez."
+            error={errors.nickname}
+            onChange={(e) => setNickname(e.target.value)}
+          />
+          <Input
+            label="Şifreniz (teyit için)"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            error={errors.password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </div>
+        <div className="form-actions">
+          <Button type="submit" variant="primary" loading={busy}>
+            Takma adı değiştir
+          </Button>
+        </div>
+      </form>
+    </Card>
+  );
+}
+
 function PasswordCard() {
   const toast = useToast();
   const [oldPassword, setOld] = useState("");
@@ -601,6 +683,7 @@ function KvkkCard({ me }: { me: Me }) {
   const [exported, setExported] = useState<string | null>(null);
   const [eraseOpen, setEraseOpen] = useState(false);
   const [password, setPassword] = useState("");
+  const canDownload = canDownloadFiles();
 
   const doExport = async () => {
     setExporting(true);
@@ -608,8 +691,14 @@ function KvkkCard({ me }: { me: Me }) {
       const data = await exportMyData();
       const text = JSON.stringify(data, null, 2);
       setExported(text);
+      if (!canDownload) {
+        // Android uygulaması: dosya indirilemez; "indirildi" denmez, kopyalama seçeneği gösterilir.
+        toast.info("Döküm hazır. Bu cihazda dosya indirilemiyor; “Dökümü kopyala” düğmesiyle alabilirsiniz.");
+        return;
+      }
       const ok = downloadJson(`kvkk-verilerim-${me.nickname}.json`, data);
-      toast.success(ok ? "Veri dökümünüz indirildi." : "Döküm hazır; indirme desteklenmiyorsa aşağıdan kopyalayın.");
+      if (ok) toast.success("Veri dökümünüz indirildi.");
+      else toast.warning("Döküm hazır ama dosya indirilemedi; aşağıdaki “Dökümü kopyala” düğmesini kullanın.");
     } catch (e) {
       toast.error(e, "Döküm alınamadı");
     } finally {
@@ -625,11 +714,15 @@ function KvkkCard({ me }: { me: Me }) {
         </Details>
 
         <section className="stack-sm" aria-label="Veri dökümü">
-          <h3 className="h3 mt-0">Verimi indir</h3>
-          <p className="mt-0 small muted">Hesabınız, kimlik verileriniz (şifresi çözülmüş), rızalarınız ve platform kayıtlarınız JSON olarak indirilir. Döküm yalnızca size verilir.</p>
+          <h3 className="h3 mt-0">{canDownload ? "Verimi indir" : "Veri dökümüm"}</h3>
+          <p className="mt-0 small muted">
+            Hesabınız, kimlik verileriniz (şifresi çözülmüş), rızalarınız ve platform kayıtlarınız JSON olarak{" "}
+            {canDownload ? "indirilir" : "hazırlanır; bu cihazda dosya indirilemediği için dökümü kopyalayıp güvendiğiniz bir yere yapıştırabilirsiniz"}.
+            Döküm yalnızca size verilir.
+          </p>
           <div className="row">
             <Button loading={exporting} onClick={() => void doExport()}>
-              Verimi indir (JSON)
+              {canDownload ? "Verimi indir (JSON)" : "Dökümü hazırla (JSON)"}
             </Button>
             {exported ? <CopyButton text={exported} label="Dökümü kopyala" /> : null}
           </div>

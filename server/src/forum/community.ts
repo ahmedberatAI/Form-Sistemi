@@ -2,6 +2,7 @@
 import {
   clusterLabel,
   delegationCap,
+  nicknameKey,
   SURUM,
   type AuditLogEntry,
   type Dashboard,
@@ -79,7 +80,7 @@ export function createCommunityService(core: ForumCore): CommunityService {
 
   const service: CommunityService = {
     searchUsers(q: string, limit = 20): PublicUser[] {
-      const needle = String(q ?? "").normalize("NFKC").trim().toLocaleLowerCase("tr-TR").slice(0, 100);
+      const needle = nicknameKey(String(q ?? "")).slice(0, 100); // nickname_norm ile aynı anahtar (I/ı katlamalı)
       const lim = Math.min(100, Math.max(1, Math.floor(Number(limit) || 20)));
       const escaped = needle.replace(/[\\%_]/g, (c) => "\\" + c);
       const rows = db.all<UserRow>(

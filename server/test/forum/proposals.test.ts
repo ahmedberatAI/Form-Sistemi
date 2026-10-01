@@ -71,13 +71,24 @@ describe("forum: öneri hizmeti ayrıntıları", () => {
     const r = await h.forum.proposals.update(m[6], id, { title: "Parka iki su sebili", body: LONG_BODY + " İki sebil olsun." });
     expect(r.version).toBe(2);
     expect(h.ledger.findTxs({ type: "PROPOSAL_VERSION", proposalId: id })).toHaveLength(1);
-    const bad = await h.forum.proposals.update(m[6], id, { title: "Parka iki su sebili", body: "Bu parka gelen herkesi öldüreceğim, kimse kurtulamaz; sebil falan olmaz." }).catch((e) => e);
+    // YZ kaynaklı içerik etiketi revizyonu tek başına reddedemez (Madde 12 (2), 14 (1)): uyarı + bilirkişi incelemesi
+    const ai = await h.forum.proposals.update(m[6], id, { title: "Parka iki su sebili", body: "Bu parka gelen herkesi öldüreceğim, kimse kurtulamaz; sebil falan olmaz." });
+    expect(ai.version).toBe(3);
+    expect(ai.audit!.admissible).toBe(true);
+    expect(ai.audit!.violations).toEqual([]);
+    expect(ai.audit!.warnings.some((w) => w.code.startsWith("content_label"))).toBe(true);
+    expect(ai.audit!.requiresExpert).toBe(true);
+    // Gerçek bir yönetmelik ihlali (üst konu artık etkin değil, Madde 10 (1)) revizyonu reddeder; eski metin kalır
+    const parent = insertTopic(h, "Sebil ana konusu");
+    const sub = await toDeliberation(h, m[6], m.slice(7), { kind: "subtopic", parentTopicId: parent, title: "Sebil alt konusu", body: LONG_BODY, categories: [] });
+    h.ctx.db.run("UPDATE topics SET status = 'archived' WHERE id = ?", parent);
+    const bad = await h.forum.proposals.update(m[6], sub, { title: "Sebil alt konusu (revize)", body: LONG_BODY + " İki sebil olsun." }).catch((e) => e);
     expect(bad).toMatchObject({ status: 422, code: "inadmissible_revision" });
     expect(bad.message).toMatch(/önceki metin geçerli kalır/);
-    expect(bad.details.violations.length).toBeGreaterThan(0);
-    const after = h.forum.proposals.get(id, null);
-    expect(after.version).toBe(2);
-    expect(after.body).toContain("İki sebil olsun.");
+    expect(bad.details.violations.map((v: { code: string }) => v.code)).toContain("parent_inactive");
+    const after = h.forum.proposals.get(sub, null);
+    expect(after.version).toBe(1);
+    expect(after.body).toBe(LONG_BODY);
     // Kişisel veri revizyonda da denetlenir
     await expect(h.forum.proposals.update(m[6], id, { title: "Parka iki su sebili", body: LONG_BODY + " Bilgi: 0532 999 88 77" })).rejects.toMatchObject({ code: "pii_detected" });
   });
@@ -142,7 +153,9 @@ describe("forum: öneri hizmeti ayrıntıları", () => {
     expect(all.every((p) => p.status !== "draft")).toBe(true);
     expect(h.forum.proposals.list({ q: "şehir" }, null).map((p) => p.title)).toEqual(["ŞEHİR meydanına ağaç"]);
     expect(h.forum.proposals.list({ topicId: t }, null)).toHaveLength(1);
-    expect(h.forum.proposals.list({ kind: "subtopic" }, null)).toHaveLength(1);
+    const subs = h.forum.proposals.list({ kind: "subtopic" }, null);
+    expect(subs.every((p) => p.kind === "subtopic")).toBe(true);
+    expect(subs.map((p) => p.title)).toContain("ŞEHİR meydanına ağaç");
     expect(h.forum.proposals.list({ status: "closed" }, null).every((p) => ["enacted", "rejected", "inadmissible", "withdrawn", "expired"].includes(p.status))).toBe(true);
     expect(h.forum.proposals.list({ status: "open" }, null).every((p) => !["enacted", "rejected", "inadmissible", "withdrawn", "expired", "draft"].includes(p.status))).toBe(true);
     expect(h.forum.proposals.list({ status: "open" }, m[0]).some((p) => p.status === "draft")).toBe(true);
@@ -194,5 +207,41 @@ describe("forum: öneri hizmeti ayrıntıları", () => {
     expect((await h.forum.proposals.approveAi(m[18], a.id)).approvedBy).toBe(m[18].id);
     // Köprü taslakları uzlaşma dışında üretilemez
     await expect(h.forum.proposals.aiBridging(m[3], id)).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("metin önerisi: karar verilmeden oylama başlarsa ya da öneri geri çekilirse 'lapsed' olur; ret de evre kuralına bağlı", async () => {
+    // Oylama başlarken karar verilmemiş öneri kapanır; reddedilen öneri reddedilmiş kalır.
+    const id = await toDeliberation(h, m[19], m.slice(0, 5), topic("Parka su oyun alanı"));
+    const open = h.forum.proposals.suggest(m[3], id, LONG_BODY + " Su oyun alanı yazın her gün açık olsun.");
+    const rej = h.forum.proposals.suggest(m[4], id, LONG_BODY + " Su oyun alanı yerine havuz yapılsın.");
+    await h.forum.proposals.decideSuggestion(m[19], id, rej.id, "reject");
+    await toVoting(h, id);
+    const d = h.forum.proposals.get(id, null);
+    expect(d.status).toBe("voting");
+    expect(d.suggestions.map((s) => [s.id, s.status])).toEqual([
+      [open.id, "lapsed"],
+      [rej.id, "rejected"],
+    ]);
+    expect(d.suggestions[0].decidedAt).toBe(d.events.at(-1)?.at);
+    // Kapanmış öneriye karar verilemez (ne kabul ne ret); oylamada yeni öneri de yapılamaz.
+    await expect(h.forum.proposals.decideSuggestion(m[19], id, open.id, "reject")).rejects.toMatchObject({ status: 409, code: "suggestion_lapsed" });
+    await expect(h.forum.proposals.decideSuggestion(m[19], id, open.id, "accept")).rejects.toMatchObject({ status: 409, code: "suggestion_lapsed" });
+    expect(() => h.forum.proposals.suggest(m[5], id, LONG_BODY + " Oylamada yeni öneri olmaz.")).toThrow(/tartışma evresinde/);
+    // Öneren kişiye bildirim: ayrı öneri olarak açabilir (yazarın sessiz vetosu yoktur).
+    const note = h.forum.community.notifications(m[3].id).items.find((n) => n.title.includes("karar verilmeden kapandı"));
+    expect(note?.body).toMatch(/Oylama başladığı için.*ayrı bir öneri/);
+    expect(h.forum.community.notifications(m[4].id).items.some((n) => n.title.includes("karar verilmeden kapandı"))).toBe(false);
+
+    // Eski veri: evre kapandığı hâlde "open" kalmış satır "lapsed" gösterilir ve ret evre kuralına takılır.
+    h.ctx.db.run("UPDATE proposal_suggestions SET status = 'open', decided_at = NULL WHERE id = ?", open.id);
+    expect(h.forum.proposals.get(id, null).suggestions.find((s) => s.id === open.id)?.status).toBe("lapsed");
+    await expect(h.forum.proposals.decideSuggestion(m[19], id, open.id, "reject")).rejects.toMatchObject({ status: 409, code: "invalid_state" });
+
+    // Geri çekilen öneride de açık öneriler kapanır.
+    const w = await toDeliberation(h, m[13], m.slice(5, 10), topic("Parka kitap kutusu"));
+    const s = h.forum.proposals.suggest(m[6], w, LONG_BODY + " Kitap kutusu yağmura dayanıklı olsun.");
+    await h.forum.proposals.withdraw(m[13], w);
+    expect(h.forum.proposals.get(w, null).suggestions.map((x) => [x.id, x.status])).toEqual([[s.id, "lapsed"]]);
+    expect(h.forum.community.notifications(m[6].id).items.find((n) => n.title.includes("karar verilmeden kapandı"))?.body).toMatch(/Geri çekildi/);
   });
 });

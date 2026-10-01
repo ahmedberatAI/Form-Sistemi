@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { fy, rat, sponsorsRequired, type AuditReport } from "@forum/shared";
+import { PROPOSAL_TEXT_LIMITS, fy, rat, sponsorsRequired, type AuditReport } from "@forum/shared";
 import { makeCtx, type TestCtx } from "../helpers/fakes";
 import { createOntologyService } from "../../src/ontology";
 import type { OntologyService, ProposalAuditInput } from "../../src/core/contracts";
@@ -63,7 +63,20 @@ describe("katman belirleme", () => {
     expect(am.admissible).toBe(true);
     expect(am.warnings).toEqual([]);
     expect(am.params!.threshold).toEqual(rat(3, 5));
-    const reg = await svc.audit(topic({ kind: "regulation", categories: [], regulationPatch: { ops: [{ op: "setParam", rule: fy("KuralImar"), param: "sureTartisma", value: 144 }], rationale: "x" } }));
+    const reg = await svc.audit(
+      topic({
+        kind: "regulation",
+        categories: [],
+        regulationPatch: {
+          ops: [
+            { op: "setParam", rule: fy("KuralImar"), param: "sureTartisma", value: 144 },
+            // Madde 23 (1): değeri metninde anan dayanak madde aynı yamada güncellenir
+            { op: "amendArticleText", article: fy("Madde_24_2"), text: "İmar ve kentsel dönüşüm kategorisindeki (deprem güvenliği dahil) önerilerde tartışma süresi en az 144 saattir." },
+          ],
+          rationale: "x",
+        },
+      }),
+    );
     expect(reg.tier).toBe("T2");
     expect(reg.admissible).toBe(true);
     expect(reg.categories).toContain(fy("ForumYonetmeligi"));
@@ -127,15 +140,42 @@ describe("katman belirleme", () => {
 });
 
 describe("içerik etiketleri", () => {
-  const withLabel = (confidence: number) => topic({ contentLabels: [{ label: fy("NefretSoylemi"), confidence, source: "ai" }] });
-  it("güven ≥ 0,70 → ihlal", async () => {
-    for (const c of [0.7, 0.95]) {
-      const r = await svc.audit(withLabel(c));
-      expect(r.admissible).toBe(false);
-      const v = r.violations.find((f) => f.code === "content_label_high")!;
-      expect(v.message).toMatch(/^Madde 12 \(2\):/);
-      expect(v.message).toMatch(/Nefret söylemi/);
+  const withLabel = (confidence: number, source: "ai" | "rule" | "expert" = "ai") => topic({ contentLabels: [{ label: fy("NefretSoylemi"), confidence, source }] });
+  it("kural tabanlı tespit ya da bilirkişi teyidi, güven ≥ 0,70 → ihlal (Madde 12 (2))", async () => {
+    for (const source of ["rule", "expert"] as const) {
+      for (const c of [0.7, 0.95]) {
+        const r = await svc.audit(withLabel(c, source));
+        expect(r.admissible, `${source} ${c}`).toBe(false);
+        const v = r.violations.find((f) => f.code === "content_label_high")!;
+        expect(v.message).toMatch(/^Madde 12 \(2\):/);
+        expect(v.message).toMatch(/Nefret söylemi/);
+        expect(r.warnings.map((w) => w.code)).not.toContain("content_label_ai_high");
+      }
     }
+  });
+  it("YZ etiketi, güven ≥ 0,70 olsa bile öneriyi tek başına durduramaz: uyarı + bilirkişi (Madde 14 (1))", async () => {
+    for (const c of [0.7, 0.95]) {
+      const r = await svc.audit(withLabel(c, "ai"));
+      expect(r.admissible, String(c)).toBe(true);
+      expect(r.violations).toEqual([]);
+      expect(r.tier).toBe("T0");
+      const w = r.warnings.find((f) => f.code === "content_label_ai_high")!;
+      expect(w.message).toMatch(/^Madde 12 \(2\):/);
+      expect(w.message).toMatch(/Nefret söylemi/);
+      expect(r.requiresExpert).toBe(true);
+      expect(r.params!.requiresExpert).toBe(true);
+      expect(r.params!.expertDomains).toEqual([fy("TopluTasima")]);
+    }
+    // YZ ve bilirkişi teyidi birlikteyse teyit kazanır (ihlal)
+    const both = await svc.audit(
+      topic({
+        contentLabels: [
+          { label: fy("NefretSoylemi"), confidence: 0.9, source: "ai" },
+          { label: fy("NefretSoylemi"), confidence: 0.9, source: "expert" },
+        ],
+      }),
+    );
+    expect(both.admissible).toBe(false);
   });
   it("0,40 ≤ güven < 0,70 → uyarı + bilirkişi", async () => {
     for (const c of [0.4, 0.55, 0.6999]) {
@@ -192,6 +232,21 @@ describe("silme (karartma)", () => {
     });
     expect(codes(r.infos)).toEqual(expect.arrayContaining(["deletion_urgent", "deletion_sealed"]));
     expect(r.inferredClasses).toEqual(expect.arrayContaining([fy("AcilSilmeTalebi"), fy("MuhurluSilmeTalebi")]));
+  });
+
+  it("Tehdit acildir ama mühürlenmez; diğer gerekçeler ne acil ne mühürlü (N3 eşleşme hatasına karşı olumsuz test)", async () => {
+    const t = await svc.audit(del(fy("Tehdit"), 1));
+    expect(t.admissible).toBe(true);
+    expect(t.inferredClasses).toContain(fy("AcilSilmeTalebi"));
+    expect(t.inferredClasses).not.toContain(fy("MuhurluSilmeTalebi"));
+    expect(codes(t.infos)).toContain("deletion_urgent");
+    expect(codes(t.infos)).not.toContain("deletion_sealed");
+    for (const g of ["Spam", "HakaretIftira", "NefretSoylemi", "TelifIhlali"]) {
+      const r = await svc.audit(del(fy(g), 1));
+      expect(r.inferredClasses, g).not.toContain(fy("AcilSilmeTalebi"));
+      expect(r.inferredClasses, g).not.toContain(fy("MuhurluSilmeTalebi"));
+      expect(codes(r.infos), g).not.toEqual(expect.arrayContaining(["deletion_urgent"]));
+    }
   });
 
   it("kategori kuralları ve kategori bilirkişi gereksinimi silme talebine uygulanmaz", async () => {
@@ -298,6 +353,16 @@ describe("destekçi sayısı K_s ve bilirkişi alanları", () => {
   it("çok kısa başlık ihlal, kategorisiz konu uyarı", async () => {
     expect(codes((await svc.audit(topic({ title: "ab" }))).violations)).toContain("title_length");
     expect(codes((await svc.audit(topic({ categories: [] }))).warnings)).toContain("no_category");
+  });
+
+  it("başlık/metin sınırları sunucunun kayıt denetimiyle aynı (PROPOSAL_TEXT_LIMITS): ön denetim ile kayıt uyuşur", async () => {
+    const L = PROPOSAL_TEXT_LIMITS;
+    expect(codes((await svc.audit(topic({ title: "x".repeat(L.titleMin - 1) }))).violations)).toContain("title_length");
+    expect(codes((await svc.audit(topic({ title: "x".repeat(L.titleMin) }))).violations)).not.toContain("title_length");
+    expect(codes((await svc.audit(topic({ title: "x".repeat(L.titleMax + 1) }))).violations)).toContain("title_length");
+    expect(codes((await svc.audit(topic({ body: "y".repeat(L.bodyMin - 1) }))).violations)).toContain("body_length");
+    expect(codes((await svc.audit(topic({ body: "y".repeat(L.bodyMin) }))).violations)).not.toContain("body_length");
+    expect(codes((await svc.audit(topic({ body: "y".repeat(L.bodyMax + 1) }))).violations)).toContain("body_length");
   });
 });
 

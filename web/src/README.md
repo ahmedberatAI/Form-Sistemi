@@ -77,11 +77,11 @@ export default function ProposalDetailPage() {
 
 ## Uç noktalar (`api/endpoints.ts`)
 
-Hepsi `Promise` döner, tipler `@forum/shared`'dan. (docs/API.md ile birebir; 95 uç nokta.)
+Hepsi `Promise` döner, tipler `@forum/shared`'dan. (docs/API.md ile birebir; 104 uç nokta.)
 
 - **Sistem:** `getHealth()`, `getSystem()`, `getDashboard()`
 - **Kimlik/hesap:** `register(input)`, `login({login, password})`, `logout()`, `getMe()`, `updateConsents({aiConsent?, politicalConsent?})`,
-  `changePassword({oldPassword, newPassword})`, `exportMyData()`, `eraseMe({confirm: "SİL", password})`,
+  `changePassword({oldPassword, newPassword})`, `changeNickname({nickname, password})`, `exportMyData()`, `eraseMe({confirm: "SİL", password})`,
   `getMyDelegations()`, `delegate({to, scope, rank})`, `revokeDelegation(id)`, `getFollowing()`,
   `getNotifications({unread?})`, `markNotificationsRead(ids?)` (boş → tümü), `getMyTasks()`, `getMyAssignments()`
 - **Kayıt memuru:** `getPendingUsers()`, `getUserPii(userId, purpose)`, `verifyUser(userId, {decision, note?})`, `registrarCreateUser(input)`
@@ -165,7 +165,9 @@ auth.hasRole("registrar"); auth.isVerified; auth.isVoter; auth.isExpert; auth.is
 - **diff.ts:** `diffLines(a,b)`, `diffWords(a,b)` → `{type: "same"|"add"|"del", text}[]`; `diffText(a,b)` → satır + satır içi kelime farkı (`DiffLine.words`); `diffStats()`. Görsel: `<DiffView>`.
 - **routes.ts:** `routes.proposal(id)`, `routes.topic(id)`, `routes.user(id)`, `routes.block(h)`, `routes.tx(hash)`, `routes.newProposal({kind, parentTopicId, messageId})` (sorgu: `tur`, `konu`, `mesaj`), `routes.verifyVote({proposalId})` (`?oneri=`)…;
   `toAppPath(link)` sunucu bağlantısını (`/oneriler/x`, `/profile`, `/ledger/txs/h`, `#/…`) uygulama yoluna çevirir.
-- **download.ts:** `downloadText(name, text, mime?)`, `downloadJson(name, data)` (Android'de ayrıca `CopyButton` sunun).
+- **download.ts:** `downloadText(name, text, mime?)`, `downloadJson(name, data)`, `canDownloadFiles()`. Android uygulamasında
+  (Capacitor WebView) dosya indirilemez: indirme denenmez ve `false` döner. "İndir" düğmesini `canDownloadFiles()` ile gizleyin,
+  her zaman `CopyButton` sunun ve `false` dönünce "indirildi" demeyin.
 - **components/system/theme.ts:** `applySavedTheme()`, `setTheme("light"|"dark"|"system")`, `getTheme()`, `THEME_LABELS`.
 
 ## Arayüz bileşenleri (`import { … } from "../ui"`)

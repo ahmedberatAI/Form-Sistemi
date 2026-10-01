@@ -5,8 +5,10 @@ import {
   CATEGORY_VOCAB,
   CONTENT_LABEL_VOCAB,
   DELETION_GROUND_VOCAB,
+  FY_NS,
   GENERAL_PARAMS_IRI,
   OBJECTION_GROUND_VOCAB,
+  PROPOSAL_TEXT_LIMITS,
   RIGHT_VOCAB,
   TIER_IRIS,
   fy,
@@ -206,5 +208,28 @@ describe("Forum Yönetmeliği", () => {
 
   it("yürürlükteki yönetmelik SHACL meta-şekillerine uyar (init hata vermez)", () => {
     expect(svc.current().version).toBe(1);
+  });
+
+  it("başlık/metin uzunluk sınırları tek kaynaktan: PROPOSAL_TEXT_LIMITS = SHACL şekilleri = Madde 7 (1)", () => {
+    const shapes = parseTurtle(read("yonetmelik-sekiller.ttl"));
+    const SH = "http://www.w3.org/ns/shacl#";
+    const bound = (code: string, pred: string): number => {
+      const node = shapes.find((q) => q.predicate.value === FY_NS + "bulguKodu" && q.object.value === code)!.subject;
+      return Number(shapes.find((q) => q.subject.equals(node) && q.predicate.value === SH + pred)!.object.value);
+    };
+    const L = PROPOSAL_TEXT_LIMITS;
+    expect([bound("title_length", "minLength"), bound("title_length", "maxLength")]).toEqual([L.titleMin, L.titleMax]);
+    expect([bound("body_length", "minLength"), bound("body_length", "maxLength")]).toEqual([L.bodyMin, L.bodyMax]);
+    const m71 = model.articles.get(fy("Madde_7_1"))!.text;
+    expect(m71).toContain(`${L.titleMin} ile ${L.titleMax} karakter`);
+    expect(m71).toContain(`${L.bodyMin} ile ${L.bodyMax} karakter`);
+  });
+
+  it("azınlık koruma sınırları μ_votes üst sınırını ve süre tabanlarını içerir (Madde 5)", () => {
+    expect(model.setParam("kumeBasinaAsgariOyAzami")).toBe(3);
+    for (const k of ["sureTartismaAsgari", "sureOylamaAsgari", "sureUzatmaAsgari", "sureUzlasmaAsgari"]) expect(model.setParam(k), k).toBe(24);
+    // Varsayılan değerler sınırların içindedir
+    const g = model.generalParams()!;
+    expect(g.params.get("kumeBasinaAsgariOy")).toBeLessThanOrEqual(3);
   });
 });

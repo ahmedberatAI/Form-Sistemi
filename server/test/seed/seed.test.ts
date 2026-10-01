@@ -18,6 +18,16 @@ describe("tohum verisi (küçültülmüş)", () => {
       const s = app.services;
       const e = new SeedEngine(s, clock, createRng(SEED), () => undefined);
       await setupAccounts(e);
+      const adminLogin = await s.identity.login("admin", "admin123");
+      expect(adminLogin.user.status).toBe("verified");
+      expect(adminLogin.user.roles).toContain("admin");
+      const adminResponse = await app.app.inject({
+        method: "GET",
+        url: "/api/admin/users?q=admin",
+        headers: { authorization: `Bearer ${adminLogin.token}` },
+      });
+      expect(adminResponse.statusCode).toBe(200);
+      expect(adminResponse.json()).toEqual(expect.arrayContaining([expect.objectContaining({ nickname: "admin", status: "verified" })]));
       setupGraph(e);
       clock.advance(6 * HOUR); // uygun seçmen: öneriden ÖNCE doğrulanmış olmalı
 
@@ -48,7 +58,10 @@ describe("tohum verisi (küçültülmüş)", () => {
 
       const verified = PEOPLE.filter((p) => p.kind !== "pending" && p.kind !== "rejected").length;
       expect(s.ctx.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM users WHERE status = 'verified'")?.n).toBe(verified);
-      expect(s.experts.list({ status: "active" })).toHaveLength(7);
+      const experts = s.experts.list({ status: "active" });
+      expect(experts).toHaveLength(PEOPLE.filter((p) => p.kind === "expert").length);
+      // Kura havuzu: Enerji ve Sağlık alanlarında en az 6'şar bilirkişi (vitrin kuraları bazı adayları dışarıda bırakır).
+      for (const area of [fy("Enerji"), fy("Saglik")]) expect(experts.filter((x) => x.domains.includes(area)).length).toBeGreaterThanOrEqual(6);
       expect(s.graph.delegations().length).toBeGreaterThanOrEqual(8);
 
       for (const key of ["P1", "P3"]) {

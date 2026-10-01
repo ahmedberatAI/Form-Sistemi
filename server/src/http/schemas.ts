@@ -6,6 +6,7 @@ import {
   expandIri,
   type AiApproveRequest,
   type AssignmentRespondRequest,
+  type ChangeNicknameRequest,
   type ChangePasswordRequest,
   type ClockAdvanceRequest,
   type ConsentsRequest,
@@ -135,6 +136,7 @@ export const registrationBody = z.record(z.string(), z.unknown());
 export const loginBody = z.object({ login: text(320), password: text(1024) });
 export const consentsBody = z.object({ aiConsent: z.boolean().optional(), politicalConsent: z.boolean().optional() });
 export const changePasswordBody = z.object({ oldPassword: text(1024), newPassword: text(1024) });
+export const changeNicknameBody = z.object({ nickname: text(100), password: text(1024) });
 export const eraseBody = z.object({ confirm: text(20), password: text(1024) });
 export const delegateBody = z.object({
   to: id,
@@ -307,6 +309,7 @@ export type _BodyChecks = [
   Check<Fits<z.output<typeof loginBody>, LoginRequest>>,
   Check<Fits<z.output<typeof consentsBody>, ConsentsRequest>>,
   Check<Fits<z.output<typeof changePasswordBody>, ChangePasswordRequest>>,
+  Check<Fits<z.output<typeof changeNicknameBody>, ChangeNicknameRequest>>,
   Check<Fits<z.output<typeof eraseBody>, EraseRequest>>,
   Check<Fits<z.output<typeof delegateBody>, DelegateRequest>>,
   Check<Fits<z.output<typeof markReadBody>, MarkReadRequest>>,

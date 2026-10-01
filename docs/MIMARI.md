@@ -72,7 +72,8 @@ ontoloji IRI sabitleri ve API tipleri. Böylece bir oylama sonucunu tarayıcı y
    "Oyumu kim kullandı" izi (`myEffectiveVia`) sayımı yapan aramanın kendi çıktısıdır (`resolveEffectiveVotes().delegateOf`, yalnız
    sunucuda `tallies.delegation_trace`); ayrı bir arama kopyası yoktur. Aynı işlemde **kilit adım taraması** (`graph.lockstep`)
    çalışır: bulunan gruplar kararı DEĞİŞTİRMEDEN bütünlük uyarısı olarak denetim günlüğüne yazılır (§5.1).
-8. **Yürürlük:** konu (`TOPIC_REVISION`), silme/karartma (`MESSAGE_HIDDEN`), yönetmelik sürümü (`BYLAW_VERSION`).
+8. **Yürürlük:** konu (`TOPIC_REVISION`), silme/karartma (`MESSAGE_HIDDEN`), yönetmelik sürümü (`BYLAW_VERSION`). Kurucu
+   yönetmelik (sürüm 1) de ilk açılışta ya da tohumlamada `BYLAW_VERSION` ile deftere sabitlenir (`anchorFoundingBylaw`).
 9. Her geçiş: `phase_events` + `PHASE_CHANGED`.
 
 ## 4. Dağıtık defter
@@ -86,6 +87,11 @@ ontoloji IRI sabitleri ve API tipleri. Böylece bir oylama sonucunu tarayıcı y
 - Doğrulayıcılar, kişisel veri anahtarları (`tckn`, `email`, `body` …) içeren işlemleri reddeder (derinlemesine savunma).
 - **Dürüst sınırlama:** Demo kurulumunda dört doğrulayıcı aynı süreçte/makinede çalışır; arayüz bunu açıkça belirtir. Gerçek
   dağıtımda düğümler farklı kurumlarca işletilmelidir.
+- **Tek süreç kipi:** Bu bir *dağıtık ağ simülasyonudur*: her doğrulayıcının ayrı Ed25519 anahtarı ve ayrı SQLite deposu
+  (`ledger/v0..v3.db`) vardır; iletiler bellek içi ağda (`MemoryTransport`) kopyalanarak, gecikme/kayıp enjeksiyonuyla taşınır.
+  Doğrulayıcıyı ayrı süreçte başlatan bir komut yoktur; `LEDGER_MODE` yalnızca `in-process` değerini kabul eder (başka bir değer
+  uyarıyla yok sayılır). Çok süreçli ya da çok makineli dağıtım için genişleme noktası `Transport` arayüzüdür
+  (`server/src/ledger/transport.ts`): HTTP ya da TCP üzerinden uygulanıp `ValidatorNode` ayrı süreçte çalıştırılabilir.
 
 ## 5. Güven sınırları ve tehdit modeli (özet)
 

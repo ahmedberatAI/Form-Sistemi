@@ -2,6 +2,7 @@
 import {
   clusterLabel,
   fracAtLeast,
+  publicJoinDay,
   rat,
   sponsorsRequired,
   type MessageView,
@@ -17,6 +18,8 @@ import { json } from "../db";
 import { integrityWarningCounts } from "./integrity";
 import {
   ACTIVE_SQL,
+  GORUS_AYRILIGI,
+  groundIsUrgent,
   groundLabel,
   isVotingStatus,
   jsonList,
@@ -68,7 +71,7 @@ export function publicUsers(core: ForumCore, rows: PublicUserRow[]): PublicUser[
       isExpert: active,
       expertDomains: active ? json<string[]>(e!.domains, []) : [],
       reputation: Number(r.reputation ?? 0),
-      joinedAt: Number(r.created_at),
+      joinedAt: publicJoinDay(Number(r.created_at)), // güne yuvarlanır (defterle zaman eşleştirmesine karşı)
     };
   });
 }
@@ -353,15 +356,25 @@ export function messageViews(core: ForumCore, rows: MessageRow[], viewerId: stri
   });
 }
 
-/** Açık (taslak dışı, kapanmamış) silme taleplerinin hedeflediği mesajlar: messageId → proposalId (en eski talep). */
+/**
+ * Açık (taslak dışı, kapanmamış) silme taleplerinin hedeflediği mesajlar: messageId → proposalId. Bir mesajı birden çok talep
+ * hedefliyorsa öncelik: daraltmanın nedeni olan acil talep, sonra geçerli olağan talep, en son geçersiz ("Görüş ayrılığı" ya da
+ * denetimde aykırı) talep; eşitlikte en eski talep.
+ */
 export function pendingDeletionMap(core: ForumCore): Map<string, string> {
-  const out = new Map<string, string>();
-  for (const r of core.db.all<{ id: string; deletion_payload: string | null }>(
-    `SELECT id, deletion_payload FROM proposals WHERE kind = 'deletion' AND status IN ${ACTIVE_SQL} ORDER BY seq`,
+  const out = new Map<string, { id: string; rank: number }>();
+  for (const r of core.db.all<{ id: string; tier: string | null; deletion_payload: string | null; audit_report: string | null }>(
+    `SELECT id, tier, deletion_payload, audit_report FROM proposals WHERE kind = 'deletion' AND status IN ${ACTIVE_SQL} ORDER BY seq`,
   )) {
-    for (const mid of json<{ messageIds?: string[] }>(r.deletion_payload, {}).messageIds ?? []) if (!out.has(mid)) out.set(mid, r.id);
+    const d = json<{ messageIds?: string[]; ground?: string }>(r.deletion_payload, {});
+    const invalid = d.ground === GORUS_AYRILIGI || r.tier === "T3" || json<{ admissible?: boolean }>(r.audit_report, {}).admissible === false;
+    const rank = invalid ? 0 : d.ground && groundIsUrgent(core.deps, d.ground) ? 2 : 1;
+    for (const mid of d.messageIds ?? []) {
+      const cur = out.get(mid);
+      if (!cur || rank > cur.rank) out.set(mid, { id: r.id, rank });
+    }
   }
-  return out;
+  return new Map([...out].map(([mid, v]) => [mid, v.id]));
 }
 
 export { clusterLabel };

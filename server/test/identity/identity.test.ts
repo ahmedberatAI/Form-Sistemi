@@ -65,9 +65,9 @@ describe("kayıt ve kasa", () => {
 
     expect(ledger.txs).toHaveLength(1);
     expect(ledger.txs[0].type).toBe("MEMBER_REGISTERED");
-    expect(Object.keys(ledger.txs[0].payload).sort()).toEqual(["at", "memberRef"]);
+    // Yükte zaman yok (KVKK.md §4.3): tam kayıt anı herkese açık katılım tarihiyle eşleştirilemesin.
+    expect(Object.keys(ledger.txs[0].payload)).toEqual(["memberRef"]);
     expect(ledger.txs[0].payload.memberRef).toBe(identity.memberRef(user.id));
-    expect(ledger.txs[0].payload.at).toBe(ctx.clock.now());
 
     expect(notifier.sent.filter((n) => n.userId === registrarId && n.kind === "registration_pending")).toHaveLength(1);
     const a = ctx.db.get<{ action: string }>("SELECT action FROM audit_log WHERE target = ? AND action = 'identity.register'", user.id);
@@ -133,8 +133,9 @@ describe("kayıt ve kasa", () => {
     await expectAppError(identity.register(regInput({ email: "  ali.veli@ornek.COM " })), 409, "duplicate_email");
     const e3 = await expectAppError(identity.register(regInput({ nickname: "ALİ" })), 409, "duplicate_nickname");
     expect(e3.message).toContain("takma ad");
-    // tr-TR: "ALI" → "alı" (noktasız), "Ali" ile farklıdır
-    await identity.register(regInput({ nickname: "ALI" }));
+    // I/ı katlaması: tr-TR'de "ALI" → "alı" olurdu; tekillik anahtarında "ali" olur ve "Ali" ile çakışır (taklit riski).
+    await expectAppError(identity.register(regInput({ nickname: "ALI" })), 409, "duplicate_nickname");
+    await expectAppError(identity.register(regInput({ nickname: "alı" })), 409, "duplicate_nickname");
   });
 
   it("reşit olmayan → isAdult false, doğrulansa da oy kullanamaz; 18 olunca güncellenir", async () => {
@@ -258,7 +259,7 @@ describe("doğrulama akışı", () => {
 
     const forbiddenStrings = [inp.tckn, okInp.tckn, inp.email, okInp.email, "Ayşe", "Yılmaz", "Atatürk", "Kızılay", "1990-05-15", "5321234567", "+90", user.id, ok.id, inp.nickname, okInp.nickname];
     for (const t of ledger.txs) {
-      expect(Object.keys(t.payload).every((k) => k === "memberRef" || k === "at")).toBe(true);
+      expect(Object.keys(t.payload)).toEqual(["memberRef"]);
       const s = JSON.stringify(t.payload);
       for (const f of forbiddenStrings) expect(s).not.toContain(f);
     }

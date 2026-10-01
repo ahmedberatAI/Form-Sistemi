@@ -52,7 +52,7 @@ describe("Claude çağrısı", () => {
     expect(p.system).toContain("Yalnızca danışmansın");
     expect(p.system).toContain("Hukuki nitelendirme yapmazsın");
     expect(calls[0].opts.timeout).toBe(60_000);
-    expect(PROMPT_VERSION).toBe("fy-ai/1");
+    expect(PROMPT_VERSION).toBe("fy-ai/2");
   });
 
   it("şema JSON Schema kısıtları: her nesnede additionalProperties:false + required; sayısal sınır yok", async () => {
@@ -275,6 +275,61 @@ describe("Claude çıktısının işlenmesi", () => {
     expect(r.spans).toHaveLength(2);
     expect(r.spans[1].quote).not.toContain("987");
     expect(r.articleIds).toEqual([fy("Madde4")]);
+  });
+
+  it("moderate: etiket başına Claude'un kendi güveni; vermediyse yerel sezgiselin güveni, o da yoksa temkinli 0,5", async () => {
+    const text = "Mahallemizde göçmen istemiyoruz; bu projeyi savunan herkes aptal.";
+    const { client, calls } = fakeClient(() =>
+      jsonResponse({
+        risk: 3,
+        labels: [fy("NefretSoylemi"), fy("HakaretIftira"), fy("Spam")],
+        labelConfidences: [{ label: fy("NefretSoylemi"), confidence: 0.62 }],
+        articleIds: [],
+        spans: [],
+        rationale: "Gruba yönelik dışlama.",
+      }),
+    );
+    const r = await createAiService(makeCtx(), { client }).moderate(text, moderateCtx);
+    expect(r.offline).toBe(false);
+    expect(r.labelConfidences).toEqual([
+      { label: fy("NefretSoylemi"), confidence: 0.62 }, // Claude'un kendi güveni (yerel 0,85'in yerine)
+      { label: fy("HakaretIftira"), confidence: 0.8 }, // Claude vermedi → yerel sezgisel
+      { label: fy("Spam"), confidence: 0.5 }, // ikisi de yok → temkinli varsayılan
+    ]);
+    const schema = calls[0].params.output_config.format.schema;
+    expect(schema.required).toContain("labelConfidences");
+    expect(calls[0].params.system).toMatch(/kişiye hakaret değildir/);
+    // Eski biçimli yanıt (labelConfidences yok) da geçerlidir.
+    const { client: old } = fakeClient(() => jsonResponse({ risk: 2, labels: [fy("HakaretIftira")], articleIds: [], spans: [], rationale: "x" }));
+    const o = await createAiService(makeCtx(), { client: old }).moderate("Belediyenin bu saçma ve aptalca park projesi durdurulsun.", moderateCtx);
+    expect(o.offline).toBe(false);
+    expect(o.labelConfidences).toEqual([{ label: fy("HakaretIftira"), confidence: 0.5 }]);
+  });
+
+  it("summarize: azınlık bağlamı (grup nüfusları, köprüyü geçemeyen grup, maskeli azınlık raporu) isteğe eklenir", async () => {
+    const { client, calls } = fakeClient(() => ({ ...jsonResponse({}), stop_reason: "refusal" }));
+    const s = await createAiService(makeCtx(), { client }).summarize({
+      topicTitle: "Yaya geçitleri",
+      messages: [
+        { id: "u-1", pseudonym: "K1", clusterId: "g0", stance: "pro", body: "Geçitler artsın." },
+        { id: "u-2", pseudonym: "K2", clusterId: "g2", stance: "con", body: "Yaşlılar için uzak kalır." },
+      ],
+      clusterSizes: { g2: 6, g0: 21 },
+      failedClusters: [{ clusterId: "g2", members: 6, yes: 0, no: 6 }],
+      minorityReports: [{ id: "r-1", pseudonym: "K2", clusterId: "g2", body: `Mesafe kısa kalmalı; bana ${PHONE} numarasından ulaşın @ahmet_b.` }],
+    });
+    const user = calls[0].params.messages[0].content as string;
+    expect(user).toContain("<gorus_gruplari>\n- Görüş Grubu A: 21 üye\n- Görüş Grubu C: 6 üye (en küçük anlamlı grup)\n</gorus_gruplari>");
+    expect(user).toContain("- Görüş Grubu C (6 üye) köprü testini geçemedi: 0 evet, 6 hayır");
+    expect(user).toContain('<rapor yazar="K2" grup="Görüş Grubu C">');
+    expect(user).toContain("[TELEFON]");
+    expect(user).not.toContain(PHONE);
+    expect(user).not.toContain("ahmet_b");
+    expect(calls[0].params.system).toMatch(/NÜFUSA göre/);
+    // Claude reddetti → çevrimdışı özet aynı bağlamla: azınlık raporu ve köprüyü geçemeyen grup görünür.
+    expect(s.offline).toBe(true);
+    expect(s.minorityViews[0].text).toMatch(/^Azınlık raporu \(Görüş Grubu C\) — K2:/);
+    expect(s.minorityViews[1].text).toMatch(/köprü testini geçemedi: 0 evet, 6 hayır/);
   });
 
   it("lint: Claude'un kaçırdığı hukuki nitelendirme yerel kuralla eklenir", async () => {

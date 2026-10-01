@@ -46,16 +46,27 @@
   { ?p fy:danismaCekirdekHakUyarisi ?h . ?p fy:uygulananKural fy:KuralDanismaYukseltmesi . } .
 
 # ─── K6. İçerik etiketleri (güven düzeyi denetimden önce eşiklere göre atanır) ───
-{ ?p fy:icerikEtiketAtamasi ?a . ?a fy:guvenDuzeyi fy:YuksekGuven . ?a fy:etiket ?l . ?l a fy:IcerikEtiketi . } =>
+# Yüksek güven + kural tabanlı tespit ya da bilirkişi teyidi → ihlal (Madde 12 (2)).
+{ ?p fy:icerikEtiketAtamasi ?a . ?a fy:guvenDuzeyi fy:YuksekGuven . ?a fy:kaynak fy:KaynakKural . ?a fy:etiket ?l . ?l a fy:IcerikEtiketi . } =>
   { ?p fy:yuksekGuvenliEtiket ?l . ?p fy:uygulananKural fy:KuralIcerikEtiketi . } .
+{ ?p fy:icerikEtiketAtamasi ?a . ?a fy:guvenDuzeyi fy:YuksekGuven . ?a fy:kaynak fy:KaynakBilirkisi . ?a fy:etiket ?l . ?l a fy:IcerikEtiketi . } =>
+  { ?p fy:yuksekGuvenliEtiket ?l . ?p fy:uygulananKural fy:KuralIcerikEtiketi . } .
+# Yüksek güven + yapay zekâ → yalnızca uyarı + bilirkişi incelemesi: YZ etiketi öneriyi tek başına durduramaz (Madde 14 (1)).
+{ ?p fy:icerikEtiketAtamasi ?a . ?a fy:guvenDuzeyi fy:YuksekGuven . ?a fy:kaynak fy:KaynakYZ . ?a fy:etiket ?l . ?l a fy:IcerikEtiketi . } =>
+  { ?p fy:danismaYuksekGuvenliEtiket ?l . ?p a fy:BilirkisiGerektirenOneri . ?p fy:uygulananKural fy:KuralIcerikEtiketi . } .
 { ?p fy:icerikEtiketAtamasi ?a . ?a fy:guvenDuzeyi fy:OrtaGuven . ?a fy:etiket ?l . ?l a fy:IcerikEtiketi . } =>
   { ?p fy:ortaGuvenliEtiket ?l . ?p a fy:BilirkisiGerektirenOneri . ?p fy:uygulananKural fy:KuralIcerikEtiketi . } .
 
 # ─── K7. Silme (karartma) gerekçeleri ───
 { ?p fy:silmeGerekcesi ?g . ?g a fy:GecersizGerekce . } =>
   { ?p fy:gecersizSilmeGerekcesi ?g . ?p fy:uygulananKural fy:KuralGorusAyriligi . } .
-{ ?p a fy:SilmeOnerisi . ?p fy:silmeGerekcesi ?g . ?g fy:acil true . } => { ?p a fy:AcilSilmeTalebi . } .
-{ ?p a fy:SilmeOnerisi . ?p fy:silmeGerekcesi ?g . ?g fy:muhurlu true . } => { ?p a fy:MuhurluSilmeTalebi . } .
+# Acil / mühürlü gerekçe önce sınıfa çevrilir (öznesi serbest öncül), silme talebi sınıf üyeliğiyle işaretlenir.
+# Sabit nesneli boolean öncül (`?g fy:muhurlu true`) kullanılmaz: n3 Reasoner'ı özne ve nesne bağlıyken yüklemi
+# denetlemiyordu; bu yüzden Tehdit'in `fy:acil true`'su `fy:muhurlu true` sanılıyordu (reasoner.ts ayrıca düzeltir).
+{ ?g fy:acil true . } => { ?g a fy:AcilGerekce . } .
+{ ?g fy:muhurlu true . } => { ?g a fy:MuhurluGerekce . } .
+{ ?p a fy:SilmeOnerisi . ?p fy:silmeGerekcesi ?g . ?g a fy:AcilGerekce . } => { ?p a fy:AcilSilmeTalebi . } .
+{ ?p a fy:SilmeOnerisi . ?p fy:silmeGerekcesi ?g . ?g a fy:MuhurluGerekce . } => { ?p a fy:MuhurluSilmeTalebi . } .
 
 # ─── K8. Yönetmelik yaması: değiştirilemez hüküm hedefi → T3 ───
 # (a) doğrudan değiştirilemez madde

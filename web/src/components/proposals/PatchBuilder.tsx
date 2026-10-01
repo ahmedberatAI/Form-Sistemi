@@ -259,6 +259,12 @@ export function PatchBuilder({ drafts, onChange, rationale, error }: PatchBuilde
                           />
                         )
                       ) : null}
+                      {def && typeof def.value === "number" ? (
+                        <p className="small muted mt-0">
+                          Kuralın dayandığı madde bu değeri metninde anıyorsa (ör. Madde 24), aynı yamaya o maddenin metnini yeni değere göre güncelleyen bir
+                          “Madde metnini değiştir” adımı da ekleyin; aksi halde ön denetim yamayı Madde 23 (1) gereği kabul etmez.
+                        </p>
+                      ) : null}
                     </div>
                   );
                 })()

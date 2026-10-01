@@ -98,8 +98,11 @@ export interface ProposalAuditInput {
   categories: string[];
   /** Etkilenen temel haklar (IRI) ve yönü. "member"/"ai" kaynaklı bayraklar yalnızca yükseltir (en çok T1 + uyarı); T3 yalnız "author"/"expert" ile. */
   rightsAffected?: { right: string; direction: "restrict" | "expand"; source: "author" | "ai" | "expert" | "member" }[];
-  /** İçerik etiketleri (ör. fy:KisiselVeriIfsasi, fy:NefretSoylemi) — YZ/kural kaynaklı */
-  contentLabels?: { label: string; confidence: number; source: "ai" | "rule" }[];
+  /**
+   * İçerik etiketleri (ör. fy:KisiselVeriIfsasi, fy:NefretSoylemi). Yüksek güvende yalnız "rule" (kural tabanlı tespit)
+   * ve "expert" (bilirkişi teyidi) ihlal doğurur; "ai" etiketi her güvende danışmadır: uyarı + bilirkişi (Madde 12 (2), 14 (1)).
+   */
+  contentLabels?: { label: string; confidence: number; source: "ai" | "rule" | "expert" }[];
   parentTopic?: { id: string; categories: string[]; status: string } | null;
   amendment?: { baseVersion: number; currentVersion: number } | null;
   deletion?: { ground: string; messageCount: number } | null;
@@ -284,6 +287,11 @@ export interface IdentityService {
   eraseSelf(userId: string): Promise<void>;
   /** keepToken: verilen oturum açık kalır, diğerleri iptal edilir. */
   changePassword(userId: string, oldPw: string, newPw: string, keepToken?: string): Promise<void>;
+  /**
+   * Takma ad değişikliği (şifre teyidiyle): kayıt kuralı, tekillik (I/ı katlamalı anahtar) ve benzerlik denetimi,
+   * 30 günde en çok bir kez (422 nickname_change_limit); `identity.nickname_change` denetim kaydı (eski/yeni ad yazılmaz).
+   */
+  changeNickname(userId: string, nickname: string, password: string): Promise<Me>;
   /** Silme gibi geri dönüşsüz işlemlerden önce şifre teyidi. */
   verifyPassword(userId: string, password: string): Promise<boolean>;
   /** Sonradan 18 yaşını dolduranların bayrağını günceller (zamanlayıcı çağırır). */
@@ -351,6 +359,11 @@ export interface ModerationResult {
   rationale: string;
   offline: boolean;
   model: string;
+  /**
+   * Etiket başına modelin ya da çevrimdışı sezgiselin KENDİ güveni (0–1). Öneri içerik etiketleri bu güveni taşır;
+   * risk düzeyinden türetilmez. Eksikse (eski kayıt, sahte servis) çağıran temkinli varsayılan kullanır.
+   */
+  labelConfidences?: { label: string; confidence: number }[];
 }
 
 export interface SummaryInputMessage {
@@ -359,6 +372,21 @@ export interface SummaryInputMessage {
   clusterId: string | null;
   stance: string;
   body: string;
+}
+
+/** Tartışma özeti girdisi. Ek alanların tümü isteğe bağlıdır ve azınlık bölümünü besler. */
+export interface SummaryInput {
+  topicTitle: string;
+  messages: SummaryInputMessage[];
+  /**
+   * Küme anlık görüntüsündeki ANLAMLI kümelerin nüfus büyüklükleri ({"g0": 21, "g2": 6}); tartışmaya yazan kişi sayısı
+   * değildir. Verilmişse azınlık = en küçük anlamlı küme(ler). Boş nesne: anlık görüntü var ama iki anlamlı küme yok.
+   */
+  clusterSizes?: Record<string, number>;
+  /** Kesin sayım "contested" ise köprü testini geçemeyen anlamlı kümeler (bülten verisi; kişisel veri yok). */
+  failedClusters?: { clusterId: string; members: number; yes: number; no: number }[];
+  /** Karar kaydına eklenen azınlık raporları (K-kodlu; kimlik rapor kimliğidir, mesaj kimliği değildir). */
+  minorityReports?: { id: string; pseudonym: string; clusterId: string | null; body: string }[];
 }
 
 export interface AiCallOptions {
@@ -374,7 +402,7 @@ export interface AiService {
   // `opts.forceOffline`: içerik sahibi YZ rızası vermemişse (yurt dışına aktarım yok) çevrimdışı sezgisel kullanılır.
   classifyProposal(input: { title: string; body: string }, ctx: { categories: { iri: string; label: string; keywords: string[] }[]; rights: { iri: string; label: string }[]; contentLabels: { iri: string; label: string }[] }, opts?: AiCallOptions): Promise<ClassificationResult>;
   moderate(text: string, ctx: { articles: { iri: string; number: string; title: string }[]; contentLabels: { iri: string; label: string }[] }, opts?: AiCallOptions): Promise<ModerationResult>;
-  summarize(input: { topicTitle: string; messages: SummaryInputMessage[] }, opts?: AiCallOptions): Promise<DiscussionSummary & { offline: boolean; model: string }>;
+  summarize(input: SummaryInput, opts?: AiCallOptions): Promise<DiscussionSummary & { offline: boolean; model: string }>;
   similar(input: { title: string; body: string }, corpus: { id: string; title: string; body: string }[], limit?: number): { id: string; score: number }[];
   bridgingDrafts(input: { title: string; body: string; majorityPoints: string[]; minorityPoints: string[] }, opts?: AiCallOptions): Promise<{ drafts: { title: string; body: string; rationale: string }[]; offline: boolean; model: string }>;
   lintExpertReport(text: string, opts?: AiCallOptions): Promise<{ issues: { quote: string; kind: string; message: string }[]; offline: boolean; model: string }>;

@@ -15,7 +15,7 @@ import { errorMessage, isApiError } from "../api/client";
 import { getBulletin, getProof, getTx, listTxs } from "../api/endpoints";
 import { useAuth } from "../auth/AuthContext";
 import { Tick } from "../components/participation/common";
-import { downloadText } from "../lib/download";
+import { canDownloadFiles, downloadText } from "../lib/download";
 import { formatDateTime, proposalRef, shortHash } from "../lib/format";
 import { useQueryState } from "../lib/hooks";
 import { isLatest, listReceipts, saveReceipt, type StoredReceipt } from "../lib/receipts";
@@ -411,10 +411,15 @@ export default function VerifyVotePage() {
               })}
             </ul>
             <div className="row">
-              <Button size="sm" variant="ghost" icon="copy" onClick={() => downloadText("oy-makbuzlari.json", listJson, "application/json;charset=utf-8")}>
-                Makbuzları dışa aktar (JSON)
-              </Button>
+              {canDownloadFiles() ? (
+                <Button size="sm" variant="ghost" icon="copy" onClick={() => downloadText("oy-makbuzlari.json", listJson, "application/json;charset=utf-8")}>
+                  Makbuzları dışa aktar (JSON)
+                </Button>
+              ) : null}
               <CopyButton text={listJson} label="JSON'u kopyala" />
+              {canDownloadFiles() ? null : (
+                <span className="small muted">Bu cihazda dosya indirilemez; yedek için JSON'u kopyalayıp güvendiğiniz bir yere yapıştırın.</span>
+              )}
             </div>
           </div>
         ) : null}

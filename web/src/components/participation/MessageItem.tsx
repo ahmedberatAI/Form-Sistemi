@@ -9,7 +9,7 @@ import { useOntology } from "../../lib/categories";
 import { proposalRef } from "../../lib/format";
 import { routes } from "../../lib/routes";
 import { useAction } from "../../lib/useAsync";
-import { AiLabel, Alert, Badge, Button, cx, DiffView, DropdownMenu, ErrorView, HashText, Spinner, StanceBadge, Textarea, Time, useConfirm, useToast } from "../../ui";
+import { AiLabel, Alert, Badge, Button, cx, Details, DiffView, DropdownMenu, ErrorView, HashText, Spinner, StanceBadge, Textarea, Time, useConfirm, useToast } from "../../ui";
 import { UserLink } from "../UserLink";
 import { Composer } from "./Composer";
 import { fmtDecimal, messageAnchorId, PlainText } from "./common";
@@ -19,6 +19,44 @@ export const BRIDGE_EXPLANATION =
 
 export const DELETION_RULES =
   "Tartışmalar silinmez: kabul edilirse mesaj karartılır, yerinde mezar taşı kalır ve asıl metin yalnızca denetçiye (erişim kaydıyla) açık olur. Talep destekçi toplar ve oylamaya gider. Görüş ayrılığı silme gerekçesi olamaz; yalnızca kişisel veri ifşası, tehdit, hakaret/iftira, nefret söylemi, spam ya da telif ihlali gerekçe olabilir.";
+
+/**
+ * Denetçi görünümü: gizlenen mesajın TÜM sürümleri, özgün (ilk) metin önce. Yazar silme talebi sürerken mesajını
+ * yumuşatmış olabilir; asıl metin denetçiye açık kalır (ALGORITMA.md §10.5). Son sürüm gizlendiği andaki metindir.
+ */
+function HiddenVersions({ hidden }: { hidden: HiddenMessageResponse }) {
+  const versions = hidden.versions.slice().sort((a, b) => a.version - b.version);
+  if (versions.length <= 1) return <PlainText text={versions[0]?.body ?? hidden.body} />;
+  const last = versions[versions.length - 1].version;
+  return (
+    <div className="stack-sm">
+      <p className="small mt-0">
+        Bu mesajın {versions.length} sürümü var; özgün metin önce gösterilir. Son sürüm, mesajın gizlendiği andaki metnidir.
+      </p>
+      <ol className="msg-version-list">
+        {versions.map((v, i) => {
+          const prev = i > 0 ? versions[i - 1] : null;
+          return (
+            <li key={v.version} className="stack-sm">
+              <p className="small">
+                <strong>Sürüm {v.version}</strong>
+                {i === 0 ? " · özgün metin" : ""}
+                {v.version === last ? " · gizlendiği andaki metin" : ""} · <Time at={v.createdAt} mode="both" /> · özet{" "}
+                <HashText hash={v.contentHash} chars={8} copy={false} />
+              </p>
+              <PlainText text={v.body} className="msg-version-body" />
+              {prev ? (
+                <Details summary={`Sürüm ${prev.version} → ${v.version} farkı`}>
+                  <DiffView before={prev.body} after={v.body} mode="inline" label={`Sürüm ${prev.version} → ${v.version} farkı`} />
+                </Details>
+              ) : null}
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
 
 export interface MessageItemProps {
   message: MessageView;
@@ -180,8 +218,7 @@ export function MessageItem({ message: m, parentNickname, focused, deletionSeq, 
           {auth.can("D") ? (
             hidden ? (
               <Alert tone="warning" title="Gizli metin (erişiminiz kaydedildi)" onClose={() => setHidden(null)}>
-                <PlainText text={hidden.body} />
-                {hidden.versions.length > 1 ? <p className="small muted">Bu mesajın {hidden.versions.length} sürümü var.</p> : null}
+                <HiddenVersions hidden={hidden} />
               </Alert>
             ) : (
               <Button size="sm" variant="ghost" icon="warning" onClick={() => void askReadHidden()} loading={readHidden.loading}>

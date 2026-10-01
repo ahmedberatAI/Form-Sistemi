@@ -53,10 +53,10 @@ fy:Madde_4_2 a fy:Madde ; fy:maddeNo "Madde 4 (2)" ; fy:baslik "Temel haklar" ; 
 
 fy:Madde_5_1 a fy:Madde ; fy:maddeNo "Madde 5 (1)" ; fy:baslik "Azınlığın korunması" ; fy:bolum fy:Bolum1 ; fy:sira 501 ;
     fy:korumaDuzeyi fy:Degistirilemez ;
-    fy:metin "Bir öneri, genel çoğunluğun yanında anlamlı her görüş kümesinden asgari destek almadıkça ilk oylamada kabul edilemez (köprü testi). Küme tabanı hiçbir katmanda 0,20'nin, silme kararlarında mesaj yazarının kendi kümesi için aranan taban 0,50'nin altına indirilemez; anlamlı küme payı 0,20'nin, anlamlı küme asgari üye sayısı 5'in, köprü testi için gereken asgari kümelenmiş üye sayısı 30'un üzerine çıkarılamaz." .
+    fy:metin "Bir öneri, genel çoğunluğun yanında anlamlı her görüş kümesinden asgari destek almadıkça ilk oylamada kabul edilemez (köprü testi). Küme tabanı hiçbir katmanda 0,20'nin, silme kararlarında mesaj yazarının kendi kümesi için aranan taban 0,50'nin altına indirilemez; anlamlı küme payı 0,20'nin, anlamlı küme asgari üye sayısı 5'in, köprü testi için gereken asgari kümelenmiş üye sayısı 30'un, anlamlı bir kümede uzatma için aranan asgari kabul/red oyu sayısı 3'ün üzerine çıkarılamaz. Tartışma, oylama ve uzatma süreleri hiçbir katmanda 24 saatten kısa olamaz." .
 fy:Madde_5_2 a fy:Madde ; fy:maddeNo "Madde 5 (2)" ; fy:baslik "Azınlığın korunması" ; fy:bolum fy:Bolum1 ; fy:sira 502 ;
     fy:korumaDuzeyi fy:Degistirilemez ;
-    fy:metin "Köprü testini geçemeyen öneri için uzlaşma turu açılır. Yeniden oylamada aşma eşiği hiçbir katmanda 2/3'ün altına indirilemez; böylece azınlığın gücü erteleyicidir ve kararın yeniden düşünülmesini sağlar." .
+    fy:metin "Köprü testini geçemeyen öneri için uzlaşma turu açılır; T0, T1 ve T2 katmanlarında uzlaşma süresi 24 saatten kısa olamaz. Yeniden oylamada aşma eşiği hiçbir katmanda 2/3'ün altına indirilemez; böylece azınlığın gücü erteleyicidir ve kararın yeniden düşünülmesini sağlar." .
 fy:Madde_5_3 a fy:Madde ; fy:maddeNo "Madde 5 (3)" ; fy:baslik "Azınlığın korunması" ; fy:bolum fy:Bolum1 ; fy:sira 503 ;
     fy:korumaDuzeyi fy:Degistirilemez ;
     fy:metin "İlk oylamada kabul edilen karara karşı red oyu veren üyelerin itiraz hakkı kaldırılamaz; T0, T1 ve T2 katmanlarında itiraz penceresi 24 saatten kısa olamaz." .
@@ -75,7 +75,7 @@ fy:Madde_6_3 a fy:Madde ; fy:maddeNo "Madde 6 (3)" ; fy:baslik "Değiştirilemez
 
 fy:Madde_7_1 a fy:Madde ; fy:maddeNo "Madde 7 (1)" ; fy:baslik "Öneri hakkı" ; fy:bolum fy:Bolum2 ; fy:sira 701 ;
     fy:korumaDuzeyi fy:Olagan ;
-    fy:metin "Her üye konu açabilir, kabul edilmiş bir konuya alt konu önerebilir ve yürürlükteki bir konu için düzenleme teklif edebilir. Önerinin 3 ile 200 karakter arasında anlaşılır bir başlığı ve gerekçesi bulunur." .
+    fy:metin "Her üye konu açabilir, kabul edilmiş bir konuya alt konu önerebilir ve yürürlükteki bir konu için düzenleme teklif edebilir. Önerinin 5 ile 200 karakter arasında anlaşılır bir başlığı ve 20 ile 20000 karakter arasında bir metni (gerekçesi) bulunur." .
 fy:Madde_7_2 a fy:Madde ; fy:maddeNo "Madde 7 (2)" ; fy:baslik "Öneri hakkı" ; fy:bolum fy:Bolum2 ; fy:sira 702 ;
     fy:korumaDuzeyi fy:Olagan ;
     fy:metin "Öneri, Madde 9 (3)'te belirtilen sayıda üyenin desteğini (eş imza) toplayınca denetime girer; destek toplama süresi dolan öneri düşer." .
@@ -85,7 +85,7 @@ fy:Madde_8_1 a fy:Madde ; fy:maddeNo "Madde 8 (1)" ; fy:baslik "Kategoriler" ; f
     fy:metin "Konu, alt konu, düzenleme ve Yönetmelik önerileri en az bir kategoriye bağlanır. Kategoriler bir sınıf ağacı oluşturur; bir alt kategoriye bağlanan öneri, üst kategorilerine de bağlı sayılır ve onların kurallarına tabidir. Silme (karartma) talepleri kategori kurallarına tabi değildir." .
 fy:Madde_8_2 a fy:Madde ; fy:maddeNo "Madde 8 (2)" ; fy:baslik "Kategoriler" ; fy:bolum fy:Bolum2 ; fy:sira 802 ;
     fy:korumaDuzeyi fy:Nitelikli ;
-    fy:metin "Kategori ve hak etkisi etiketleri yalnızca yükseltilebilir: her üye ve yapay zekâ etiket ekleyebilir; eklenen bir etiketi yalnızca bilirkişi kaldırabilir. Danışma niteliğindeki bu etiketler öneriyi en çok nitelikli katmana yükseltir, tek başına geçersiz kılmaz." .
+    fy:metin "Hak etkisi etiketleri yalnızca yükseltilebilir: her üye ve yapay zekâ hak etkisi etiketi ekleyebilir; eklenen bir etiketi yalnızca ilgili alandaki bilirkişi veya yönetici kaldırabilir. Danışma niteliğindeki bu etiketler öneriyi en çok nitelikli katmana yükseltir, tek başına geçersiz kılmaz. Önerinin kategorilerini yazar seçer; yapay zekânın kategori tahminleri yazara yalnızca öneri olarak gösterilir." .
 
 fy:Madde_9_1 a fy:Madde ; fy:maddeNo "Madde 9 (1)" ; fy:baslik "Katmanlar" ; fy:bolum fy:Bolum2 ; fy:sira 901 ;
     fy:korumaDuzeyi fy:Nitelikli ;
@@ -119,7 +119,7 @@ fy:Madde_12_1 a fy:Madde ; fy:maddeNo "Madde 12 (1)" ; fy:baslik "İçerik ilkel
     fy:metin "Öneriler ve tartışma mesajları kişisel veri ifşası, tehdit, hakaret veya iftira, korunan gruplara yönelik nefret söylemi, spam veya reklam ve telif ihlali içeremez." .
 fy:Madde_12_2 a fy:Madde ; fy:maddeNo "Madde 12 (2)" ; fy:baslik "İçerik ilkeleri" ; fy:bolum fy:Bolum2 ; fy:sira 1202 ;
     fy:korumaDuzeyi fy:Nitelikli ;
-    fy:metin "Otomatik içerik etiketlemesinde güveni yüksek güven eşiğine (0,70) ulaşan yasak içerik etiketi öneriyi kabul edilemez kılar; yazar metni düzelterek yeniden sunabilir. Güveni orta güven eşiği (0,40) ile yüksek güven eşiği arasında kalan etiketler uyarı olarak gösterilir ve bilirkişi incelemesi gerektirir." .
+    fy:metin "Kural tabanlı tespitte ya da bilirkişi teyidinde güveni yüksek güven eşiğine (0,70) ulaşan yasak içerik etiketi öneriyi kabul edilemez kılar; yazar metni düzelterek yeniden sunabilir. Yapay zekânın verdiği içerik etiketi öneriyi tek başına kabul edilemez kılamaz: yüksek güven eşiğine ulaşan yapay zekâ etiketleri ile güveni orta güven eşiği (0,40) ile yüksek güven eşiği arasında kalan etiketler uyarı olarak gösterilir ve bilirkişi incelemesi gerektirir." .
 
 fy:Madde_13_1 a fy:Madde ; fy:maddeNo "Madde 13 (1)" ; fy:baslik "Bilirkişi" ; fy:bolum fy:Bolum2 ; fy:sira 1301 ;
     fy:korumaDuzeyi fy:Nitelikli ;
@@ -200,7 +200,7 @@ fy:Madde_21_1 a fy:Madde ; fy:maddeNo "Madde 21 (1)" ; fy:baslik "Kişisel veril
     fy:metin "Ad, soyad, T.C. kimlik numarası, adres, doğum tarihi, e-posta ve telefon gibi kişisel veriler, şifreli halleri dahil, dağıtık defterde tutulmaz; defterde yalnızca özetler, taahhütler ve kimlik içermeyen sayılar bulunur." .
 fy:Madde_21_2 a fy:Madde ; fy:maddeNo "Madde 21 (2)" ; fy:baslik "Kişisel veriler" ; fy:bolum fy:Bolum5 ; fy:sira 2102 ;
     fy:korumaDuzeyi fy:Nitelikli ;
-    fy:metin "Kimlik verileri alan bazında şifreli kasada saklanır; bunlara yalnızca yetkili kayıt memuru veya denetçi, amacını belirterek ve erişim kaydı bırakarak ulaşabilir." .
+    fy:metin "Kimlik verileri alan bazında şifreli kasada saklanır; bunlara yalnızca yetkili kayıt memuru, denetçi veya yönetici, amacını belirterek ve erişim kaydı bırakarak ulaşabilir." .
 fy:Madde_21_3 a fy:Madde ; fy:maddeNo "Madde 21 (3)" ; fy:baslik "Kişisel veriler" ; fy:bolum fy:Bolum5 ; fy:sira 2103 ;
     fy:korumaDuzeyi fy:Degistirilemez ;
     fy:metin "Üyenin kendi kişisel verilerinin silinmesi talebi oylamaya konulmaz; kripto-imha yoluyla yerine getirilir." .
@@ -213,7 +213,7 @@ fy:Madde_22 a fy:Madde ; fy:maddeNo "Madde 22" ; fy:baslik "Şeffaflık ve dağ�
 
 fy:Madde_23_1 a fy:Madde ; fy:maddeNo "Madde 23 (1)" ; fy:baslik "Değişiklik usulü" ; fy:bolum fy:Bolum6 ; fy:sira 2301 ;
     fy:korumaDuzeyi fy:Nitelikli ;
-    fy:metin "Yönetmelik değişikliği yapılandırılmış bir yama olarak önerilir ve T2 katmanında karara bağlanır. “Nitelikli” koruma düzeyindeki bir hükmü ya da ona dayanan bir kural veya parametreyi değiştiren önerilerde onay eşiği en az 3/4, yeter sayı en az 0,50'dir." .
+    fy:metin "Yönetmelik değişikliği yapılandırılmış bir yama olarak önerilir ve T2 katmanında karara bağlanır. “Nitelikli” koruma düzeyindeki bir hükmü ya da ona dayanan bir kural veya parametreyi değiştiren önerilerde onay eşiği en az 3/4, yeter sayı en az 0,50'dir. Bir kuralın ya da parametre kümesinin değerini değiştiren yama, bu değeri metninde anan dayanak maddeyi de aynı yamada günceller; madde metni yürürlükteki parametreyle çelişemez." .
 fy:Madde_23_2 a fy:Madde ; fy:maddeNo "Madde 23 (2)" ; fy:baslik "Değişiklik usulü" ; fy:bolum fy:Bolum6 ; fy:sira 2302 ;
     fy:korumaDuzeyi fy:Nitelikli ;
     fy:metin "Hiçbir değişiklik yeter sayıyı 0 veya altına ya da 1'in üzerine, onay eşiğini 0,50'nin altına ya da 1'in üzerine çekemez; diğer oranlar 0 ile 1, süreler 0 ile 8760 saat arasında olur." .
@@ -420,7 +420,8 @@ fy:EsitOySinirlari a fy:ParametreKumesi ; rdfs:label "Eşit oy sınırları" ; f
 
 fy:AzinlikKorumaSinirlari a fy:ParametreKumesi ; rdfs:label "Azınlık koruması sınırları" ; fy:dayanak fy:Madde_5_1 ;
     fy:kumeTabaniAsgari 0.20 ; fy:yazarKumesiTabaniAsgari 0.50 ; fy:asmaEsigiAsgari 0.6667 ; fy:sureItirazAsgari 24 ;
-    fy:anlamliKumePayiAzami 0.20 ; fy:anlamliKumeAsgariUyeAzami 5 ; fy:kopruIcinAsgariKumelenmisAzami 30 .
+    fy:anlamliKumePayiAzami 0.20 ; fy:anlamliKumeAsgariUyeAzami 5 ; fy:kopruIcinAsgariKumelenmisAzami 30 ; fy:kumeBasinaAsgariOyAzami 3 ;
+    fy:sureTartismaAsgari 24 ; fy:sureOylamaAsgari 24 ; fy:sureUzatmaAsgari 24 ; fy:sureUzlasmaAsgari 24 .
 
 fy:KalicilastirmaSinirlari a fy:ParametreKumesi ; rdfs:label "Kalıcılaştırma yasağı sınırları" ; fy:dayanak fy:Madde_6_2 ;
     fy:yeterSayiAzami 0.60 ; fy:esikAzami 0.75 ; fy:asmaEsigiAzami 0.75 ; fy:yenidenOyEsigiAzami 0.75 ; fy:sureAzami 720 .

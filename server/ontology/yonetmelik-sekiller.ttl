@@ -19,14 +19,15 @@
 fy:OneriSekli a sh:NodeShape ; fy:sekilGrubu "oneri" ;
     sh:targetClass fy:Oneri ;
     sh:property [
-        sh:path fy:baslik ; sh:minCount 1 ; sh:maxCount 1 ; sh:minLength 3 ; sh:maxLength 200 ;
+        sh:path fy:baslik ; sh:minCount 1 ; sh:maxCount 1 ; sh:minLength 5 ; sh:maxLength 200 ;
         sh:severity sh:Violation ; fy:bulguKodu "title_length" ; fy:dayanak fy:Madde_7_1 ;
-        sh:message "Madde 7 (1): Öneri başlığı 3 ile 200 karakter arasında olmalıdır."
+        sh:message "Madde 7 (1): Öneri başlığı 5 ile 200 karakter arasında olmalıdır."
     ] ;
+    # Sınırlar shared/src/vocab.ts PROPOSAL_TEXT_LIMITS ile aynıdır (sunucu oluşturma denetimi de onu kullanır; test denetler).
     sh:property [
-        sh:path fy:metin ; sh:minLength 10 ;
-        sh:severity sh:Warning ; fy:bulguKodu "body_short" ; fy:dayanak fy:Madde_7_1 ;
-        sh:message "Madde 7 (1): Gerekçe metni çok kısa; önerinin ne istediğini ve nedenini açıklayın."
+        sh:path fy:metin ; sh:minLength 20 ; sh:maxLength 20000 ;
+        sh:severity sh:Violation ; fy:bulguKodu "body_length" ; fy:dayanak fy:Madde_7_1 ;
+        sh:message "Madde 7 (1): Öneri metni (gerekçe) 20 ile 20000 karakter arasında olmalıdır; önerinin ne istediğini ve nedenini açıklayın."
     ] ;
     sh:property [
         sh:path fy:kisitlananCekirdekHak ; sh:maxCount 0 ;
@@ -41,7 +42,12 @@ fy:OneriSekli a sh:NodeShape ; fy:sekilGrubu "oneri" ;
     sh:property [
         sh:path fy:yuksekGuvenliEtiket ; sh:maxCount 0 ;
         sh:severity sh:Violation ; fy:bulguKodu "content_label_high" ; fy:dayanak fy:Madde_12_2 ;
-        sh:message "Madde 12 (2): Öneri, yüksek güven eşiğini aşan yasak içerik etiketi taşıyor; bu haliyle oylamaya sunulamaz. Metni düzelterek yeniden gönderebilirsiniz."
+        sh:message "Madde 12 (2): Öneri, kural tabanlı tespit ya da bilirkişi teyidiyle yüksek güven eşiğini aşan yasak içerik etiketi taşıyor; bu haliyle oylamaya sunulamaz. Metni düzelterek yeniden gönderebilirsiniz."
+    ] ;
+    sh:property [
+        sh:path fy:danismaYuksekGuvenliEtiket ; sh:maxCount 0 ;
+        sh:severity sh:Warning ; fy:bulguKodu "content_label_ai_high" ; fy:dayanak fy:Madde_12_2 ;
+        sh:message "Madde 12 (2): Yapay zekâ, öneride yüksek güvenle yasak içerik olabileceğini işaretledi. Yapay zekâ etiketi öneriyi tek başına kabul edilemez kılamaz (Madde 14 (1)); bilirkişi incelemesi gerekiyor. Uygunsuz bir ifade varsa metni düzeltebilirsiniz."
     ] ;
     sh:property [
         sh:path fy:ortaGuvenliEtiket ; sh:maxCount 0 ;

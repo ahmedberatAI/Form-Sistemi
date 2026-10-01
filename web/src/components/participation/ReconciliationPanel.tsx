@@ -71,7 +71,10 @@ export function MinorityReportForm({ proposal: p, onAdded }: { proposal: Proposa
         showCount
         rows={6}
       />
-      <Alert tone="warning">Raporunuz takma adınızla yayımlanır; bu, ilk turda “red” oyu verdiğinizi gösterir.</Alert>
+      <Alert tone="warning">
+        Raporunuz takma adınızla ve görüş grubunuzla (ör. “Görüş Grubu B”) birlikte herkese açık yayımlanır ve deftere grup bilgisiyle yazılır. Bu,
+        ilk turda “red” oyu verdiğinizi ve oylarınızdan hesaplanan görüş grubunuzu gösterir; yayımlanan rapor geri alınamaz.
+      </Alert>
       <div className="form-actions">
         <Button variant="ghost" onClick={() => setOpen(false)}>
           Vazgeç

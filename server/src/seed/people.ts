@@ -19,10 +19,19 @@ export interface Person {
   expert?: { domains: string[]; credentials: string };
   /** Aynı hanede yaşayan kişinin takma adı (aynı adres) */
   householdWith?: string;
+  /**
+   * Kayıt verisi ayrı tohumlu akıştan (`EXTRA_STREAM_SEED`) üretilir. Sonradan eklenen hesaplar senaryonun ana rastgele akışını
+   * (oylar, işaretler, destekçiler) kaydırmasın diye kullanılır; böylece mevcut vitrin sonuçları değişmez.
+   */
+  separateStream?: boolean;
 }
+
+/** `separateStream` hesaplarının kayıt verisi için tohum (ana tohumdan bağımsız, sabit). */
+export const EXTRA_STREAM_SEED = "forum-seed-1|ek-hesaplar";
 
 export const PASSWORDS = {
   admin: "Yonetici123!",
+  demoAdmin: "admin123",
   registrar: "Kayit123!",
   auditor: "Denetci123!",
   expert: "Bilirkisi123!",
@@ -45,6 +54,17 @@ export const PEOPLE: Person[] = [
   { nickname: "bk_saglik3", kind: "expert", password: PASSWORDS.expert, block: "A", turnout: 0.85, expert: { domains: [fy("Saglik"), fy("HalkSagligi")], credentials: "İç hastalıkları uzmanı; diyabet ve hipertansiyon izlem programlarında görev aldı." } },
   { nickname: "bk_imar1", kind: "expert", password: PASSWORDS.expert, block: "A", turnout: 0.85, aiConsent: true, expert: { domains: [fy("Imar"), fy("DepremGuvenligi"), fy("Butce")], credentials: "İnşaat mühendisi; yapı denetimi ve deprem güçlendirme projelerinde 10 yıl deneyim." } },
   { nickname: "bk_imar2", kind: "expert", password: PASSWORDS.expert, block: "B", turnout: 0.85, expert: { domains: [fy("Imar"), fy("DepremGuvenligi"), fy("Butce")], credentials: "Şehir plancısı ve kamu maliyesi uzmanı; belediye yatırım bütçeleri üzerine çalışmalar." } },
+  // Kura havuzu (ARASTIRMA.md §13.3: alan başına en az 6 bilirkişi): Enerji ve Sağlık alanlarında 6'şar bilirkişi olsun ki
+  // vitrin kuraları (#K-7, #K-32) uygun adayların bir kısmını dışarıda bıraksın ve ağırlıklı kura görülebilsin. Bu hesaplar
+  // görüş bloğuna girmez ve oy/görüş verisi rızası vermemiştir: uygun seçmen değildir, böylece yeter sayı ve itiraz eşikleri
+  // (|E|) mevcut senaryodakiyle aynı kalır. Bilirkişilik oy hakkı gerektirmez; kayıt verileri ayrı akıştan üretilir.
+  { nickname: "bk_enerji3", kind: "expert", password: PASSWORDS.expert, separateStream: true, noPoliticalConsent: true, expert: { domains: [fy("Enerji"), fy("Cevre")], credentials: "Enerji sistemleri mühendisi; çatı tipi güneş santrallerinde şebeke bağlantısı ve izin süreçleri deneyimi." } },
+  { nickname: "bk_enerji4", kind: "expert", password: PASSWORDS.expert, separateStream: true, noPoliticalConsent: true, expert: { domains: [fy("Enerji")], credentials: "Elektrik-elektronik mühendisi; kamu binalarında enerji izleme ve sayaç sistemleri kurulumu." } },
+  { nickname: "bk_enerji5", kind: "expert", password: PASSWORDS.expert, separateStream: true, noPoliticalConsent: true, expert: { domains: [fy("Enerji"), fy("Cevre")], credentials: "Çevre mühendisi; yenilenebilir enerji projelerinde çevresel etki değerlendirmesi." } },
+  { nickname: "bk_enerji6", kind: "expert", password: PASSWORDS.expert, separateStream: true, noPoliticalConsent: true, expert: { domains: [fy("Enerji")], credentials: "Yapı fiziği uzmanı mimar; okul binalarında enerji verimliliği ve yalıtım etütleri." } },
+  { nickname: "bk_saglik4", kind: "expert", password: PASSWORDS.expert, separateStream: true, noPoliticalConsent: true, expert: { domains: [fy("Saglik"), fy("HalkSagligi")], credentials: "Aile hekimi; kronik hastalık taramaları ve yaşlı izlemi alanında 10 yıl deneyim." } },
+  { nickname: "bk_saglik5", kind: "expert", password: PASSWORDS.expert, separateStream: true, noPoliticalConsent: true, expert: { domains: [fy("Saglik"), fy("HalkSagligi")], credentials: "Epidemiyolog; toplum tabanlı sağlık araştırmalarında veri toplama ve kalite güvencesi." } },
+  { nickname: "bk_saglik6", kind: "expert", password: PASSWORDS.expert, separateStream: true, noPoliticalConsent: true, expert: { domains: [fy("Saglik")], credentials: "Eczacı; ilaç güvenliği ve evde bakım hastalarında ilaç uyumu danışmanlığı." } },
 
   { nickname: "ayse", kind: "member", password: M, block: "A", aiConsent: true },
   { nickname: "mehmet", kind: "member", password: M, block: "B" },
@@ -107,6 +127,8 @@ export const PEOPLE: Person[] = [
   { nickname: "oguz_k", kind: "pending", password: M },
   { nickname: "ece_s", kind: "pending", password: M },
   { nickname: "tuna_m", kind: "rejected", password: M },
+  // Kolay demo girişi; ayrı akış ve oy rızası olmaması mevcut oylama senaryolarını korur.
+  { nickname: "admin", kind: "admin", password: PASSWORDS.demoAdmin, separateStream: true, noPoliticalConsent: true },
 ];
 
 const FIRST = [

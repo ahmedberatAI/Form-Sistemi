@@ -14,6 +14,7 @@ import type {
   BulletinResponse,
   BylawVersionInfo,
   ChainVerification,
+  ChangeNicknameRequest,
   ChangePasswordRequest,
   ClusterSnapshotView,
   CommittedTxView,
@@ -107,6 +108,8 @@ export const logout = () => http.post<OkResponse>("/api/auth/logout");
 export const getMe = () => http.get<Me>("/api/me");
 export const updateConsents = (req: ConsentsRequest) => http.patch<Me>("/api/me/consents", req);
 export const changePassword = (req: ChangePasswordRequest) => http.post<OkResponse>("/api/me/password", req);
+/** Takma ad değişikliği: şifre teyidi; 30 günde bir (422 nickname_change_limit); 409 duplicate_nickname / similar_nickname. */
+export const changeNickname = (req: ChangeNicknameRequest) => http.patch<Me>("/api/me/nickname", req);
 /** KVKK döküm: kişinin kendi (şifresi çözülmüş) verisi. Biçim sunucuya bağlıdır. */
 export const exportMyData = () => http.get<Record<string, unknown>>("/api/me/export");
 /** Kripto-imha. `confirm` tam olarak "SİL" olmalıdır. */

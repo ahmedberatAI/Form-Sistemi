@@ -122,7 +122,7 @@ Ayrıntı ve tablolar: [SIMULASYON.md](SIMULASYON.md) (gerçek `decide()`/`compu
 |---|---|---|
 | %10'luk azınlığa zarar veren öneriler — kabul | %100 | ilk tur %9,6; nihai %56,5 (çoğu ω = 2/3 ile) |
 | Aynı öneri, uzlaşmada metin yumuşatılırsa | — | nihai %96,9 |
-| Geniş destekli öneriler — kabul | %100 | %100 (bedel: ~5 gün itiraz gecikmesi) |
+| Geniş destekli öneriler — kabul | %100 | %100 (bedel: 48 saatlik itiraz penceresi; oylamadan yürürlüğe toplam ~5,3 gün) |
 | %10'luk blok çok popüler öneriyi engelleyebilir mi? | — | hayır: %100 yürürlüğe girer (erteleyici, tek seferlik) |
 | Boykot engel olur mu? | — | hayır: nihai kabul %100 |
 | Azınlığın istemediği halde kabul edilen karar oranı (kalıcı kaybeden) | %38,1 | %27,7 |

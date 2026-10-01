@@ -7,7 +7,8 @@ export interface AnthropicLike {
   beta: { messages: { create(params: any, opts?: any): Promise<any> } };
 }
 
-export const PROMPT_VERSION = "fy-ai/1";
+/** İstem sürümü: istem ya da şema değişince artar (fy-ai/2: moderasyonda etiket başına güven ve hedef ayrımı; özetin azınlık bağlamı). */
+export const PROMPT_VERSION = "fy-ai/2";
 export const FALLBACK_BETA = "server-side-fallback-2026-07-01";
 export const DEFAULT_TIMEOUT_MS = 60_000;
 
@@ -149,6 +150,10 @@ export function moderateRequest(text: string, ctx: { articles: { iri: string; nu
   const schema = obj({
     risk: { type: "integer", enum: [0, 1, 2, 3], description: "0 yok, 1 düşük, 2 orta, 3 yüksek" },
     labels: arr(enumOrStr(labels, "İçerik etiketi IRI'si (yalnızca listeden)")),
+    labelConfidences: arr(
+      obj({ label: enumOrStr(labels, "İçerik etiketi IRI'si (labels listesindekilerden)"), confidence: num("0 ile 1 arası güven") }),
+      "labels listesindeki her etiket için kendi güvenin",
+    ),
     articleIds: arr(enumOrStr(arts, "İlgili yönetmelik maddesi IRI'si (yalnızca listeden)")),
     spans: arr(obj({ quote: str("Sorunlu ifadenin metinden AYNEN alıntısı") })),
     rationale: str("Kısa Türkçe gerekçe"),
@@ -156,6 +161,8 @@ export function moderateRequest(text: string, ctx: { articles: { iri: string; nu
   const validator = z.object({
     risk: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]),
     labels: z.array(zEnum(labels)),
+    // Eski biçimdeki yanıtlar (alan yoksa) da kabul edilir; eksik güven çağıranda temkinli varsayılana düşer.
+    labelConfidences: z.array(z.object({ label: zEnum(labels), confidence: conf })).optional(),
     articleIds: z.array(zEnum(arts)),
     spans: z.array(z.object({ quote: z.string() })),
     rationale: z.string(),
@@ -165,6 +172,8 @@ export function moderateRequest(text: string, ctx: { articles: { iri: string; nu
 Görev: bir forum mesajını moderasyon için değerlendir (karar insanlarındır; hiçbir içerik senin değerlendirmenle gizlenmez).
 - risk: 0 = sorun yok; 1 = düşük (ör. hafif spam, belirsiz suçlama); 2 = orta (hakaret, iletişim bilgisi paylaşımı); 3 = yüksek (tehdit, korunan gruba nefret söylemi, kimlik numarası/IBAN/açık adres ifşası).
 - labels: listeden uygun içerik etiketleri; yalnızca bu etiketlere giren durumları işaretle.
+- labelConfidences: labels listesindeki her etiket için 0–1 arası güvenin. 0,70 ve üzerini yalnızca ifade açık ve hedefliyse ver; belirsiz durumlarda daha düşük bir değer seç.
+- Hedefe dikkat et: bir projeyi, kararı ya da kurumu "saçma", "aptalca" bulmak sert ama meşru eleştiridir, kişiye hakaret değildir. Korunan bir grubu koruyan ya da destekleyen ifadeler ("göçmen çocukların okul dışında kalmasını istemiyoruz") nefret söylemi değildir; nefret söylemi grubun kendisini aşağılar ya da dışlar.
 - articleIds: ilgili yönetmelik maddeleri (yalnızca listeden; yoksa boş).
 - spans: sorunlu ifadelerin metinden AYNEN alıntısı.
 - rationale: kısa Türkçe gerekçe.`;
@@ -178,7 +187,18 @@ Görev: bir forum mesajını moderasyon için değerlendir (karar insanlarındı
 
 const STANCE_TR: Record<string, string> = { pro: "lehte", con: "aleyhte", neutral: "nötr", question: "soru" };
 
-export function summarizeRequest(topicTitle: string, messages: { ref: string; pseudonym: string; group: string; stance: string; body: string }[]) {
+/** Özetin azınlık bölümü için ek bağlam: grup nüfusları, köprü testini geçemeyen gruplar, azınlık raporları (maskeli). */
+export interface SummaryMinorityContext {
+  groups: { group: string; members: number; smallest: boolean }[];
+  failed: { group: string; members: number; yes: number; no: number }[];
+  reports: { pseudonym: string; group: string; body: string }[];
+}
+
+export function summarizeRequest(
+  topicTitle: string,
+  messages: { ref: string; pseudonym: string; group: string; stance: string; body: string }[],
+  minority?: SummaryMinorityContext,
+) {
   const refs = messages.map((m) => m.ref);
   const point = obj({ text: str("Kısa Türkçe cümle"), cites: arr(enumOrStr(refs, "Dayanılan mesajın kısa kimliği")) });
   const schema = obj({
@@ -195,10 +215,22 @@ Görev: bir tartışmanın tarafsız, alıntıya dayalı özetini çıkar.
 - commonGround: farklı görüş gruplarında ortak olan noktalar.
 - contested: lehte ve aleyhte görüşlerin ayrıştığı noktalar.
 - minorityViews: küçük görüş gruplarının ya da sayıca az olan tarafın görüşleri. Bu bölümü MUTLAKA doldur; azınlık görüşlerini en güçlü ve adil biçimleriyle aktar.
+  Azınlık, topluluktaki NÜFUSA göre belirlenir (tartışmaya yazan kişi sayısına göre değil): gorus_gruplari verilmişse en küçük anlamlı grubun görüşlerini, kesin_sayim verilmişse köprü testini geçemeyen grubun "hayır" tarafını ve azinlik_raporlari verilmişse bu raporların ana kaygılarını mutlaka aktar.
 - openQuestions: yanıt bekleyen sorular.
-Her madde kısa bir Türkçe cümle olsun ve cites alanında dayandığı mesajların kısa kimliklerini (m1, m2 …) içersin. Mesajlarda olmayan bir şeyi uydurma. Katılımcılardan yalnızca K-kodlarıyla söz et.`;
+Her madde kısa bir Türkçe cümle olsun ve cites alanında dayandığı mesajların kısa kimliklerini (m1, m2 …) içersin; azınlık raporları mesaj değildir, onlara dayanan maddede cites boş kalabilir. Mesajlarda ya da raporlarda olmayan bir şeyi uydurma. Katılımcılardan yalnızca K-kodlarıyla söz et.`;
+  const extra: string[] = [];
+  if (minority?.groups.length) {
+    extra.push(tag("gorus_gruplari", minority.groups.map((g) => `- ${g.group}: ${g.members} üye${g.smallest ? " (en küçük anlamlı grup)" : ""}`).join("\n")));
+  }
+  if (minority?.failed.length) {
+    extra.push(tag("kesin_sayim", minority.failed.map((f) => `- ${f.group} (${f.members} üye) köprü testini geçemedi: ${f.yes} evet, ${f.no} hayır`).join("\n")));
+  }
+  if (minority?.reports.length) {
+    extra.push(tag("azinlik_raporlari", minority.reports.map((r) => `<rapor yazar="${r.pseudonym}" grup="${r.group}">\n${r.body}\n</rapor>`).join("\n")));
+  }
   const user = [
     tag("konu_basligi", topicTitle),
+    ...extra,
     tag(
       "mesajlar",
       messages.map((m) => `<mesaj kimlik="${m.ref}" yazar="${m.pseudonym}" grup="${m.group}" tutum="${STANCE_TR[m.stance] ?? m.stance}">\n${m.body}\n</mesaj>`).join("\n"),

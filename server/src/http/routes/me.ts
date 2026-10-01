@@ -15,7 +15,7 @@ import type {
 import type { OntologyService } from "../../core/contracts";
 import { AppError, badRequest } from "../../core/errors";
 import { requireExpert, requireUser, requireVerified } from "../auth";
-import { changePasswordBody, consentsBody, correctionBody, delegateBody, eraseBody, idParams, markReadBody, notificationsQuery } from "../schemas";
+import { changeNicknameBody, changePasswordBody, consentsBody, correctionBody, delegateBody, eraseBody, idParams, markReadBody, notificationsQuery } from "../schemas";
 import type { RouteDeps } from "../types";
 import { parseBody, parseParams, parseQuery } from "../validation";
 
@@ -52,6 +52,14 @@ export function registerMeRoutes(app: FastifyInstance, { services }: RouteDeps):
     // Mevcut oturum açık kalır; diğer tüm oturumlar kapatılır.
     await identity.changePassword(user.id, body.oldPassword, body.newPassword, req.authToken ?? undefined);
     return { ok: true };
+  });
+
+  // Takma ad değişikliği: şifre teyidi, tekillik + benzerlik denetimi, 30 günde bir, denetim kaydı.
+  app.patch("/api/me/nickname", async (req): Promise<Me> => {
+    const user = requireUser(req);
+    const body = parseBody(changeNicknameBody, req.body);
+    await identity.changeNickname(user.id, body.nickname, body.password);
+    return forum.community.me(user.id);
   });
 
   app.get("/api/me/export", async (req, reply): Promise<Record<string, unknown>> => {

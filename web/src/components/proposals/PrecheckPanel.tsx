@@ -1,14 +1,18 @@
 // Canlı ön denetim paneli (POST /api/proposals/precheck — yan etkisiz):
 // katman, karar parametreleri, ontoloji bulguları, YZ önerileri (danışma), benzer öneriler, salam taktiği
 // uyarıları, kişisel veri bulguları ve gerekli destekçi sayısı. Parametre ve bulgu görünümleri dışa da açıktır.
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { expandIri, type DecisionParams, type Finding, type PrecheckResponse, type Severity, type Tier } from "@forum/shared";
+import { getProposal } from "../../api/endpoints";
 import { useAuth } from "../../auth/AuthContext";
 import { useOntology } from "../../lib/categories";
 import { formatDuration, formatHours, formatPercent, formatRational, proposalRef } from "../../lib/format";
+import { isNativePlatform } from "../../lib/prefs";
 import { routes } from "../../lib/routes";
-import { AiLabel, Alert, Badge, Button, Card, Details, ErrorView, KeyValue, Spinner, StatusBadge, TierBadge, type Tone } from "../../ui";
+import { useAsync } from "../../lib/useAsync";
+import { AiLabel, Alert, Badge, Button, Card, Details, ErrorView, KeyValue, KindBadge, Modal, Spinner, StatusBadge, TierBadge, type Tone } from "../../ui";
+import { PlainText } from "../participation/common";
 
 export const TIER_EXPLAIN: Record<Tier, string> = {
   T0: "Olağan karar (yeni konu, alt konu). Onay yarıdan fazla olmalı ve anlamlı her görüş kümesinden asgari destek gelmeli (köprü testi).",
@@ -150,6 +154,47 @@ export function PrecheckSummary({ result, loading, stale }: { result: PrecheckRe
   );
 }
 
+/**
+ * Benzer önerinin önizlemesi (alt sayfa). Android uygulamasında `target="_blank"` yeni pencere açmaz, bağlantı aynı görünümde
+ * açılır ve yazılmakta olan öneri formu (yalnız bellekte tutulur) kaybolur. Bu yüzden yerel platformda benzer öneri sayfadan
+ * ayrılmadan burada gösterilir; donanım geri tuşu önce bu alt sayfayı kapatır.
+ */
+export function SimilarProposalPreview({ id, onClose }: { id: string; onClose: () => void }) {
+  const { categoryLabel } = useOntology();
+  const { data: p, error, loading, reload } = useAsync(() => getProposal(id), [id]);
+  return (
+    <Modal
+      open
+      sheet
+      size="lg"
+      onClose={onClose}
+      title={p ? `${proposalRef(p.seq)} ${p.title}` : "Benzer öneri"}
+      footer={
+        <Button variant="primary" onClick={onClose}>
+          Forma dön
+        </Button>
+      }
+    >
+      {loading && !p ? <Spinner block label="Öneri yükleniyor…" /> : null}
+      {error && !p ? <ErrorView error={error} title="Öneri yüklenemedi" onRetry={reload} compact /> : null}
+      {p ? (
+        <div className="stack-sm">
+          <div className="row">
+            <StatusBadge status={p.status} />
+            <KindBadge kind={p.kind} />
+            {p.categories.length ? <span className="small muted">{p.categories.map(categoryLabel).join(", ")}</span> : null}
+          </div>
+          <PlainText text={p.body} />
+          <p className="small muted mt-0">
+            Bu önizleme yazdığınız formu korur. Önerinin tartışmasına katılmak isterseniz önce formunuzu “Taslak kaydet” ile kaydedin, sonra
+            öneriyi Öneriler sayfasından açın.
+          </p>
+        </div>
+      ) : null}
+    </Modal>
+  );
+}
+
 export interface PrecheckPanelProps {
   result: PrecheckResponse | undefined;
   loading: boolean;
@@ -166,6 +211,9 @@ export interface PrecheckPanelProps {
 
 export function PrecheckPanel({ result, loading, error, stale, idleText, onRetry, selectedCategories = [], onAddCategory }: PrecheckPanelProps) {
   const { categoryLabel, rightLabel } = useOntology();
+  // Android: benzer öneri yeni pencerede açılamaz; formu kaybetmemek için alt sayfada önizlenir.
+  const native = isNativePlatform();
+  const [previewId, setPreviewId] = useState<string | null>(null);
   const busy = loading || !!stale;
   const selected = new Set(selectedCategories.map(expandIri));
 
@@ -344,9 +392,15 @@ export function PrecheckPanel({ result, loading, error, stale, idleText, onRetry
             <ul className="pre-similar">
               {result.similar.map((s) => (
                 <li key={s.id}>
-                  <Link to={routes.proposal(s.id)} target="_blank" rel="noopener">
-                    <span className="mono muted">{proposalRef(s.seq)}</span> {s.title}
-                  </Link>
+                  {native ? (
+                    <button type="button" className="pre-similar-open" aria-haspopup="dialog" onClick={() => setPreviewId(s.id)}>
+                      <span className="mono muted">{proposalRef(s.seq)}</span> {s.title}
+                    </button>
+                  ) : (
+                    <Link to={routes.proposal(s.id)} target="_blank" rel="noopener">
+                      <span className="mono muted">{proposalRef(s.seq)}</span> {s.title}
+                    </Link>
+                  )}
                   <span className="row">
                     <StatusBadge status={s.status} />
                     <span className="small muted">benzerlik {formatPercent(s.score, 0)}</span>
@@ -367,6 +421,7 @@ export function PrecheckPanel({ result, loading, error, stale, idleText, onRetry
   return (
     <Card title="Canlı ön denetim" subtitle="Yazdıkça yönetmeliğe göre denetlenir; hiçbir şey kaydedilmez." actions={header} className="pre-panel">
       {content}
+      {previewId ? <SimilarProposalPreview id={previewId} onClose={() => setPreviewId(null)} /> : null}
     </Card>
   );
 }

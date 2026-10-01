@@ -21,6 +21,12 @@ import { detectPii, PseudonymMasker, sanitizeForModel } from "./pii";
 const MAX_SUMMARY_MESSAGES = 400;
 const MAX_MESSAGE_CHARS = 2000;
 
+/**
+ * Model bir etiket için güven bildirmediğinde kullanılan temkinli varsayılan: orta güven aralığında (0,40–0,70) kalır;
+ * böylece güveni bilinmeyen bir etiket tek başına "yüksek güvenli etiket" sayılmaz.
+ */
+export const DEFAULT_LABEL_CONFIDENCE = 0.5;
+
 /** lintExpertReport için ek seçenek: bilirkişinin uzmanlık alanları (etiket ya da IRI) "out_of_domain" denetimine verilir. */
 export interface LintOptions extends AiCallOptions {
   domains?: string[];
@@ -108,11 +114,19 @@ export function createAiService(ctx: CoreContext, opts: AiServiceOptions = {}): 
       const pii = offline.pii;
       const labels = new Set(r.data.labels);
       let risk = r.data.risk as ModerationResult["risk"];
+      // Etiket başına güven: Claude'un kendi güveni; vermediyse aynı etiketi bulan yerel sezgiselin güveni; o da yoksa
+      // temkinli varsayılan (orta güven: uyarı + insan/bilirkişi incelemesi, tek başına "yüksek güven" sayılmaz).
+      const own = new Map<string, number>();
+      for (const c of r.data.labelConfidences ?? []) own.set(c.label, Math.max(own.get(c.label) ?? 0, c.confidence));
+      const local = new Map((offline.labelConfidences ?? []).map((c) => [c.label, c.confidence] as const));
       const piiHit = analyzeContent(text).hits.find((h) => h.local === "KisiselVeriIfsasi");
       if (piiHit) {
-        labels.add(labelIri(piiHit.local, mctx.contentLabels));
+        const iri = labelIri(piiHit.local, mctx.contentLabels);
+        labels.add(iri);
+        own.set(iri, Math.max(own.get(iri) ?? 0, piiHit.confidence));
         if (piiHit.severity > risk) risk = piiHit.severity;
       }
+      const labelConfidences = [...labels].map((label) => ({ label, confidence: own.get(label) ?? local.get(label) ?? DEFAULT_LABEL_CONFIDENCE }));
       const spanMap = new Map<string, { start: number; end: number; quote: string }>();
       for (const s of r.data.spans) {
         const q = s.quote.trim();
@@ -124,6 +138,7 @@ export function createAiService(ctx: CoreContext, opts: AiServiceOptions = {}): 
       return {
         risk,
         labels: [...labels],
+        labelConfidences,
         articleIds: [...new Set(r.data.articleIds)],
         spans: [...spanMap.values()].sort((a, b) => a.start - b.start || a.end - b.end),
         pii,
@@ -140,23 +155,36 @@ export function createAiService(ctx: CoreContext, opts: AiServiceOptions = {}): 
       const refToId = new Map<string, string>();
       const r = await ask(o, () => {
         let next = 1;
-        for (const m of subset) {
+        const reports = input.minorityReports ?? [];
+        for (const m of [...subset, ...reports]) {
           const k = /^K(\d+)$/.exec(m.pseudonym);
           if (k) next = Math.max(next, Number(k[1]) + 1);
         }
         const masker = new PseudonymMasker(next);
         const codes = new Map<string, string>();
+        const codeOf = (pseudonym: string): string => {
+          let code = /^K\d+$/.test(pseudonym) ? pseudonym : codes.get(pseudonym);
+          if (!code) {
+            code = `K${next++}`;
+            codes.set(pseudonym, code);
+          }
+          return code;
+        };
         const lines = subset.map((m, i) => {
           const ref = `m${i + 1}`;
           refToId.set(ref, m.id);
-          let code = /^K\d+$/.test(m.pseudonym) ? m.pseudonym : codes.get(m.pseudonym);
-          if (!code) {
-            code = `K${next++}`;
-            codes.set(m.pseudonym, code);
-          }
-          return { ref, pseudonym: code, group: clusterLabel(m.clusterId), stance: m.stance, body: sanitizeForModel((m.body ?? "").slice(0, MAX_MESSAGE_CHARS), masker) };
+          return { ref, pseudonym: codeOf(m.pseudonym), group: clusterLabel(m.clusterId), stance: m.stance, body: sanitizeForModel((m.body ?? "").slice(0, MAX_MESSAGE_CHARS), masker) };
         });
-        return summarizeRequest(sanitizeForModel(input.topicTitle, masker), lines);
+        // Azınlık bağlamı: grup nüfusları (en küçük anlamlı grup işaretli), köprü testini geçemeyen gruplar, raporlar.
+        const sizes = Object.entries(input.clusterSizes ?? {}).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+        const min = sizes.length >= 2 ? Math.min(...sizes.map(([, n]) => n)) : 0;
+        const max = sizes.length >= 2 ? Math.max(...sizes.map(([, n]) => n)) : 0;
+        const minority = {
+          groups: sizes.length >= 2 ? sizes.map(([g, n]) => ({ group: clusterLabel(g), members: n, smallest: min < max && n === min })) : [],
+          failed: (input.failedClusters ?? []).map((f) => ({ group: clusterLabel(f.clusterId), members: f.members, yes: f.yes, no: f.no })),
+          reports: reports.map((r) => ({ pseudonym: codeOf(r.pseudonym), group: clusterLabel(r.clusterId), body: sanitizeForModel((r.body ?? "").slice(0, MAX_MESSAGE_CHARS), masker) })),
+        };
+        return summarizeRequest(sanitizeForModel(input.topicTitle, masker), lines, minority);
       });
       if (!r) return { ...offline, ...OFF };
       const mapPoints = (ps: { text: string; cites: string[] }[]) =>

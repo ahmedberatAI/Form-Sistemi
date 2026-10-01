@@ -95,15 +95,18 @@ Faz geçişlerinin tek otoritesi sunucudaki zamanlayıcıdır.
 
 | Takma ad | Rol | Şifre |
 |---|---|---|
+| `admin` | Yönetici (kolay demo girişi) | `admin123` |
 | `yonetici` | Yönetici | `Yonetici123!` |
 | `kayitmemuru` | Kayıt memuru | `Kayit123!` |
 | `denetci` | Denetçi | `Denetci123!` |
-| `bk_enerji1`, `bk_enerji2`, `bk_saglik1`–`3`, `bk_imar1`, `bk_imar2` | Bilirkişi | `Bilirkisi123!` |
+| `bk_enerji1`–`6`, `bk_saglik1`–`6`, `bk_imar1`, `bk_imar2` | Bilirkişi | `Bilirkisi123!` |
 | `ayse`, `mehmet`, `zeynep` ve 43 üye daha | Üye | `Uye12345!` |
 
 Tohum verisi gerçek servislerden geçirilerek üretilir; bütün kayıtlar gerçek BFT defterden geçer. İçeriği:
 
-- **Hesaplar:** 56 doğrulanmış üye. Üç görüş bloğu (%60/%30/%10) ve bunlardan oluşan 3 görüş kümesi.
+- **Hesaplar:** 64 doğrulanmış üye. Üç görüş bloğu (%60/%30/%10) ve bunlardan oluşan 3 görüş kümesi. 14 bilirkişi; Enerji ve
+  Sağlık alanlarında 6'şar kişi olduğundan vitrin kuraları (#K-7, #K-32) uygun adayların bir kısmını dışarıda bırakır. Ek
+  bilirkişiler (`bk_enerji3`–`6`, `bk_saglik4`–`6`) oy/görüş verisi rızası vermediği için oy kullanmaz; yalnız bilirkişilik yapar.
 - **İçerik:** 14 konu (alt konular dahil), 34 öneri, 182 mesaj, 11 vekâlet.
 - **Bekleyenler ve kısıtlılar:**
   - 4 doğrulama bekleyen başvuru,
@@ -133,6 +136,7 @@ Tohum verisi gerçek servislerden geçirilerek üretilir; bütün kayıtlar ger�
 | Silme oylamasıyla gizlenen mesaj (mezar taşı ve yazarın cevabı) | #K-21 |
 | Yürürlükteki yönetmelik yaması (sürüm 2) | #K-5 |
 | Bilirkişi panelinden çıkar çatışmasıyla dışlanan aday | #K-7 |
+| Tohumlu ağırlıklı kura: uygun adayların bir kısmı seçilmez (aday tablosu ve ağırlıklar) | #K-7, #K-32 |
 
 ## 3. Android uygulaması
 
@@ -153,6 +157,8 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 - Gerçek telefonda: telefon ve bilgisayar aynı Wi-Fi ağında olmalı; uygulamada **Ayarlar → Sunucu adresi** alanına bilgisayarın yerel ağ
   adresini yazın (ör. `http://192.168.1.20:4000`) ve "Bağlantıyı sına" ile deneyin.
 - Donanım geri tuşu önce açık pencereyi/alt sayfayı kapatır, sonra uygulama içinde geri gider (`@capacitor/app`).
+- Uygulamada dosya indirme yoktur (WebView indirmeleri yok sayar): KVKK veri dökümü, Turtle ve makbuz yedeği kopyalanarak alınır;
+  "İndir" düğmeleri gizlenir ve "indirildi" denmez. Ön denetimdeki benzer öneriler, yazılan form kaybolmasın diye alt sayfada önizlenir.
 - Doğrulandı (Windows 11, Pixel 7 · API 34): giriş, oy + cihazda makbuz, "Oyum kayıtlı mı?", tarayıcıda yeniden sayım, geri tuşu,
   koyu tema. Ayrıntılar ve ekran görüntüleri: [TEST_RAPORU.md §3.3](docs/TEST_RAPORU.md), [`docs/ekran/`](docs/ekran/).
 
@@ -162,7 +168,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 |---|---|---|---|
 | 1 | Herkes konu açabilir ve düzenleme teklif edebilir | 5 öneri türü: yeni konu, alt konu, düzenleme teklifi, silme talebi, yönetmelik değişikliği. Canlı ön denetim; destekçi (eş imzacı) sayısı K_s = max(2, min(5, ⌈√üye/2⌉)). Tartışmada herkes metin önerebilir; yazarın tek başına vetosu yoktur. | Öneriler → Yeni öneri; `server/src/forum/proposals.ts` |
 | 2 | Konunun kabulü için çoğunluk onayı | Köprülü Çoğunluk: yeter sayı (q ve mutlak taban ⌈1,5√\|E\|⌉) + onay eşiği (T0 > %50, T1 ≥ %60, T2 ≥ 2/3) + anlamlı her görüş kümesinde Laplace desteği P_g ≥ φ | `shared/src/decision.ts`, [ALGORITMA.md](docs/ALGORITMA.md) §4 |
-| 3 | Adres, ad-soyad, doğum tarihi vb. bilgiler + takma ad | Kayıt formu; kimlik kasası alan bazında AES-256-GCM ile şifrelenir (kullanıcıya özel DEK, HKDF, AAD). TCKN ve e-posta için kör indeks var. Herkese açık yerlerde yalnız takma ad görünür. Kayıt memuru kişisel veriyi ancak amaç belirterek ve erişim kaydı tutularak görür; "Üyeyi sisteme gir" seçeneği de var. Üye kimlik verisinin düzeltilmesini gerekçesiyle talep eder; kayıt memuru amaçlı incelemeden sonra karar verir (KVKK md. 11/1-d). | Kayıt, Kayıt memuru; `server/src/identity/`, [KVKK.md](docs/KVKK.md) |
+| 3 | Adres, ad-soyad, doğum tarihi vb. bilgiler + takma ad | Kayıt formu; kimlik kasası alan bazında AES-256-GCM ile şifrelenir (kullanıcıya özel DEK, HKDF, AAD). TCKN ve e-posta için kör indeks var. Herkese açık yerlerde yalnız takma ad görünür. Takma ad tekildir (büyük/küçük harf ve I/ı farkı gözetilmez, "y0netici" gibi taklitler reddedilir) ve Profil'den şifre teyidiyle 30 günde bir değiştirilebilir. Kayıt memuru kişisel veriyi ancak amaç belirterek ve erişim kaydı tutularak görür; "Üyeyi sisteme gir" seçeneği de var. Üye kimlik verisinin düzeltilmesini gerekçesiyle talep eder; kayıt memuru amaçlı incelemeden sonra karar verir (KVKK md. 11/1-d). | Kayıt, Kayıt memuru; `server/src/identity/`, [KVKK.md](docs/KVKK.md) |
 | 4 | Konular oylamaya girer, kabul edilirse resmî konu olur | Yaşam döngüsü: taslak → destek → ontoloji denetimi → tartışma → oylama → itiraz/uzlaşma → yürürlük. Kabul edilen öneri `topics` kaydı olur ve sürüm geçmişi tutulur. | `server/src/forum/lifecycle.ts`, Konular |
 | 5 | Alt konular önerilip oylanır | `subtopic` önerisi: üst konu yürürlükte olmalı, kategoriler miras alınır. Kabul edilince konu ağacına eklenir. | Konu sayfası → "Alt konu öner" |
 | 6 | Yönetmelik ontoloji olarak modellenir ve konuları denetler | 24 maddelik Forum Yönetmeliği RDF/Turtle (T-kutusu + A-kutusu), N3 çıkarım kuralları ve SHACL şekilleriyle modellenir. Her öneri birleştirilmiş veri kümesi üzerinde denetlenir; katman ve parametreler "en koruyucu kazanır" ilkesiyle belirlenir. Değiştirilemez maddeler oylanamaz (T3). Yönetmelik yaması sürümlenir ve meta-kurallar (iki adımlı atlatma, yeni değiştirilemez madde yasağı, koruma alt/üst sınırları) geçerlidir. | `server/ontology/*`, `server/src/ontology/`, Yönetmelik sayfası, [YONETMELIK.md](docs/YONETMELIK.md) |
@@ -172,7 +178,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 | + | Android uygulaması ve web sitesi | Tek React kodu; Capacitor ile Android. Sunucu adresi ayarlanabilir. 360 px'de taşmasız. | `web/`, `web/android` |
 | + | Dağıtık defter | 4 doğrulayıcılı BFT (propose/prevote/precommit, tur değişimi, kilitleme), RFC 6962 Merkle, Ed25519 commit imzaları, bizans kanıtı, kurcalama tespiti ve onarım. Oy makbuzu ve sayım tarayıcıda doğrulanır. **Defterde kişisel veri yoktur.** | Defter, Oyum kayıtlı mı?; `server/src/ledger/` |
 | + | Bilirkişi entegrasyonu | Başvuru ve onay, alan eşleşmesi. Ağırlıklı kura: tohum önceden taahhüt edilen bloğun hash'inden alınır, çekiliş defterden yeniden üretilebilir. Graf tabanlı çıkar çatışması dışlaması, rapor şeması, hukuki nitelendirme denetimi (6754 s. Kanun md. 3/2), itibar formülü, askı kuralı. **Bilirkişi danışmandır, oyu 1'dir.** | Bilirkişiler; `server/src/experts/` |
-| + | Yapay zekâ entegrasyonu | Claude (`claude-opus-5-5`, yapılandırılmış çıktı, ret durumunda yedek model) ya da çevrimdışı sezgisel mod: sınıflandırma, moderasyon, tartışma özeti (azınlık görüşleri bölümü her zaman var), benzer öneriler (salam taktiği uyarısı), uzlaşma için köprü taslakları, bilirkişi raporu denetimi. Kişisel veri maskelenir, takma adlar K1, K2… olur. YZ'ye gönderim ayrı açık rızaya bağlıdır. **YZ yalnızca danışmandır; durum değiştirmez.** Her çıktı etiketlidir. | `server/src/ai/` |
+| + | Yapay zekâ entegrasyonu | Claude (`claude-opus-5-5`, yapılandırılmış çıktı, ret durumunda yedek model) ya da çevrimdışı sezgisel mod: sınıflandırma, moderasyon, tartışma özeti (azınlık görüşleri bölümü her zaman var), benzer öneriler (salam taktiği uyarısı), uzlaşma için köprü taslakları, bilirkişi raporu denetimi. Kişisel veri maskelenir, takma adlar K1, K2… olur. YZ'ye gönderim ayrı açık rızaya bağlıdır. **YZ yalnızca danışmandır; durum değiştirmez:** yüksek güvenli bir YZ içerik etiketi bile öneriyi kendi başına "yönetmeliğe aykırı" yapamaz, yalnızca uyarı ve bilirkişi incelemesi doğurur (Madde 12 (2), 14 (1)). Her çıktı etiketlidir. | `server/src/ai/` |
 | + | İnsanların grafta tutulması | graphology: takip, kefalet, vekâlet (likit demokrasi, cap ve H=3), yakınlık beyanı. PageRank, aracılar, Louvain (çapraz kontrol), SybilRank, kilit adım (lockstep) tespiti, kalıcı kaybeden göstergesi. | Graf; `server/src/graph/` |
 
 ## 5. Çoğunluk azınlığı nasıl tüketmez? (Ve azınlık çoğunluğu nasıl kilitleyemez?)
@@ -186,10 +192,10 @@ dengeleyen katmanlı bir tasarım kullanır.
 | **Köprülü Çoğunluk** (ALGORITMA §4). Görüş kümeleri oylardan PCA + k-means ile hesaplanır ve oylama açılışında dondurulur. Anlamlı her kümede P_g = (1+Y_g)/(2+Y_g+N_g) ≥ φ aranır. | Azınlık kümesinin aktif "hayır"ı kararı **tartışmalı** yapar ve uzlaşma turu açılır. | Laplace yumuşatması sayesinde boykot (oy vermemek) P_g = ½ verir; engel olmaz. Azınlık ancak aktif "hayır" ile ve yalnızca bir kez erteleyebilir. |
 | **Erteleyici, tek seferlik itiraz ("alarm zili")** (§6) | Kabulden sonra azınlık itiraz imzası toplayabilir: anlamlı bir kümede "hayır" verenlerin %75'i, ya da iki kümeden toplam %10 imza. | Her öneri yalnızca bir kez uzlaşmaya girer. İmza bütçesi 30 günde 2'dir. |
 | **Uzlaşma ve yeniden oylama** (§7, §4.3) | Azınlık raporu kalıcı olarak kaydedilir. YZ köprü taslakları üretir, bilirkişi görüşü alınır, yazar metni revize edebilir. | Yeniden oylamada **2/3 aşma eşiği** (ω) ile çoğunluk sonuca ulaşır. Sonuç kesindir. |
-| **Değiştirilemez çekirdek** (Yönetmelik Madde 3–6, 15, 19–21) | Eşit oy, temel hakların özü, gizli oy, tartışmanın silinmezliği ve azınlık korumasının kendisi **oylanamaz** (T3). | Çoğunluğun kendi politikasını "değiştirilemez" yapması (kalıcılaştırma) yasaktır. Koruma eşiklerinin üst sınırı da vardır: eşikler yükseltilerek azınlığa kalıcı veto verilemez. |
+| **Değiştirilemez çekirdek** (Yönetmelik Madde 3–6, 15, 19–21) | Eşit oy, temel hakların özü, gizli oy, tartışmanın silinmezliği ve azınlık korumasının kendisi **oylanamaz** (T3). | Çoğunluğun kendi politikasını "değiştirilemez" yapması (kalıcılaştırma) yasaktır. Koruma eşiklerinin üst sınırı da vardır: eşikler yükseltilerek azınlığa kalıcı veto verilemez. Köprü testi parametreyle dolaylı olarak da kapatılamaz: küme başına asgari oy (μ_votes) en çok 3'tür (daha büyüğü her kümeyi "nötr" saydırırdı); tartışma, oylama ve uzatma 24 saatten, T0–T2 uzlaşması 24 saatten kısa olamaz. |
 | **Temel hak kısıtlaması → nitelikli çoğunluk** | Bir hakkı kısıtlayan öneri en az T1 (≥ %60, φ = 0,40) olur. YZ ve üyeler bu bayrağı ekleyebilir; yalnızca bilirkişi kaldırabilir ("yalnızca yükseltme"). | YZ ya da sıradan bir üye bayrağı öneriyi geçersiz (T3) yapamaz; bunun için bilirkişi teyidi gerekir. |
 | **Silmede yazarın kümesi** (§10) | Bir görüşü susturmak için silme kullanılamaz: "görüş ayrılığı" gerekçe olamaz, 2/3 onay ve yazarın kendi kümesinde P ≥ ½ gerekir. | Acil daraltma süreli ve gerekçelidir. Talep sınırı vardır: açıkta en çok 3, günde 5. |
-| **Gizli oy, açık sayım** (§11) | Oy kimliğe bağlanamaz (`ballotId = HMAC(...)`). İtiraz imzacıları anonimdir. Görüş kümesi bilgisi yalnızca kişinin kendisine gösterilir (KVKK md. 6). | Herkes sayımı bültenden yeniden yapar (`verifyTally`); sonuç tartışmaya açık değildir. |
+| **Gizli oy, açık sayım** (§11) | Oy kimliğe bağlanamaz (`ballotId = HMAC(...)`). İtiraz imzacıları anonimdir. Görüş kümesi bilgisi yalnızca kişinin kendisine gösterilir (KVKK md. 6); iki dar istisna: açık sayım için silme oylamasında hedef mesaj yazarının kümesi bültende durur (arayüz grubu adıyla anmaz) ve azınlık raporu, yazara önceden söylenerek takma ad ve görüş grubuyla yayımlanır ([KVKK §4.3](docs/KVKK.md)). | Herkes sayımı bültenden yeniden yapar (`verifyTally`); sonuç tartışmaya açık değildir. |
 | **Vekâlet sınırı** (§5) | Tek bir delege en çok max(2, ⌈0,05·\|E\|⌉) başkasına ait oy taşır ve zincir en çok 3 adımdır. Doğrudan oy her zaman önceliklidir. | — |
 | **Küme manipülasyonuna karşı** (§9, §12) | Kümeleme permütasyon sıfır modeliyle sahte küme üretmez. Yalnızca ≥ 3 gün önce doğrulanmış hesaplar kümelemeye girer; kilit adım oylama tespit edilir. | — |
 
@@ -198,7 +204,7 @@ dengeleyen katmanlı bir tasarım kullanır.
 - **Çoğunluk tiranlığı:**
   - %10'luk bloğa zarar veren öneriler basit çoğunlukta %100 kabul edilir. KÇ'de ilk tur kabul oranı %9,6, nihai kabul %56,5'tir; bunların çoğu yalnızca 2/3 aşma eşiğiyle geçer.
   - Metin uzlaşmada yumuşatılınca kabul %96,9'a çıkar. Mekanizma önerileri öldürmez; azınlığı da kazanan bir metne zorlar.
-- **İyi önerileri engellemez:** geniş destekli önerilerde her iki yöntemde kabul oranı %100'dür; bedeli yaklaşık 5 günlük itiraz penceresidir.
+- **İyi önerileri engellemez:** geniş destekli önerilerde her iki yöntemde kabul oranı %100'dür. Ek bedel 48 saatlik itiraz penceresidir (T0); oylamanın başından yürürlüğe kadar toplam süre ortalama ≈ 5,3 gündür (72 saat oylama + 48 saat itiraz + seyrek yeniden oylama).
 - **Liberum veto yok:** %10'luk blok her öneriye "hayır" deyip itiraz etse bile çok popüler öneriler %100 oranında yürürlüğe girer.
 - **Boykot işe yaramaz:** nihai kabul %100'dür.
 - **Kalıcı kaybeden:** azınlığın istemediği halde kabul edilen kararların oranı %38,1'den %27,7'ye iner.
@@ -211,7 +217,7 @@ Ayrıntı: [MIMARI.md](docs/MIMARI.md).
 ```
   Web (React 19 + Vite)      Android (aynı kod, Capacitor 8)
   · verifyTally / verifyInclusionProof tarayıcıda · makbuzlar cihazda · doğrulayıcı anahtarları sabitlenir (TOFU)
-                     │  REST/JSON (Bearer)  — docs/API.md (95 uç nokta)
+                     │  REST/JSON (Bearer)  — docs/API.md (104 uç nokta)
 ┌────────────────────▼──────────────────────────────────────────────────────────┐
 │ Fastify 5  http/  (yetki U/V/VV/R/D/A/E · zod · hata biçimi · CORS · hız sınırı · web/dist + SPA)  │
 │ forum/   öneri · yaşam döngüsü (TEK otorite) · sayım · konu · tartışma · küme · topluluk          │
@@ -241,8 +247,18 @@ shared/  karar fonksiyonu (decide / evaluateObjection / verifyTally) · kripto �
 
 - Bu sistem düşük riskli topluluk yönetişimi içindir; siyasi seçim için tasarlanmamıştır. Sunucu, seçmen uygunluğu ve oy gizliliği
   konusunda güvenilir kabul edilir. Cihazda imzalı oy ve MACI benzeri zorlama direnci kapsam dışıdır (ALGORITMA §11).
-- Demo kurulumunda dört defter doğrulayıcısı aynı süreçte çalışır; arayüz bunu açıkça belirtir.
-- Çevrimdışı YZ sözlük tabanlıdır. Hak kısıtlaması tespiti yalnızca yükseltir; geçersizlik kararını bilirkişi verir.
+- Demo kurulumunda dört defter doğrulayıcısı aynı süreçte çalışır (ayrı anahtar ve ayrı depo, bellek içi ağ); arayüz bunu açıkça
+  belirtir. Doğrulayıcıyı ayrı süreçte başlatan bir komut yoktur; genişleme noktası `Transport` arayüzüdür ([MIMARI §4](docs/MIMARI.md)).
+- Çevrimdışı YZ sözlük tabanlıdır ve yanlış pozitif üretebilir. Bu yüzden YZ'nin hem hak kısıtlaması tespiti hem içerik etiketi yalnızca yükseltir (uyarı + bilirkişi); geçersizlik kararını kural tabanlı tespit ya da bilirkişi verir.
+  Yanlış pozitifleri azaltmak için sözlük eşleşmesi hedef çözümlemesiyle sınırlanır (`server/src/ai/targeting.ts`): nefret
+  söylemi için korunan grup adına bitişik aşağılama, grubu doğrudan hedef alan dışlama ("göçmen istemiyoruz") ya da açık
+  düşmanlık çağrısı gerekir; "göçmen çocukların okul dışında kalmasını istemiyoruz" gibi grubu koruyan cümleler etiketlenmez.
+  Bir projeye, karara ya da kuruma yönelik sert eleştiri ("aptalca proje") kişiye hakaret sayılmaz. İçerik etiketinin güveni,
+  modelin ya da sezgiselin o etiket için kendi bildirdiği güvendir (risk düzeyinden türetilmez); bildirilmemişse temkinli 0,5 kullanılır.
+- Tartışma özetinin azınlık bölümü, küme anlık görüntüsündeki **nüfusa** göre en küçük anlamlı kümenin mesajlarını, karar
+  kaydındaki azınlık raporlarını ve kesin sayım tartışmalıysa köprü testini geçemeyen kümenin "hayır" tarafını gösterir;
+  bunlar yoksa sayıca az olan tutumu (lehte/aleyhte) aktarır. Özetin kendisi yine danışma niteliğindedir.
+- Kategorileri yazar seçer (alt konu ve düzenleme üst konudan miras alır); üyeler başkasının önerisine kategori ekleyemez, yalnızca hak etkisi bayrağı ekleyebilir (Madde 8 (2)).
 - Anahtarlar demo ortamında dosyada (`server/data/keys`, 0600) tutulur; üretimde KMS ya da ortam değişkeni kullanılmalıdır.
   Ana anahtar `server/scripts/rotate-master-key.ts` ile döndürülebilir (DEK'ler yeni KEK ile yeniden sarılır; `--dry-run`).
 - Personel hesapları için iki faktörlü kimlik doğrulama yoktur; gerekçe ve telafi edici tedbirler [KVKK.md §8](docs/KVKK.md).

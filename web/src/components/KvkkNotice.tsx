@@ -17,8 +17,9 @@ export function KvkkNotice() {
       </p>
       <p>
         <strong>Saklama ve güvenlik:</strong> kimlik verileri alan bazında, size özel anahtarla şifrelenir (AES-256-GCM). Herkese açık hiçbir sayfada ve
-        dağıtık defterde kişisel veriniz bulunmaz; defterde yalnızca özetler ve kimliksiz taahhütler yer alır. Kişisel verilerinizi yalnızca kayıt
-        memuru ve denetçi, amaç belirterek ve erişim kaydı bırakarak görebilir.
+        dağıtık defterde kişisel veriniz bulunmaz; defterde yalnızca özetler ve kimliksiz taahhütler yer alır. Kişisel verilerinizi yalnızca yetkili
+        kayıt memuru, denetçi ve yönetici, amaç belirterek ve her erişim kayda geçirilerek görebilir; kişisel verinize kimin hangi amaçla eriştiğini
+        Profil sayfasındaki veri dökümünüzde görebilirsiniz.
       </p>
       <p>
         <strong>Aktarım:</strong> verileriniz üçüncü kişilere aktarılmaz. Yapay zekâ analizine içerik gönderilmesi ayrı açık rızanıza bağlıdır ve

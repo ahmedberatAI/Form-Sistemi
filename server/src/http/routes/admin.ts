@@ -1,7 +1,7 @@
 // Yönetim: simüle saat, zamanlayıcı, kullanıcılar ve roller, denetim günlüğü, görüş kümesi yeniden hesabı.
 import type { FastifyInstance } from "fastify";
 import { HOUR } from "../../core/clock";
-import type { AdminUserRow, AuditLogEntry, ClusterSnapshotView, Me, Role, TickResponse, UserStatus } from "@forum/shared";
+import { nicknameKey, type AdminUserRow, type AuditLogEntry, type ClusterSnapshotView, type Me, type Role, type TickResponse, type UserStatus } from "@forum/shared";
 import type { Transition } from "../../core/forum-contracts";
 import { json, type Db } from "../../db";
 import { requireRole } from "../auth";
@@ -47,7 +47,7 @@ function parseRoles(raw: string): Role[] {
 
 /** Yönetici kullanıcı listesi: yalnız takma ad ve hesap durumu; kişisel veri YOK. */
 export function listAdminUsers(db: Db, q: string | undefined, limit = 500): AdminUserRow[] {
-  const term = (q ?? "").normalize("NFKC").trim().toLocaleLowerCase("tr-TR");
+  const term = nicknameKey(q ?? ""); // nickname_norm ile aynı anahtar (I/ı katlamalı)
   const like = `%${term.replace(/[\\%_]/g, (c) => "\\" + c)}%`;
   const rows = db.all<AdminUserDbRow>(
     `SELECT u.id, u.nickname, u.status, u.roles, u.reputation, u.created_at, u.verified_at, u.is_adult, u.political_consent,

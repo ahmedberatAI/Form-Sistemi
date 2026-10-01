@@ -1,6 +1,6 @@
 // Yazarın öneri metnini düzenlemesi (taslak / tartışma / uzlaşma): her kayıt yeni sürüm üretir ve yeniden denetlenir.
 import { useState } from "react";
-import type { Finding, ProposalDetail } from "@forum/shared";
+import { PROPOSAL_TEXT_LIMITS as L, type Finding, type ProposalDetail } from "@forum/shared";
 import { errorMessage, isApiError } from "../../api/client";
 import { updateProposal } from "../../api/endpoints";
 import { useOntology } from "../../lib/categories";
@@ -27,7 +27,7 @@ export function ProposalEditor({ proposal: p, onSaved, onCancel, initialTitle, i
   const [error, setError] = useState<{ message: string; violations: Finding[] } | null>(null);
 
   const changed = title.trim() !== p.title || body.trim() !== p.body;
-  const valid = title.trim().length >= 5 && title.trim().length <= 200 && body.trim().length >= 20;
+  const valid = title.trim().length >= L.titleMin && title.trim().length <= L.titleMax && body.trim().length >= L.bodyMin;
 
   const save = async (acknowledgePii = false) => {
     setSaving(true);
@@ -58,8 +58,8 @@ export function ProposalEditor({ proposal: p, onSaved, onCancel, initialTitle, i
       }}
     >
       {note ? <p className="small muted">{note}</p> : null}
-      <Input label="Başlık" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} required hint="5–200 karakter" />
-      <Textarea label="Metin" value={body} onChange={(e) => setBody(e.target.value)} maxLength={20000} showCount rows={10} required hint="En az 20 karakter. Kayıt yeni sürüm oluşturur; eski sürümler silinmez." />
+      <Input label="Başlık" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={L.titleMax} required hint={`${L.titleMin}–${L.titleMax} karakter`} />
+      <Textarea label="Metin" value={body} onChange={(e) => setBody(e.target.value)} maxLength={L.bodyMax} showCount rows={10} required hint={`En az ${L.bodyMin} karakter. Kayıt yeni sürüm oluşturur; eski sürümler silinmez.`} />
       {changed ? (
         <Details summary="Değişiklikleri önizle">
           <DiffView before={`${p.title}\n\n${p.body}`} after={`${title.trim()}\n\n${body.trim()}`} context={2} label="Güncel metin ile farkı" />

@@ -13,6 +13,9 @@ import "./community.css";
 const LINT_MIN = 20;
 const LINT_MAX = 50_000;
 const BODY_MIN = 50;
+/** Azınlık güvenceli soruya asgari yanıt uzunluğu (sunucu da aynı kuralı uygular: 400 minority_question_unanswered). */
+const GUARANTEED_MIN = 10;
+const answerKey = (questionId: string) => `answer:${questionId}`;
 
 interface Draft {
   assessment: ExpertAssessment | null;
@@ -130,9 +133,14 @@ export function ExpertReportForm({ assignment, onSubmitted, onCancel }: { assign
     const errs: Record<string, string> = {};
     if (!assessment) errs.assessment = "Bir değerlendirme seçin.";
     if (body.trim().length < BODY_MIN) errs.body = `Rapor metni en az ${BODY_MIN} karakter olmalıdır.`;
+    for (const q of assignment.questions) {
+      if (q.minorityGuaranteed && (answers[q.id] ?? "").trim().length < GUARANTEED_MIN) {
+        errs[answerKey(q.id)] = `Azınlık güvenceli soru: yanıt zorunludur (en az ${GUARANTEED_MIN} karakter).`;
+      }
+    }
     setErrors(errs);
     if (Object.keys(errs).length) return;
-    const unanswered = assignment.questions.filter((q) => !(answers[q.id] ?? "").trim());
+    const unanswered = assignment.questions.filter((q) => !q.minorityGuaranteed && !(answers[q.id] ?? "").trim());
     const issues = lint?.issues.length ?? 0;
     if (issues > 0 || unanswered.length > 0) {
       const parts: string[] = [];
@@ -160,6 +168,11 @@ export function ExpertReportForm({ assignment, onSubmitted, onCancel }: { assign
       if (err instanceof ApiError && err.details && typeof err.details === "object") {
         const d = err.details as Record<string, unknown>;
         if (typeof d.body === "string") setErrors((x) => ({ ...x, body: d.body as string }));
+        // Bu arada yeni bir azınlık güvenceli soru sorulmuş olabilir: sunucu yanıtsız soruları bildirir.
+        if (Array.isArray(d.questionIds)) {
+          const ids = d.questionIds.filter((x): x is string => typeof x === "string");
+          setErrors((x) => ({ ...x, ...Object.fromEntries(ids.map((id) => [answerKey(id), "Azınlık güvenceli soru: yanıt zorunludur."])) }));
+        }
       }
     } finally {
       setBusy(false);
@@ -238,18 +251,30 @@ export function ExpertReportForm({ assignment, onSubmitted, onCancel }: { assign
               <div className="row">
                 <strong>Soru {i + 1}</strong>
                 {q.minorityGuaranteed ? (
-                  <Badge tone="accent" title="Azınlık görüşündeki üyelerin sorusu: yanıtlanması güvence altındadır">
+                  <Badge tone="accent" title="Azınlık görüşündeki üyelerin sorusu: yanıtlanması zorunludur">
                     azınlık güvenceli
                   </Badge>
                 ) : null}
               </div>
               <p className="cm-prewrap">{q.body}</p>
               <Textarea
-                label={`Soru ${i + 1} yanıtınız`}
+                label={`Soru ${i + 1} yanıtınız${q.minorityGuaranteed ? " (zorunlu)" : ""}`}
                 value={answers[q.id] ?? ""}
                 maxLength={10_000}
                 rows={3}
-                onChange={(e) => setAnswers((a) => ({ ...a, [q.id]: e.target.value }))}
+                required={q.minorityGuaranteed}
+                hint={q.minorityGuaranteed ? `Azınlık güvenceli soru: yanıtlanmadan rapor gönderilemez (en az ${GUARANTEED_MIN} karakter).` : undefined}
+                error={errors[answerKey(q.id)]}
+                onChange={(e) => {
+                  setAnswers((a) => ({ ...a, [q.id]: e.target.value }));
+                  if (errors[answerKey(q.id)]) {
+                    setErrors((x) => {
+                      const next = { ...x };
+                      delete next[answerKey(q.id)];
+                      return next;
+                    });
+                  }
+                }}
               />
             </div>
           ))}

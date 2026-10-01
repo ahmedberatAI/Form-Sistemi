@@ -2,6 +2,7 @@
 // Kullanmadan önce `await svc.init()` çağrılmalıdır.
 import {
   FY_NS,
+  PROPOSAL_TEXT_LIMITS,
   TIER_LABELS,
   compactIri,
   expandIri,
@@ -14,7 +15,7 @@ import {
   type RightInfo,
   type Tier,
 } from "@forum/shared";
-import type { CoreContext, OntologyService, ProposalAuditInput } from "../core/contracts";
+import type { CoreContext, LedgerService, OntologyService, ProposalAuditInput } from "../core/contracts";
 import { conflict, notFound, unprocessable } from "../core/errors";
 import type { Db } from "../db";
 import { patchedAbox, runAudit, type AuditEnv } from "./audit";
@@ -62,6 +63,20 @@ function toInfo(r: Omit<VersionRow, "ttl">): BylawVersionInfo {
 /** BYLAW_VERSION defter kaydı yapıldıktan sonra işlem özetini sürüme bağlar. */
 export function recordBylawLedgerTx(db: Db, version: number, txHash: string): void {
   db.run("UPDATE bylaw_versions SET ledger_tx = ? WHERE version = ?", txHash, version);
+}
+
+/**
+ * Kurucu yönetmeliği (sürüm 1) deftere sabitler: sürüm 1'in defter kaydı yoksa (ilk açılış, tohumlama ya da bu kayıttan
+ * önce kurulmuş bir veritabanı) `BYLAW_VERSION {version: 1, hash, proposalId: null}` gönderir ve özeti
+ * `bylaw_versions.ledger_tx`'e bağlar. Böylece sonraki sürümler gibi kurucu metnin de sonradan değiştirilmediği
+ * defterden kanıtlanır (ALGORITMA §11, Madde 23 (3)). İdempotenttir: kayıt varsa hiçbir şey yapmaz.
+ */
+export function anchorFoundingBylaw(ontology: Pick<OntologyService, "versions" | "setLedgerTx">, ledger: Pick<LedgerService, "submit">): string | null {
+  const v1 = ontology.versions().find((v) => v.version === 1);
+  if (!v1 || v1.ledgerTx) return null;
+  const { txHash } = ledger.submit("BYLAW_VERSION", { version: 1, hash: v1.hash, proposalId: null });
+  ontology.setLedgerTx(1, txHash);
+  return txHash;
 }
 
 class OntologyServiceImpl implements OntologyService {
@@ -310,7 +325,9 @@ class OntologyServiceImpl implements OntologyService {
   }
 
   validatePatch(patch: RegulationPatch): Promise<AuditReport> {
-    const body = String(patch?.rationale ?? "").trim() || "Yönetmelik değişikliği yaması";
+    // Yalnız yama denetlenir: kısa bir gerekçe, öneri metni uzunluk kuralına (Madde 7 (1)) takılmasın.
+    const rationale = String(patch?.rationale ?? "").trim();
+    const body = rationale.length >= PROPOSAL_TEXT_LIMITS.bodyMin ? rationale : `Yönetmelik değişikliği yaması. ${rationale}`.trim();
     return runAudit(this.env(), {
       kind: "regulation",
       title: "Yönetmelik yaması",

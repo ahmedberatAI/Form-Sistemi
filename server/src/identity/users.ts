@@ -1,5 +1,5 @@
 // users satırı ↔ PublicUser / Me dönüşümleri ve oy yeterliliği.
-import type { Me, PublicUser, Role, UserStatus } from "@forum/shared";
+import { publicJoinDay, type Me, type PublicUser, type Role, type UserStatus } from "@forum/shared";
 import type { AuthUser } from "../core/contracts";
 import { json, type Db } from "../db";
 
@@ -53,13 +53,15 @@ export function toPublicUser(
     isExpert: active,
     expertDomains: active ? json<string[]>(expert!.domains, []) : [],
     reputation: Number(row.reputation ?? 0),
-    joinedAt: Number(row.created_at),
+    // Herkese açık katılım tarihi güne yuvarlanır: tam an, defterdeki üyelik olaylarıyla eşleştirilmesin (KVKK.md §4.3).
+    joinedAt: publicJoinDay(Number(row.created_at)),
   };
 }
 
 export function toMe(row: UserRow, expert?: ExpertRowLike | null): Me {
   return {
     ...toPublicUser(row, expert),
+    joinedAt: Number(row.created_at), // yalnız sahibine: tam kayıt anı
     isAdult: row.is_adult === 1,
     aiConsent: row.ai_consent === 1,
     politicalConsent: row.political_consent === 1,

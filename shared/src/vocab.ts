@@ -140,3 +140,10 @@ export const TIER_IRIS = {
 
 /** Genel parametreler bireyi */
 export const GENERAL_PARAMS_IRI = fy("GenelParametreler");
+
+/**
+ * Öneri başlığı ve metni için uzunluk sınırları — Madde 7 (1) ve SHACL `title_length` / `body_length` şekilleriyle aynı
+ * (server/test/ontology/vocab.test.ts denetler). Sunucunun oluşturma/revizyon denetimi ve web formları bu sabiti kullanır;
+ * böylece ön denetim ile kayıt aynı sınırı uygular.
+ */
+export const PROPOSAL_TEXT_LIMITS = { titleMin: 5, titleMax: 200, bodyMin: 20, bodyMax: 20000 } as const;

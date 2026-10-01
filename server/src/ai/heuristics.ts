@@ -1,11 +1,9 @@
 // Çevrimdışı sezgisel mod: anahtar yokken (ya da Claude başarısız olunca) tam işlevsel, belirlenimci çıktılar.
 import { clusterLabel, compactIri, fy, type DiscussionSummary, type AiCitedPoint } from "@forum/shared";
-import type { ClassificationResult, ModerationResult, PiiFinding, SummaryInputMessage } from "../core/contracts";
+import type { ClassificationResult, ModerationResult, PiiFinding, SummaryInput, SummaryInputMessage } from "../core/contracts";
 import {
   ACCUSATION_WORDS,
   COPYRIGHT_CUES,
-  HATE_CUES,
-  INSULT_WORDS,
   LABEL_ARTICLE_KEYWORDS,
   LEGAL_MESSAGE,
   LEGAL_QUALIFICATION_PATTERNS,
@@ -13,13 +11,13 @@ import {
   OVERCLAIM_PATTERNS,
   OUT_OF_DOMAIN_MESSAGE,
   OUT_OF_DOMAIN_PATTERNS,
-  PROTECTED_GROUPS,
   SPAM_STRONG,
   SPAM_WEAK,
   THREAT_PHRASES,
 } from "./lexicons";
 import { detectPii, PseudonymMasker, redactPii } from "./pii";
 import { detectRights } from "./rights";
+import { detectHate, detectInsults } from "./targeting";
 import { clamp01, contentTokens, f5, findPhrase, lowerTr, normalizeTr, round3, sentences, STOPWORDS, tokenize, truncate, type Token } from "./text";
 
 export interface ClassifyContext {
@@ -95,7 +93,11 @@ function phraseHits(tokens: Token[], text: string, phrases: string[], strict = f
   return { spans, quotes };
 }
 
-export function analyzeContent(text: string): { hits: LabelHit[]; pii: PiiFinding[] } {
+/**
+ * İçerik sinyalleri. `criticism`: nesneye (proje, karar, kurum) yönelik olduğu için hakaret SAYILMAYAN sert ifadeler;
+ * yalnız gerekçede şeffaflık için anılır.
+ */
+export function analyzeContent(text: string): { hits: LabelHit[]; pii: PiiFinding[]; criticism: string[] } {
   const hits: LabelHit[] = [];
   const tokens = tokenize(text);
 
@@ -104,25 +106,16 @@ export function analyzeContent(text: string): { hits: LabelHit[]; pii: PiiFindin
     hits.push({ local: "Tehdit", confidence: threat.spans.length > 1 ? 0.95 : 0.9, severity: 3, spans: threat.spans, evidence: threat.quotes });
   }
 
-  const sents = sentences(text);
-  const hateSpans: Span[] = [];
-  const hateEvidence: string[] = [];
-  let hateCueMax = 0;
-  for (const s of sents) {
-    const st = tokens.filter((t) => t.start >= s.start && t.end <= s.end);
-    const groups = phraseHits(st, text, PROTECTED_GROUPS, true);
-    if (!groups.spans.length) continue;
-    const cues = phraseHits(st, text, HATE_CUES, true);
-    if (!cues.spans.length) continue;
-    hateSpans.push({ start: s.start, end: s.end });
-    hateEvidence.push(`${groups.quotes[0]} … ${cues.quotes[0]}`);
-    hateCueMax = Math.max(hateCueMax, cues.spans.length);
-  }
-  if (hateSpans.length) {
-    hits.push({ local: "NefretSoylemi", confidence: hateCueMax > 1 || hateSpans.length > 1 ? 0.85 : 0.75, severity: 3, spans: hateSpans, evidence: hateEvidence });
+  // Nefret söylemi: yalnız gruba bitişik niteleme, grubu doğrudan hedef alan dışlama ya da açık düşmanlık çağrısı
+  // (bkz. targeting.ts). Güven sinyalin hedefliliğine göre: hedefli 0,85; yalnız düşmanlık çağrısı 0,75; birden çok sinyal 0,9.
+  const hate = detectHate(text, tokens);
+  if (hate.spans.length) {
+    const confidence = hate.signals > 1 ? 0.9 : hate.targeted ? 0.85 : 0.75;
+    hits.push({ local: "NefretSoylemi", confidence, severity: 3, spans: hate.spans, evidence: hate.evidence });
   }
 
-  const insult = phraseHits(tokens, text, INSULT_WORDS);
+  // Hakaret: yalnız kişiye yönelen sözcükler; "aptalca proje", "aptal bir karar" gibi nesneye yönelik eleştiri sayılmaz.
+  const insult = detectInsults(text, tokens);
   const accusation = phraseHits(tokens, text, ACCUSATION_WORDS);
   if (insult.spans.length || accusation.spans.length) {
     const conf = insult.spans.length ? (insult.spans.length > 1 ? 0.9 : 0.8) : 0.5;
@@ -184,7 +177,7 @@ export function analyzeContent(text: string): { hits: LabelHit[]; pii: PiiFindin
   }
 
   hits.sort((a, b) => b.severity - a.severity || b.confidence - a.confidence || a.local.localeCompare(b.local));
-  return { hits, pii };
+  return { hits, pii, criticism: insult.objectDirected };
 }
 
 function matchArticles(labels: string[], text: string, articles: ModerateContext["articles"]): string[] {
@@ -206,7 +199,7 @@ function matchArticles(labels: string[], text: string, articles: ModerateContext
 }
 
 export function offlineModerate(text: string, ctx: ModerateContext): Offline<ModerationResult> {
-  const { hits, pii } = analyzeContent(text);
+  const { hits, pii, criticism } = analyzeContent(text);
   const risk = hits.reduce<0 | 1 | 2 | 3>((r, h) => (h.severity > r ? h.severity : r), 0);
   const piiByStart = new Map(pii.map((p) => [p.start, p]));
   const spanMap = new Map<string, { start: number; end: number; quote: string }>();
@@ -222,12 +215,17 @@ export function offlineModerate(text: string, ctx: ModerateContext): Offline<Mod
     .filter((s) => !all.some((o) => o !== s && o.start <= s.start && o.end >= s.end && o.end - o.start > s.end - s.start))
     .sort((a, b) => a.start - b.start || a.end - b.end);
   const locals = hits.map((h) => h.local);
+  const critique = criticism.length
+    ? ` ${criticism.map((q) => `«${truncate(q, 40)}»`).join(", ")} ifadesi bir projeye, karara ya da kuruma yönelik sert eleştiri olarak değerlendirildi; kişiye hakaret sayılmadı.`
+    : "";
   const rationale = hits.length
-    ? `Saptanan sinyaller: ${hits.map((h) => `${LABEL_NAMES[h.local] ?? h.local} (${(h.local === "KisiselVeriIfsasi" ? h.evidence : h.evidence.slice(0, 3)).map((e) => (h.local === "KisiselVeriIfsasi" ? e : `«${truncate(e, 60)}»`)).join(", ")})`).join("; ")}. Risk düzeyi: ${risk}/3 (${RISK_NAMES[risk]}). Bu değerlendirme çevrimdışı sezgisel yöntemle yapılmıştır; içerik gizlenmez, karar insanlara aittir.`
-    : "Belirgin bir risk sinyali (tehdit, hakaret, nefret söylemi, spam, kişisel veri) saptanmadı. Risk düzeyi: 0/3. Bu değerlendirme çevrimdışı sezgisel yöntemle yapılmıştır.";
+    ? `Saptanan sinyaller: ${hits.map((h) => `${LABEL_NAMES[h.local] ?? h.local} (${(h.local === "KisiselVeriIfsasi" ? h.evidence : h.evidence.slice(0, 3)).map((e) => (h.local === "KisiselVeriIfsasi" ? e : `«${truncate(e, 60)}»`)).join(", ")})`).join("; ")}. Risk düzeyi: ${risk}/3 (${RISK_NAMES[risk]}).${critique} Bu değerlendirme çevrimdışı sezgisel yöntemle yapılmıştır; içerik gizlenmez, karar insanlara aittir.`
+    : `Belirgin bir risk sinyali (tehdit, hakaret, nefret söylemi, spam, kişisel veri) saptanmadı. Risk düzeyi: 0/3.${critique} Bu değerlendirme çevrimdışı sezgisel yöntemle yapılmıştır.`;
   return {
     risk,
     labels: locals.map((l) => labelIri(l, ctx.contentLabels)),
+    // Etiket başına sezgiselin kendi güveni (risk düzeyinden türetilmez).
+    labelConfidences: hits.map((h) => ({ label: labelIri(h.local, ctx.contentLabels), confidence: h.confidence })),
     articleIds: matchArticles(locals, text, ctx.articles),
     spans,
     pii,
@@ -343,7 +341,7 @@ interface SMsg extends SummaryInputMessage {
   surfaces: Map<string, string>;
 }
 
-function maxPseudonymIndex(msgs: SummaryInputMessage[]): number {
+function maxPseudonymIndex(msgs: Pick<SummaryInputMessage, "pseudonym">[]): number {
   let max = 0;
   for (const m of msgs) {
     const r = /^K(\d+)$/.exec(m.pseudonym);
@@ -358,8 +356,8 @@ const listAuthors = (ms: SMsg[], max = 4): string => {
   return a.length > max ? `${a.slice(0, max).join(", ")} ve ${a.length - max} kişi daha` : a.join(", ");
 };
 
-export function offlineSummarize(input: { topicTitle: string; messages: SummaryInputMessage[] }): DiscussionSummary {
-  const masker = new PseudonymMasker(maxPseudonymIndex(input.messages) + 1);
+export function offlineSummarize(input: SummaryInput): DiscussionSummary {
+  const masker = new PseudonymMasker(maxPseudonymIndex([...input.messages, ...(input.minorityReports ?? [])]) + 1);
   const safe = (s: string, max = 140) => truncate(masker.mask(redactPii(s)), max);
   const firstSentence = (body: string, stem?: string) => {
     const ss = sentences(body);
@@ -458,32 +456,78 @@ export function offlineSummarize(input: { topicTitle: string; messages: SummaryI
     });
   }
 
-  // Azınlık görüşleri: en küçük küme(ler); küme yoksa sayıca az olan tutum.
+  // Azınlık görüşleri (tekrarsız, şu sırayla):
+  //  1) azınlık raporları — karar kaydına eklenen, karşı kümelerin yazdığı metinler (mesaj değildir, alıntı kimliği yok);
+  //  2) kesin sayım "tartışmalı" ise köprü testini geçemeyen kümelerin "hayır" (aleyhte) tarafı;
+  //  3) küme anlık görüntüsündeki NÜFUSA göre en küçük anlamlı küme(ler)in mesajları (verilmemişse, eski davranışla,
+  //     tartışmaya yazan farklı kişi sayısına göre en küçük küme);
+  //  4) bunlardan mesaj çıkmadıysa sayıca az olan tutum (lehte/aleyhte).
   const minorityViews: AiCitedPoint[] = [];
-  let minorityMsgs: { m: SMsg; why: string }[] = [];
-  if (multiCluster) {
+  const excerpt = (body: string) => {
+    const ss = sentences(body);
+    return safe(ss.length ? ss.slice(0, 2).map((s) => s.text).join(" ") : body, 240);
+  };
+  for (const r of (input.minorityReports ?? []).slice(0, 3)) {
+    const group = r.clusterId ? ` (${clusterLabel(r.clusterId)})` : "";
+    minorityViews.push({ text: `Azınlık raporu${group} — ${r.pseudonym}: "${excerpt(r.body)}"`, cites: [] });
+  }
+
+  const minorityMsgs: { m: SMsg; why: string }[] = [];
+  const addMinority = (m: SMsg, why: string) => {
+    if (!minorityMsgs.some((x) => x.m.id === m.id)) minorityMsgs.push({ m, why });
+  };
+
+  const failed = input.failedClusters ?? [];
+  const popSizes = input.clusterSizes ? Object.entries(input.clusterSizes) : null;
+  const smallest = new Map<string, number>();
+  if (popSizes) {
+    if (popSizes.length >= 2) {
+      const min = Math.min(...popSizes.map(([, n]) => n));
+      const max = Math.max(...popSizes.map(([, n]) => n));
+      if (min < max) for (const [c, n] of popSizes) if (n === min) smallest.set(c, n);
+    }
+  }
+  for (const f of failed) {
+    const con = msgs.filter((m) => m.clusterId === f.clusterId && m.stance === "con");
+    const size = smallest.has(f.clusterId) ? `en küçük anlamlı görüş grubu, ${f.members} üye` : `${f.members} üye`;
+    minorityViews.push({
+      text: `${clusterLabel(f.clusterId)} (${size}) kesin sayımda köprü testini geçemedi: ${f.yes} evet, ${f.no} hayır. Bu grubun "hayır" tarafı azınlıkta kaldı${
+        con.length ? `; tartışmada aleyhte yazanlar: ${listAuthors(con)}.` : "; tartışmada bu gruptan aleyhte mesaj yok."
+      }`,
+      cites: [],
+    });
+    for (const m of con) addMinority(m, `${clusterLabel(f.clusterId)} (köprü testini geçemeyen grup, aleyhte)`);
+  }
+  if (popSizes) {
+    for (const m of msgs) {
+      if (!m.clusterId || !smallest.has(m.clusterId) || m.stance === "question") continue;
+      addMinority(m, `${clusterLabel(m.clusterId)} (en küçük anlamlı görüş grubu, ${smallest.get(m.clusterId)} üye)`);
+    }
+  } else if (multiCluster) {
     const sizes = clusterIds.map((c) => ({ c, n: new Set(msgs.filter((m) => m.clusterId === c).map((m) => m.pseudonym)).size }));
     const min = Math.min(...sizes.map((s) => s.n));
     const max = Math.max(...sizes.map((s) => s.n));
     if (min < max) {
       const small = new Set(sizes.filter((s) => s.n === min).map((s) => s.c));
-      minorityMsgs = msgs
-        .filter((m) => m.clusterId && small.has(m.clusterId) && m.stance !== "question")
-        .map((m) => ({ m, why: `${clusterLabel(m.clusterId)} (azınlıktaki görüş grubu)` }));
+      for (const m of msgs) {
+        if (m.clusterId && small.has(m.clusterId) && m.stance !== "question") addMinority(m, `${clusterLabel(m.clusterId)} (azınlıktaki görüş grubu)`);
+      }
     }
   }
   if (!minorityMsgs.length && allPro.length && allCon.length && allPro.length !== allCon.length) {
     const side = allPro.length < allCon.length ? allPro : allCon;
     const label = side === allPro ? "lehte" : "aleyhte";
-    minorityMsgs = side.map((m) => ({ m, why: `Sayıca az olan ${label} görüş` }));
+    for (const m of side) addMinority(m, `Sayıca az olan ${label} görüş`);
   }
-  for (const { m, why } of minorityMsgs.slice(0, 4)) {
+  for (const { m, why } of minorityMsgs.slice(0, 6)) {
     minorityViews.push({ text: `${why} — ${m.pseudonym}: "${firstSentence(m.body)}"`, cites: [m.id] });
   }
   if (!minorityViews.length) {
     minorityViews.push({
       text: msgs.length
-        ? "Bu tartışmada belirgin bir azınlık görüşü saptanmadı: mesajlar tek bir görüş grubunda toplanıyor ya da gruplar eşit büyüklükte. Azınlık görüşleri ayrıca gözetilmelidir."
+        ? popSizes
+          ? "Bu tartışmada belirgin bir azınlık görüşü saptanmadı: topluluktaki anlamlı görüş gruplarının nüfusları eşit ya da tek bir anlamlı grup var ve lehte/aleyhte mesaj sayıları dengeli. Azınlık görüşleri ayrıca gözetilmelidir."
+          : "Bu tartışmada belirgin bir azınlık görüşü saptanmadı: mesajlar tek bir görüş grubunda toplanıyor ya da gruplar eşit büyüklükte. Azınlık görüşleri ayrıca gözetilmelidir."
         : "Henüz mesaj olmadığı için azınlık görüşü özetlenemedi.",
       cites: [],
     });

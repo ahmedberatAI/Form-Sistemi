@@ -6,7 +6,7 @@
 ## Özet
 
 - **Çoğunluk tiranlığı:** C'ye (%10) zarar veren önerilerde basit çoğunlukta kabul oranı %100,0. KÇ'de ilk tur kabul oranı yalnızca %9,6, nihai kabul %56,5 (çoğu yeniden oylamada ω = 2/3 ile). B'ye zararlı önerilerde basit çoğunluk %100,0, KÇ nihai %3,4; yalnız A'nın istediği önerilerde %99,7 → %2,3.
-- **İyi önerileri engellemiyor:** Geniş destekli önerilerde kabul oranı basit çoğunlukta %100,0, KÇ'de %100,0; zayıf ama ortak destekte %99,2 ve %97,8. Bedeli itiraz penceresi kadar gecikmedir (ortalama 5,3 gün).
+- **İyi önerileri engellemiyor:** Geniş destekli önerilerde kabul oranı basit çoğunlukta %100,0, KÇ'de %100,0; zayıf ama ortak destekte %99,2 ve %97,8. Ek bedel, kabul edilen önerilerde itiraz penceresi kadar (T0: 48 saat) gecikmedir; oylamanın başından yürürlüğe kadar toplam süre ortalama 5,3 gündür.
 - **Liberum veto yok:** %10'luk blok her öneriye aktif "hayır" deyip itiraz etse de çok popüler öneriler KÇ'de %100,0 oranında yürürlüğe giriyor (ortalama 9,1 gün; saf küme vetosunda %2,8). Aktif muhalefet yalnızca onayı 2/3'ün altında kalan önerileri durdurabiliyor (az farkla popüler: %5,8).
 - **Boykot işe yaramıyor:** C boykot ettiğinde nihai kabul %100,0 (bir kez uzatma oranı %12,2); aynı öneriye aktif "hayır" dendiğinde ilk tur contested oranı %91,0.
 - **Vekâlet sınırı:** Sınır (15) ile en yüklü delegenin taşıdığı oy ortalama 14,9 (|E| içindeki payı %5,0); sınırsız durumda 24,6 (%8,2). Sınır nedeniyle ortalama 10,0 kişinin oyu yönlendirilemiyor.

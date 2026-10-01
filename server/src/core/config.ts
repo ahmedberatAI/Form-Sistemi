@@ -22,11 +22,21 @@ export interface Config {
   timeScale: number;
   aiModel: string;
   aiEnabled: boolean;
+  /** Yalnızca "in-process" desteklenir: dört doğrulayıcı aynı süreçte, bellek içi ağla çalışır (MIMARI.md §4). */
   ledgerMode: "in-process" | "multi-process";
   ledgerBlockIntervalMs: number;
   corsOrigins: string[];
   webDist: string;
   ontologyDir: string;
+}
+
+/** LEDGER_MODE ortam değişkeni: desteklenmeyen değer sessizce yok sayılmaz, uyarıyla "in-process" kullanılır. */
+function ledgerModeFromEnv(): Config["ledgerMode"] {
+  const v = process.env.LEDGER_MODE?.trim();
+  if (v && v !== "in-process") {
+    console.warn(`[yapılandırma] LEDGER_MODE=${v} desteklenmiyor; defter doğrulayıcıları uygulama sunucusuyla aynı süreçte çalışır (in-process).`);
+  }
+  return "in-process";
 }
 
 function loadOrCreateSecret(dir: string, name: string): string {
@@ -51,7 +61,7 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
     timeScale: Number(process.env.TIME_SCALE ?? 60),
     aiModel: process.env.AI_MODEL ?? "claude-opus-5-5",
     aiEnabled: (process.env.AI_ENABLED ?? "auto") !== "false",
-    ledgerMode: (process.env.LEDGER_MODE as Config["ledgerMode"]) ?? "in-process",
+    ledgerMode: ledgerModeFromEnv(),
     ledgerBlockIntervalMs: Number(process.env.LEDGER_BLOCK_MS ?? 400),
     corsOrigins: (process.env.CORS_ORIGINS ?? "http://localhost,http://localhost:5173,capacitor://localhost,https://localhost")
       .split(",")

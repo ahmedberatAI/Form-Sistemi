@@ -16,7 +16,8 @@
 3. **Aydınlatma ≠ rıza.** Aydınlatma metninin okunduğu (`kvkkNoticeAccepted`) ile açık rızalar (`politicalConsent`,
    `aiConsent`) ayrı alanlardır. Aydınlatma, hizmetin önkoşuludur; açık rızalar değildir.
 4. **Defterde kişisel veri yoktur.** Dağıtık deftere ad, TCKN, adres, doğum tarihi, e-posta, telefon, takma ad, üye
-   kimliği ve kullanıcı↔oy bağı yazılmaz; yalnızca anahtarlı özetler (HMAC), taahhütler ve sayılar yazılır.
+   kimliği ve kullanıcı↔oy bağı yazılmaz; yalnızca anahtarlı özetler (HMAC), taahhütler ve sayılar yazılır. Görüş kümesi
+   bilgisinin açık sayım için deftere yazıldığı iki dar istisna §4.3'te açıklanır.
 5. **Kendi verisini silmek oylanmaz.** Silme talebi bir KVKK hakkıdır; çoğunluk oyuna bağlanamaz. **Kripto-imha** ile
    anında yerine getirilir.
 
@@ -27,16 +28,16 @@
 | 1 | Kimlik | Ad, soyad, T.C. kimlik no, doğum tarihi | Kimlik doğrulama; "bir kişi – bir hesap – bir oy"; reşitlik denetimi | md. 5/2-c (üyelik sözleşmesinin kurulması ve ifası); veri sorumlusu dernekse üye kayıt yükümlülüğü için md. 5/2-ç | Üyelik süresince; silme talebinde, başvuru reddinde ya da 180 gün doğrulanmayan başvuruda derhâl kripto-imha | `identity_vault.enc_*` — alan bazında AES-256-GCM. TCKN ayrıca `tckn_bidx` kör indeksi (HMAC) olarak |
 | 2 | İletişim | E-posta, telefon | Giriş (e-posta ile), hesap güvenliği bildirimleri | md. 5/2-c | Kimlik verisiyle aynı | Kasa (şifreli). E-posta ayrıca `email_bidx` kör indeksi. Telefon `+90…` biçimine normalleştirilir |
 | 3 | Adres | İl, ilçe, mahalle, açık adres, posta kodu | Kimlik doğrulama; bilirkişi kurasında hane/çıkar çatışması tespiti | md. 5/2-c, md. 5/2-f (karar sürecinin tarafsızlığında meşru menfaat) | Kimlik verisiyle aynı | Kasa (şifreli). `household_bidx` = normalize adresin HMAC'i (adresin kendisi değil) |
-| 4 | Kaba bölge | İl, ilçe | Bölgesel katılım istatistikleri | md. 5/2-f | Üyelik süresince; silmede NULL | `users.region_il`, `users.region_ilce` (şifresiz — minimizasyon gereği yalnız il/ilçe) |
-| 5 | Hesap | Takma ad, roller, durum, kayıt/doğrulama zamanı, itibar | Forumun işletilmesi | md. 5/2-c | Kalıcı (takma adlı); silmede takma ad "Silinmiş üye #…" olur | `users` |
+| 4 | Kaba bölge | İl, ilçe | Yalnızca üyenin kendi profilinde (`Me`) ve KVKK dökümünde gösterim; kasayı her istekte çözmemek için ayrı tutulur. **İstatistikte ya da başka bir amaçla kullanılmaz**, herkese açık hiçbir yanıtta yer almaz (bkz. §8 madde 11) | md. 5/2-c | Üyelik süresince; silmede NULL | `users.region_il`, `users.region_ilce` (şifresiz — yalnız il/ilçe; aynı bilgi kasada şifreli de durur) |
+| 5 | Hesap | Takma ad, roller, durum, kayıt/doğrulama zamanı, itibar | Forumun işletilmesi | md. 5/2-c | Kalıcı (takma adlı); takma ad kişi tarafından 30 günde bir değiştirilebilir; silmede takma ad "Silinmiş üye #…" olur | `users` (herkese açık katılım tarihi güne yuvarlanır; tam an yalnız sahibine) |
 | 6 | Kimlik doğrulama sırrı | Şifre özeti | Giriş | md. 5/2-c | Hesap süresince; silmede geçersiz kılınır | `users.password_hash` — scrypt (N=16384, r=8, p=1, 16 bayt tuz) |
 | 7 | Oturum | Oturum kimliği, açılış/bitiş/iptal zamanı | Hesap güvenliği | md. 5/2-c, md. 5/2-f | 180 gün (simüle saat) | `sessions`; belirtecin imzası veritabanında yoktur |
 | 8 | Rıza kayıtları | Aydınlatma okuma zamanı, siyasi görüş rızası, YZ rızası, değişiklik geçmişi | Rızanın ispatı | md. 5/2-ç (ispat yükü) | Hesap süresince; geçmiş denetim günlüğünde | `users.kvkk_notice_at`, `users.political_consent`, `users.ai_consent`, `audit_log` (`identity.consents`) |
 | 9 | **Siyasi görüş (özel nitelikli, md. 6)** | Oylar, öneriler, mesajlar, itirazlar, vekâletler, görüş kümesi | Katılımcı karar alma | **Oy için açık rıza (md. 6/3-a).** Herkese açık mesajlar için ayrıca md. 6/3-ç (alenileştirme iradesine uygunluk) ve veri sorumlusu siyasi amaçlı bir dernekse md. 6/3-g tartışılabilir | Tartışma kaydı ilkesi gereği kalıcı (takma adlı); bkz. §6 | `ballots`, `messages`, `proposals`… — yalnızca üye kimliğiyle. Defterde yalnızca `ballotId = HMAC(voteKey, …)` ve taahhüt |
-| 10 | YZ analizine giden içerik | Mesaj/öneri metni (maskelenmiş) | Danışma niteliğinde özet, sınıflandırma | **Ayrı açık rıza**, varsayılan kapalı; yurt dışına aktarım md. 9 | Sağlayıcının saklama koşulları; yerelde yalnız girdi/çıktı özeti | `ai_analyses` (özetler); sağlayıcıya giden metinde takma ad yerine K1, K2… |
+| 10 | YZ analizine giden içerik | Mesaj/öneri/azınlık raporu metni (maskelenmiş); özet için görüş grubu nüfusları ve kesin sayımın küme satırları (kişisel veri değil) | Danışma niteliğinde özet, sınıflandırma | **Ayrı açık rıza**, varsayılan kapalı; yurt dışına aktarım md. 9 | Sağlayıcının saklama koşulları; yerelde yalnız girdi/çıktı özeti | `ai_analyses` (özetler); sağlayıcıya giden metinde takma ad yerine K1, K2… |
 | 11 | Erişim günlükleri | Kişisel veriye kim, ne zaman, hangi amaçla eriştiği; giriş denemeleri | Hesap verebilirlik, ihlal tespiti (md. 12) | md. 5/2-ç, md. 5/2-f | En az 3 yıl (silme kayıtları dahil) | `pii_access_log`, `audit_log` (meta alanında kişisel veri yok) |
-| 12 | Bildirimler | Uygulama içi bildirim metinleri | Üyeyi bilgilendirme | md. 5/2-c | Hesap süresince | `notifications` |
-| 13 | Defter kayıtları | `memberRef` (HMAC), zaman, özetler | Değiştirilemez denetim izi | Kişisel veri içermez; `memberRef` anahtar olmadan kimliğe bağlanamaz | Kalıcı | Dağıtık defter (`MEMBER_REGISTERED {memberRef, at}`, `MEMBER_VERIFIED {memberRef}`, `MEMBER_ERASED {memberRef}`) |
+| 12 | Bildirimler | Uygulama içi bildirim metinleri | Üyeyi bilgilendirme | md. 5/2-c | Alıcının hesabı süresince. Metinde geçen başka bir üyenin takma adı, o üye takma adını değiştirince güncellenir; hesabı silinince ya da başvurusu reddedilince "Silinmiş üye #…" / "Reddedilen başvuru #…" olur | `notifications` |
+| 13 | Defter kayıtları | `memberRef` (HMAC), özetler (zaman yalnız blok zamanı) | Değiştirilemez denetim izi | Kişisel veri içermez; `memberRef` anahtar olmadan hesaplanamaz (zaman eşleştirmesine karşı önlemler: §4.3) | Kalıcı | Dağıtık defter (`MEMBER_REGISTERED {memberRef}`, `MEMBER_VERIFIED {memberRef}`, `MEMBER_ERASED {memberRef}`) |
 | 14 | Düzeltme talepleri | Düzeltilecek alan adları, önerilen değerler, gerekçe, durum, karar notu | KVKK md. 11/1-d düzeltme hakkının yerine getirilmesi | md. 5/2-ç (hukuki yükümlülük) | Öneri karar/geri çekme anında imha; gerekçe ve kayıt hesap süresince, silmede NULL | `identity_corrections` — öneri ve gerekçe kişinin DEK'iyle şifreli; alan adları ve durum şifresiz (değer yok) |
 
 **Veri aktarımı (md. 8–9):** Kimlik verileri hiçbir üçüncü kişiye aktarılmaz. Yalnızca YZ rızası veren üyelerin içerik
@@ -147,6 +148,8 @@ VOTE_KEY  → ballotId = HMAC(VOTE_KEY, userId‖proposalId‖round)   (oylama m
 | Kişisel veriyi görüntüleme (`getPii`) | Doğrulanmış kayıt memuru, denetçi, yönetici; **amaç zorunlu (≥ 5 karakter)** | Her erişim `pii_access_log` (aktör, üye, amaç, zaman) + `audit_log` (`identity.pii_access`). TCKN yalnızca maskeli (`123******90`) döner |
 | Üye doğrulama / reddetme, üyeyi sisteme girme | Kayıt memuru, yönetici (kendi hesabını doğrulayamaz) | `audit_log` (`identity.verify`, `identity.create_by_registrar`); serbest metin notu günlüğe yazılmaz, yalnızca `hasNote` |
 | Rol atama | Yalnızca yönetici; son yönetici kendini düşüremez | `audit_log` (`identity.roles`, eski/yeni roller) |
+| Takma ad değişikliği (`PATCH /api/me/nickname`) | Yalnızca kişinin kendisi; **mevcut şifreyle teyit**; 30 günde en çok bir kez; kayıt kuralı, tekillik ve benzerlik (taklit) denetimi | `audit_log` (`identity.nickname_change`; eski ve yeni takma ad **yazılmaz** — hesap sonradan silinirse eski takma ad kimliğe geri bağlanamasın; yalnız `caseOnly`). Kişiye bildirim |
+| Takma ad anahtarı göçü (I/ı katlaması, bir kez) | Sunucu başlarken | Çakışan sonraki hesap için `audit_log` `identity.nickname_conflict` (kişisel veri yok) ve kişiye bildirim |
 | Düzeltme talebini inceleme (`reviewCorrection`) | Kayıt memuru, denetçi, yönetici; **amaç zorunlu** | `pii_access_log` + `audit_log` (`identity.pii_access`, `correctionId`, alan adları) — değerler çözülmeden önce |
 | Düzeltme talebine karar (`decideCorrection`) | Kayıt memuru, yönetici; **önce kendisi amaçla incelemiş olmalı**; kendi talebine karar veremez | `audit_log` (`identity.correction_approved` / `_rejected`: yalnız alan adları, not var/yok) |
 | Ana anahtar dönüşümü | Sunucu yöneticisi (betik, sunucu kapalıyken) | `audit_log` (`identity.master_key_rotated`: yeniden sarılan/atlanan satır sayısı) |
@@ -154,13 +157,29 @@ VOTE_KEY  → ballotId = HMAC(VOTE_KEY, userId‖proposalId‖round)   (oylama m
 
 Denetim günlüğünün `meta` alanına kişisel veri yazılmaz (yalnızca karar, rol listesi, erişim amacı gibi bilgiler).
 Herkese açık hiçbir API yanıtında ad, soyad, TCKN, adres, doğum tarihi, e-posta ya da telefon yoktur; `Me` ve
-`PublicUser` yalnızca takma ad ve kaba bölge (yalnız sahibine) içerir.
+`PublicUser` yalnızca takma ad ve kaba bölge (yalnız sahibine) içerir. `PublicUser.joinedAt` (katılım tarihi) herkese açık
+yanıtlarda Türkiye saatine göre günün başına yuvarlanır; tam kayıt anı yalnız `Me`'de (sahibine) ve yönetici listesinde döner.
+
+**Takma ad tekilliği ve taklit.** Tekillik, giriş ve arama anahtarı (`nickname_norm`) NFKC + tr-TR küçük harf + I/ı/İ/i
+katlamasıdır (`shared/src/privacy.ts` `nicknameKey`): yalnız tr-TR küçültmesi ASCII "I"yı "ı" yaptığından "YONETICI" ile
+"yonetici" ayrı hesap olabiliyordu. Ayrıca benzerlik iskeleti (`nicknameSkeleton`: Türkçe harf → ASCII, şapkalı harf → düz,
+0 → o, 1 ve l → i, `.`/`_`/`-` atılır) açık bir hesabın takma adınınkiyle aynı olan takma ad kayıtta ve değişiklikte reddedilir
+(409 `similar_nickname`; ör. "Yönetici", "y0netici", "yonetici_"). Eski kuralla hesaplanmış anahtarlar sunucu açılışında bir
+kez yeniden hesaplanır (`meta.nickname_key_version = 2`); yeni kurala göre çakışan hesaplardan en eskisi anahtarı korur,
+sonrakiler e-postayla girer ve takma adını 30 günlük sınır olmadan değiştirmesi için bildirim alır. Takma ad değiştiğinde
+eski takma ad hemen serbest kalır (çoğu platformdaki gibi); benzerlik denetimi yalnız açık hesapların güncel takma adlarına
+bakar.
 
 ### 4.3 Defter ve oy gizliliği
 
-- Kimlik modülü deftere yalnızca `MEMBER_REGISTERED {memberRef, at}`, `MEMBER_VERIFIED {memberRef}` ve
-  `MEMBER_ERASED {memberRef}` yazar. `memberRef` üye kimliği değildir; ana anahtar olmadan hiçbir hesaba bağlanamaz
+- Kimlik modülü deftere yalnızca `MEMBER_REGISTERED {memberRef}`, `MEMBER_VERIFIED {memberRef}` ve
+  `MEMBER_ERASED {memberRef}` yazar. `memberRef` üye kimliği değildir; ana anahtar olmadan hiçbir hesaptan hesaplanamaz
   (testte tüm defter yükleri TCKN, ad, e-posta, telefon, adres, doğum tarihi, takma ad ve üye kimliği için taranır).
+  **Zaman eşleştirmesine karşı:** yükte kayıt anı yoktur (yalnız blok zamanı) ve herkese açık katılım tarihi güne yuvarlanır;
+  böylece defterdeki kayıt olayları, herkese açık üye listesindeki milisaniyelik katılım anıyla birebir eşleştirilip takma ada
+  bağlanamaz. **Kalan risk (dürüstçe):** bir günde tek bir kayıt olmuşsa o günün `MEMBER_REGISTERED` kaydı ile o gün katılan
+  tek üye yine eşleştirilebilir. Bu eşleşme yalnızca hesabın kayıt/doğrulama/silme olaylarını (zaten herkese açık hesap
+  durumunu) gösterir; oy, görüş kümesi ya da kişisel veri göstermez (oylar öneriye özel `ballotId` ile ayrıca korunur).
 - Oylar deftere `ballotId = HMAC(voteKey, userId‖proposalId‖round)` ve tuzlu taahhüt (`commit–reveal`) olarak gider;
   defterde kullanıcı↔oy bağı yoktur.
 - Mesaj özetleri tuzludur (`contentHash = SHA256(tuz ‖ metin)`); tuz defter dışındadır, bu yüzden özet metne geri
@@ -168,11 +187,27 @@ Herkese açık hiçbir API yanıtında ad, soyad, TCKN, adres, doğum tarihi, e-
 - **Görüş kümesi bilgisi kişinin kendisine özeldir.** Kişinin görüş kümesi, oy uzlaşısı topluluğu ve görüş haritasındaki
   koordinatları (özel nitelikli veri — siyasi görüş eğilimi) yalnızca kendisine gösterilir. Herkese açık görüş haritası anonim
   noktalardan oluşur, kimlik içermez ve noktalar kimliğe göre değil koordinata göre sıralanır. Herkese açık graf düğümleri
-  yalnızca sosyal ilişkileri (takip, kefalet, vekâlet) taşır.
+  yalnızca sosyal ilişkileri (takip, kefalet, vekâlet) taşır. Bu ilkenin bilinçli iki dar istisnası vardır:
+  - **Zorunlu istisna — silme oylamasında yazarın kümesi.** Silme (DEL) kararı hedef mesaj yazarının kendi kümesinde
+    `P ≥ 1/2` ister (ALGORITMA §4.1, §10, §12.3). Herkesin sonucu bültenden yeniden sayabilmesi (§11, `verifyTally`) için
+    yazarın küme kimliği `TALLY.authorClusterId` olarak deftere ve herkese açık bültene (`GET /api/proposals/:id/bulletin`)
+    yazılmak zorundadır; hedef mesajın yazarı takma adıyla göründüğünden, **yalnız silme talebinin hedefi olan mesajın
+    yazarı** için küme bilgisi bültenden çıkarılabilir. Bu bilgiyi defterden çıkarmak, azınlığı koruyan yazar kümesi kuralını
+    bağımsızca doğrulanamaz kılardı; açık sayım ilkesi bu yüzden önceliklidir. Etki azaltma: arayüz ve sonuç açıklaması
+    grubu adıyla anmaz ("Mesaj yazarının kendi görüş grubu"); bültende kümelerin oy dağılımı zaten kimliksizdir; defterde
+    yazar↔oy bağı yoktur (yazar silme oylamasında seçmen bile değildir).
+  - **Azınlık raporu — bilinçli kamusal beyan.** Azınlık raporu yazarın takma adı **ve görüş grubuyla** (`clusterId`)
+    herkese açık yayımlanır; `MINORITY_REPORT` defter kaydı da raporun kimliği ile grubu taşır. Grubu yalnız API yanıtından
+    gizlemek koruma sağlamazdı (defterdeki `reportId ↔ clusterId` eşleşmesiyle yine çıkarılır), raporun anlamı da "hangi
+    görüş grubunun itirazı" olmasındadır. Bu yüzden gizleme yerine **açık uyarı** seçildi: arayüz, yazmadan önce raporun
+    takma ad ve görüş grubuyla yayımlanacağını, deftere grup bilgisiyle yazılacağını, ilk tur "red" oyunu ve görüş grubunu
+    göstereceğini ve geri alınamayacağını söyler. Rapor yazmak isteğe bağlıdır; bilgi kişinin kendisince alenileştirilir
+    (md. 6/3-ç). Öneri sahibine giden bildirim rapor yazarını anmaz, yalnız grubunu söyler.
 - **İtiraz imzaları anonimdir.** İtiraz imzacısı ilk turda zorunlu olarak "red" oyu vermiş olduğundan, imzacının takma adını
   göstermek gizli oyu açığa çıkarırdı. Bu yüzden itiraz listesi başkalarına "Anonim imzacı" olarak görünür, kişi yalnızca kendi
   imzasını tanır; yalnızca sayı, küme ve gerekçe herkese açıktır. Azınlık raporu ise bilinçli bir kamusal beyandır ve yazarın
-  takma adıyla yayımlanır; arayüz yazmadan önce bunun ilk tur oyunu belli edeceğini açıkça söyler.
+  takma adı ve görüş grubuyla yayımlanır; arayüz yazmadan önce bunun ilk tur oyunu ve görüş grubunu belli edeceğini açıkça
+  söyler (yukarıdaki istisna).
 - **Defterde vekâlet ilişkisi yoktur.** Vekâlet kayıtları defterde sunucu sırrıyla anahtarlanmış bir taahhüttür
   (`HMAC(voteKey, from|to|kapsam|sıra|kenarId)`); az sayıda üyede kaba kuvvetle çözülemez.
 
@@ -195,10 +230,10 @@ Herkese açık hiçbir API yanıtında ad, soyad, TCKN, adres, doğum tarihi, e-
 | b | İşlenmişse bilgi talep etme | `GET /api/me/export` → `exportOwnData`: hesap, **çözülmüş kimlik verisi (tam TCKN dahil)**, rızalar, oturumlar, kişisel verisine kimin hangi amaçla eriştiği (`piiAccessLog`), hesabıyla ilgili denetim olayları, kendi öneri/mesaj/sürüm/oy/itiraz/azınlık raporu/vekâlet/ilişki/bilirkişi kayıtları ve bildirimleri. Döküm de denetim günlüğüne yazılır (`identity.export`) |
 | c | Amacını ve amaca uygun kullanılıp kullanılmadığını öğrenme | Aydınlatma metni; dökümdeki `processing` bölümü; `piiAccessLog`'daki erişim amaçları |
 | ç | Aktarıldığı üçüncü kişileri bilme | Aydınlatma metni (yalnız YZ sağlayıcısı, yalnız rızayla); `aiConsent` durumu dökümde |
-| d | Eksik/yanlış verinin düzeltilmesi | **Düzeltme talebi akışı** (§5.1): `POST /api/me/corrections` (Profil → "Kimlik bilgilerimi düzelt") → kayıt memuru amaç belirterek inceler (`POST /api/registrar/corrections/:id/review`) ve belgeyle doğruladıktan sonra karar verir (`…/decide`). Takma ad ve şifre bu akışın konusu değildir (kişi kendisi değiştirir). |
+| d | Eksik/yanlış verinin düzeltilmesi | **Düzeltme talebi akışı** (§5.1): `POST /api/me/corrections` (Profil → "Kimlik bilgilerimi düzelt") → kayıt memuru amaç belirterek inceler (`POST /api/registrar/corrections/:id/review`) ve belgeyle doğruladıktan sonra karar verir (`…/decide`). Takma ad ve şifre bu akışın konusu değildir; kişi bunları Profil sayfasından kendisi değiştirir: takma ad `PATCH /api/me/nickname` (mevcut şifreyle teyit, 30 günde bir, tekillik ve benzerlik denetimi), şifre `POST /api/me/password`. |
 | e | Silinmesi / yok edilmesi | `POST /api/me/erase` (`"SİL"` onayı + şifre) → `eraseSelf`: **kripto-imha**, oylamaya konmaz, anında |
 | f | (d) ve (e)'nin aktarılan üçüncü kişilere bildirilmesi | Kimlik verisi aktarılmadığından gerekmez; YZ sağlayıcısına giden metin takma adsız ve maskelidir |
-| g | Yalnızca otomatik sistemlerle analiz sonucu aleyhine bir sonuca itiraz | YZ yalnızca danışmandır: durum değiştirmez, içerik gizlemez, oy vermez; her YZ çıktısı etiketlidir; moderasyon önerileri insana gider |
+| g | Yalnızca otomatik sistemlerle analiz sonucu aleyhine bir sonuca itiraz | YZ yalnızca danışmandır: durum değiştirmez, içerik gizlemez, oy vermez; her YZ çıktısı etiketlidir; moderasyon önerileri insana gider. YZ'nin içerik etiketi (yüksek güvenli olsa bile) bir öneriyi otomatik olarak kabul edilemez kılmaz: yalnızca uyarı ve bilirkişi incelemesi doğurur, karar insanındır (Madde 12 (2), 14 (1)) |
 | ğ | Zararın giderilmesini talep | Veri sorumlusunun başvuru kanalı (aydınlatma metninde) |
 
 Başvuru süresi: en geç 30 gün (md. 13). Döküm ve silme anında yerine getirildiği için bu süre fiilen sıfırdır.
@@ -223,6 +258,7 @@ verisinin silinmesini isteyebilir ve bu oylamaya konamaz. Çözüm, **kimlik** i
 |---|---|
 | Kimlik kasası | `wrapped_dek` ve tüm `enc_*` alanları NULL; kör indeksler (TCKN, e-posta, hane) NULL. DEK artık hiçbir yerde olmadığından, eski bir kopyada şifreli metin kalsa bile çözülemez. Aynı TCKN/e-postayla yeniden kayıt mümkündür |
 | Hesap | Durum `erased`; takma ad `Silinmiş üye #<kısa>`; şifre özeti geçersiz; tüm oturumlar iptal; rızalar kapalı; kaba bölge NULL; roller yalnız `member` |
+| Bildirimler | Başkalarına gitmiş kayıtlı bildirim metinlerinde (ör. kayıt memurunun "\"ali\" takma adlı yeni üye…", "ali, mesajınızı yanıtladı") eski takma ad `Silinmiş üye #<kısa>` olur; böylece silinen takma ad personelin bildirim kutusunda ve dökümünde kalmaz. Değiştirilen yalnızca şablonların takma adı yazdığı biçimlerdir (tırnak içinde ya da gövde başında) |
 | Defter | `MEMBER_ERASED {memberRef}` eklenir; eski kayıtlar değişmez ama zaten kişisel veri içermez |
 | Mesajlar, öneriler, sürümler | **Silinmez.** Yazar artık "Silinmiş üye #…" olarak görünür; içerik, kimseye bağlanamayan takma adlı bir kayıt olarak kalır |
 | Oylar ve sayımlar | Kapanmış sayımlar değişmez (silme geriye etkili değildir); `ballots` satırları yalnızca artık kimliğe bağlanamayan üye kimliğini taşır |
@@ -247,6 +283,8 @@ edilir (KVKK silme yönetmeliği: periyodik imha en fazla 6 ayda bir).
 | Kayıt doğrulaması (zod 4, Türkçe hata iletileri) | `server/src/identity/validation.ts` |
 | `users` ↔ `PublicUser`/`Me`, `isVoter` | `server/src/identity/users.ts` |
 | `IdentityService` uygulaması | `server/src/identity/index.ts` |
+| Takma ad: anahtar/iskelet (`nicknameKey`, `nicknameSkeleton`), herkese açık katılım günü (`publicJoinDay`) | `shared/src/privacy.ts` |
+| Takma ad: benzerlik denetimi, anahtar göçü, bildirimlerde takma adın güncellenmesi/anonimleştirilmesi | `server/src/identity/nickname.ts`; arayüz: Profil → "Takma ad değiştir" |
 | Düzeltme talebi akışı (md. 11/1-d) | `server/src/identity/corrections.ts`; arayüz: Profil → "Kimlik bilgilerimi düzelt", Kayıt memuru → "Düzeltme talepleri" |
 | Ana anahtar dönüşümü (çekirdek + betik) | `server/src/identity/rotate.ts`, `server/scripts/rotate-master-key.ts` |
 | Testler (kasa, kör indeks, AAD, kripto-imha, döküm, defterde kişisel veri yokluğu…) | `server/test/identity/*.test.ts` |
@@ -294,6 +332,12 @@ edilir (KVKK silme yönetmeliği: periyodik imha en fazla 6 ayda bir).
 10. **Örgütsel tedbirler** (VERBİS kaydı, kişisel veri işleme envanteri, saklama-imha politikası, personel gizlilik
     taahhütleri, 72 saatlik ihlal bildirim planı — Kurul 2019/10) yazılımın dışındadır ve veri sorumlusunca yerine
     getirilmelidir.
+11. **Kaba bölgenin şifresiz kopyası.** `users.region_il/region_ilce` yalnızca kişinin kendi profilinde ve dökümünde
+    gösterilir; bölgesel istatistik ya da başka bir işlem **yoktur** (önceki sürümde amaç "bölgesel katılım istatistikleri"
+    yazıyordu, ancak bu işlem uygulanmamıştı; amaç gerçek kullanıma göre düzeltildi). Aynı bilgi kasada şifreli de durduğundan
+    daha sıkı minimizasyon için bu sütunlar kaldırılıp gösterim kasadan çözülerek yapılabilir. İleride bölgesel istatistik
+    eklenirse amaç yeniden yazılmalı, yalnız toplu sayılar verilmeli ve küçük gruplar bastırılmalıdır (ör. en az 5 kişi —
+    k-anonimlik).
 
 ### 8.1 Ana anahtar dönüşümü (`server/scripts/rotate-master-key.ts`)
 

@@ -1,7 +1,7 @@
 // Yönetmelik yaması: işlemlerin A-kutusuna uygulanması ve meta-kurallar
 // (aralıklar, koruma tabanları, kalıcılaştırma sınırları, döngüsüz overrides, değiştirilemez çekirdeğin değişmezliği).
 import { FY_NS, expandIri, type Finding, type RegulationPatch } from "@forum/shared";
-import { BylawModel, DURATION_PARAMS, TIER_PARAMS, type HolderInfo, type ParamDef } from "./model";
+import { BylawModel, DURATION_PARAMS, TIER_PARAMS, type HolderInfo, type ParamDef, type ParamKind } from "./model";
 import { art, fmtNum, makeFinding } from "./findings";
 import {
   RDF_TYPE,
@@ -234,6 +234,11 @@ interface Limit {
   article: string;
   code: string;
   scope: "tiers" | "all" | "votableTiers";
+  /**
+   * Sınır üçlüsü yürürlükteki sürümde yoksa (sınırdan önce kurulmuş eski bir veritabanı) uygulanan değer. Koruma
+   * taşıyıcısı değiştirilemez olduğu için eksik sınır yamayla eklenemez; kod en koruyucu varsayılanı uygular.
+   */
+  fallback?: number;
 }
 
 const LIMITS: Limit[] = [
@@ -242,6 +247,14 @@ const LIMITS: Limit[] = [
   { limit: "anlamliKumePayiAzami", param: "anlamliKumePayi", kind: "max", article: "Madde_5_1", code: "protection_floor", scope: "all" },
   { limit: "anlamliKumeAsgariUyeAzami", param: "anlamliKumeAsgariUye", kind: "max", article: "Madde_5_1", code: "protection_floor", scope: "all" },
   { limit: "kopruIcinAsgariKumelenmisAzami", param: "kopruIcinAsgariKumelenmis", kind: "max", article: "Madde_5_1", code: "protection_floor", scope: "all" },
+  // μ_votes üst sınırı: aksi halde her küme uzatmadan sonra "nötr" sayılır ve köprü testi dolaylı olarak kapanır.
+  { limit: "kumeBasinaAsgariOyAzami", param: "kumeBasinaAsgariOy", kind: "max", article: "Madde_5_1", code: "protection_floor", scope: "all", fallback: 3 },
+  // Süre tabanları: tartışma/oylama/uzatma (her katman) ve uzlaşma (T0–T2) sıfırlanarak azınlık raporu, uzatma ve
+  // köprü taslakları için süre ortadan kaldırılamaz.
+  { limit: "sureTartismaAsgari", param: "sureTartisma", kind: "min", article: "Madde_5_1", code: "protection_floor", scope: "tiers", fallback: 24 },
+  { limit: "sureOylamaAsgari", param: "sureOylama", kind: "min", article: "Madde_5_1", code: "protection_floor", scope: "tiers", fallback: 24 },
+  { limit: "sureUzatmaAsgari", param: "sureUzatma", kind: "min", article: "Madde_5_1", code: "protection_floor", scope: "tiers", fallback: 24 },
+  { limit: "sureUzlasmaAsgari", param: "sureUzlasma", kind: "min", article: "Madde_5_2", code: "protection_floor", scope: "votableTiers", fallback: 24 },
   { limit: "asmaEsigiAsgari", param: "asmaEsigi", kind: "min", article: "Madde_5_2", code: "protection_floor", scope: "tiers" },
   { limit: "sureItirazAsgari", param: "sureItiraz", kind: "min", article: "Madde_5_3", code: "protection_floor", scope: "votableTiers" },
   { limit: "yeterSayiAzami", param: "yeterSayi", kind: "max", article: "Madde_6_2", code: "entrenchment_cap", scope: "all" },
@@ -252,6 +265,21 @@ const LIMITS: Limit[] = [
   { limit: "vekaletSiniriOraniAzami", param: "vekaletSiniriOrani", kind: "max", article: "Madde_3_2", code: "equal_vote_limit", scope: "all" },
   { limit: "vekaletAzamiAdimAzami", param: "vekaletAzamiAdim", kind: "max", article: "Madde_3_2", code: "equal_vote_limit", scope: "all" },
 ];
+
+/** Bir sayının madde metinlerinde geçebileceği yazımlar: tamsayı (saat/sayı) ya da Türkçe ondalık, kesir, yüzde (oran). */
+function numberForms(v: number, kind: ParamKind | undefined): string[] {
+  if (kind !== "ratio") return Number.isInteger(v) ? [String(v)] : [v.toFixed(2).replace(".", ",")];
+  const forms = new Set<string>([v.toFixed(2).replace(".", ","), String(Math.round(v * 10000) / 10000).replace(".", ",")]);
+  for (const [n, d] of [[1, 2], [1, 3], [2, 3], [1, 4], [3, 4]] as const) if (Math.abs(v - n / d) < 5e-4) forms.add(`${n}/${d}`);
+  const pct = v * 100;
+  if (Math.abs(pct - Math.round(pct)) < 1e-6) forms.add(`%${Math.round(pct)}`);
+  return [...forms].filter((f) => f !== "0" && f !== "1");
+}
+
+/** Metin, sayıyı yazımlarından biriyle (başka bir sayının parçası olmadan) anıyor mu? */
+function mentionsNumber(text: string, v: number, kind: ParamKind | undefined): boolean {
+  return numberForms(v, kind).some((f) => new RegExp(`(?<![\\d.,/])${f.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}(?![\\d]|[.,/]\\d)`).test(text));
+}
 
 function holderName(h: HolderInfo): string {
   if (h.kind === "tier") return `${h.tierCode} katmanı (${h.label})`;
@@ -290,7 +318,8 @@ export async function checkPatchedBylaw(current: BylawModel, patchedAbox: Quad[]
 
   // 2. Koruma tabanları ve kalıcılaştırma sınırları (değerleri değiştirilemez taşıyıcılardan okunur)
   for (const lim of LIMITS) {
-    const bound = current.setParam(lim.limit);
+    const declared = current.setParam(lim.limit);
+    const bound = typeof declared === "number" ? declared : lim.fallback;
     if (typeof bound !== "number") continue;
     for (const h of patched.holders.values()) {
       if (lim.scope !== "all" && h.kind !== "tier") continue;
@@ -309,6 +338,33 @@ export async function checkPatchedBylaw(current: BylawModel, patchedAbox: Quad[]
             ? " (eşit oy ilkesi)"
             : " (azınlık koruması)";
       out.push(makeFinding(current, "violation", lim.code, art(lim.article), `${what} ${rel}${why}; ${holderName(h)} için önerilen değer ${fmtNum(v)}.`, h.iri));
+    }
+  }
+
+  // 2b. Madde metni ↔ parametre tutarlılığı (Madde 23 (1)): değeri değişen sayısal parametreyi metninde anan dayanak
+  //     madde aynı yamada yeni değere göre güncellenmelidir; aksi halde yönetmelik kendi içinde çelişir (ör. Madde 24 (4)
+  //     "en az 96 saat" derken sağlık kuralının oylama süresi 72 saat olur). Değiştirilemez taşıyıcılar zaten T3'tür.
+  for (const h of patched.holders.values()) {
+    const before = current.holders.get(h.iri);
+    if (!before || current.isImmutable(h.iri)) continue;
+    const article = h.article ? patched.articles.get(h.article) : undefined;
+    if (!article) continue;
+    for (const [k, v] of h.params) {
+      const old = before.params.get(k);
+      if (typeof v !== "number" || typeof old !== "number" || Math.abs(v - old) < 1e-9) continue;
+      const def = current.paramDefs.get(k);
+      if (!mentionsNumber(article.text, old, def?.kind) || mentionsNumber(article.text, v, def?.kind)) continue;
+      const what = def?.symbol ? `${def.label} (${def.symbol})` : def?.label ?? k;
+      out.push(
+        makeFinding(
+          current,
+          "violation",
+          "article_text_stale",
+          art("Madde_23_1"),
+          `${article.number || localName(article.iri)} metni, ${holderName(h)} için ${what} değerini hâlâ ${fmtNum(old)} olarak anıyor; önerilen değer ${fmtNum(v)}. Aynı yamaya bu maddenin metnini yeni değere göre güncelleyen bir “Madde metnini değiştir” (amendArticleText) adımı ekleyin.`,
+          article.iri,
+        ),
+      );
     }
   }
 

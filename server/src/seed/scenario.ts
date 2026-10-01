@@ -1,11 +1,11 @@
 // Tohum senaryosu: hesaplar, graf ve 1 Eylül'den "bugün"e uzanan karar geçmişi. Erken bölüm başlangıca (S),
 // tohum sonunda açık kalacak öneriler bitişe (E) göre zamanlanır; her evre geçişinde ilgili kanca çalışır.
-import { fy, type CreateProposalRequest, type RegistrationInput, type Role } from "@forum/shared";
+import { createRng, fy, type CreateProposalRequest, type RegistrationInput, type Role } from "@forum/shared";
 import { DAY, HOUR } from "../core/clock";
 import * as C from "./content";
 import type { MsgSpec, ProposalSpec } from "./content";
 import { SeedEngine, type PhaseEvent, type VoteSpec } from "./engine";
-import { PEOPLE, registrationFor, type Person } from "./people";
+import { EXTRA_STREAM_SEED, PEOPLE, registrationFor, type Person } from "./people";
 
 interface ReportSpec {
   assessment: "feasible" | "infeasible" | "uncertain";
@@ -473,7 +473,10 @@ export async function setupAccounts(e: SeedEngine): Promise<Map<string, Registra
   const usedTckn = new Set<string>();
   const addressOf = new Map<string, RegistrationInput["address"]>();
   const regs = new Map<string, RegistrationInput>();
-  for (const p of PEOPLE) regs.set(p.nickname, registrationFor(p, e.rng, { usedTckn, addressOf }));
+  // Ana akış önce (mevcut hesaplar aynı veriyi alır), sonra ayrı akıştan sonradan eklenen hesaplar: senaryonun rastgele akışı kaymaz.
+  for (const p of PEOPLE) if (!p.separateStream) regs.set(p.nickname, registrationFor(p, e.rng, { usedTckn, addressOf }));
+  const extraRng = createRng(EXTRA_STREAM_SEED);
+  for (const p of PEOPLE) if (p.separateStream) regs.set(p.nickname, registrationFor(p, extraRng, { usedTckn, addressOf }));
   const person = (n: string): Person => PEOPLE.find((p) => p.nickname === n)!;
 
   const admin = await s.identity.bootstrapAdmin(regs.get("yonetici")!);
@@ -483,6 +486,7 @@ export async function setupAccounts(e: SeedEngine): Promise<Map<string, Registra
   const staff: [string, Role][] = [
     ["kayitmemuru", "registrar"],
     ["denetci", "auditor"],
+    ["admin", "admin"],
   ];
   for (const [n, role] of staff) {
     const { user } = await s.identity.createByRegistrar(adminId, regs.get(n)!);

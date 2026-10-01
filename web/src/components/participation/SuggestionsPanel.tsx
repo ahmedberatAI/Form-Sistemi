@@ -1,5 +1,7 @@
 // Öneri içi metin önerileri: tartışma evresinde herkes değişiklik önerebilir (mevcut metin önceden doldurulur);
 // yazar kabul ederse yeni sürüm oluşur. Reddedilen öneriler herkese açık kalır ve ayrı öneri olarak açılabilir.
+// Yazar karar vermeden oylama başlarsa (ya da öneri kapanırsa) açık öneriler "Karar verilmeden kapandı" olur; bunlar da
+// herkese açık kalır ve ayrı öneri olarak açılabilir.
 import { useState } from "react";
 import type { ProposalDetail, Suggestion } from "@forum/shared";
 import { addSuggestion, decideSuggestion } from "../../api/endpoints";
@@ -10,10 +12,11 @@ import { Badge, Button, CopyButton, Details, DiffView, EmptyState, LinkButton, T
 import { UserLink } from "../UserLink";
 import { piiFromError, PiiNotice, SubHeading } from "./common";
 
-const STATUS: Record<Suggestion["status"], { label: string; tone: "info" | "success" | "danger" }> = {
+const STATUS: Record<Suggestion["status"], { label: string; tone: "info" | "success" | "danger" | "neutral"; title?: string }> = {
   open: { label: "Yazarın kararını bekliyor", tone: "info" },
   accepted: { label: "Kabul edildi", tone: "success" },
   rejected: { label: "Reddedildi (herkese açık)", tone: "danger" },
+  lapsed: { label: "Karar verilmeden kapandı", tone: "neutral", title: "Yazar karar vermeden tartışma evresi bitti; metin oylama başlarken kilitlendi." },
 };
 
 export interface SuggestionsPanelProps {
@@ -112,7 +115,9 @@ export function SuggestionsPanel({ proposal: p, onUpdated, onAdded, showHeading 
                 <div className="row small">
                   <UserLink id={s.authorId} nickname={s.authorNickname} />
                   <Time at={s.createdAt} className="muted" />
-                  <Badge tone={STATUS[s.status].tone}>{STATUS[s.status].label}</Badge>
+                  <Badge tone={STATUS[s.status].tone} title={STATUS[s.status].title}>
+                    {STATUS[s.status].label}
+                  </Badge>
                   {via ? <span className="muted">sürüm {via.version} olarak eklendi</span> : null}
                 </div>
                 <Details summary={s.status === "accepted" ? "Önerilen metin" : "Önerilen değişiklik (güncel metinle farkı)"}>
@@ -136,9 +141,11 @@ export function SuggestionsPanel({ proposal: p, onUpdated, onAdded, showHeading 
                     </Button>
                   </div>
                 ) : null}
-                {s.status === "rejected" ? (
+                {s.status === "rejected" || s.status === "lapsed" ? (
                   <div className="row small">
-                    <span className="muted">Öneren kişi bunu ayrı bir öneri olarak açabilir.</span>
+                    <span className="muted">
+                      {s.status === "lapsed" ? "Yazar karar vermeden tartışma evresi bitti. " : ""}Öneren kişi bunu ayrı bir öneri olarak açabilir.
+                    </span>
                     <CopyButton text={s.body} label="Metni kopyala" />
                     <LinkButton size="sm" to={routes.newProposal({ kind: p.kind, parentTopicId: p.parentTopicId ?? undefined })}>
                       Ayrı öneri olarak aç

@@ -51,7 +51,7 @@ Ek parametreler (ontolojide `fy:GenelParametreler`):
 |---|---|---|
 | `σ_share` | 0,10 | Anlamlı küme için asgari pay |
 | `σ_min` | 3 | Anlamlı küme için asgari üye sayısı |
-| `μ_votes` | 2 | Anlamlı kümede beklenen asgari oy sayısı (altındaysa bir kez uzatma yapılır) |
+| `μ_votes` | 2 | Anlamlı kümede beklenen asgari oy sayısı (altındaysa bir kez uzatma yapılır). Üst sınırı 3'tür (değiştirilemez Madde 5 (1), §12.20) |
 | `n_C,min` | 12 | Köprü testinin uygulanması için asgari kümelenmiş üye sayısı (soğuk başlangıç) |
 | `δ_cold` | +0,10 | Soğuk başlangıçta eşiğe eklenen artış: `τ' = max(τ, min(τ+δ_cold, 2/3))` (§4.4) |
 | `floor_abs` | `⌈1,5·√|E|⌉` | Mutlak asgari katılım (Debian benzeri). `q·|E|` ile birlikte büyük olanı geçerlidir. |
@@ -94,7 +94,7 @@ Kurallar:
 - Metin, `voting` başlarken kilitlenir. Değişiklik yalnızca `deliberation` ve `reconciliation` evrelerinde yapılabilir. Her değişiklik yeni bir sürüm üretir; eski sürümler silinmez.
 - **Alt konu:** Üst konu yürürlükte (`enacted` ile oluşmuş, `active`) olmalıdır. Kategorileri üst konudan miras alır (ekleme yapılabilir).
 - **Düzenleme teklifi:** Hedef, yürürlükteki bir konudur. Öneri `baseVersion` taşır. Kabul anında konunun güncel sürümü `baseVersion` değilse sonuç `rejected` olur ve gerekçesi "sürüm çakışması" yazılır.
-- **Tartışma içi öneriler (suggestion):** `deliberation` sırasında herkes metne değişiklik önerebilir. Yazar kabul ederse yeni sürüm oluşur ve öneren kişi anılır. Reddedilen öneriler herkese açık kalır ve öneren kişi bunu **ayrı bir öneri** olarak açabilir. Böylece yazarın tek başına veto hakkı yoktur.
+- **Tartışma içi öneriler (suggestion):** `deliberation` sırasında herkes metne değişiklik önerebilir. Yazar kabul ederse yeni sürüm oluşur ve öneren kişi anılır. Reddedilen öneriler herkese açık kalır ve öneren kişi bunu **ayrı bir öneri** olarak açabilir. Böylece yazarın tek başına veto hakkı yoktur. Yazar kararı (kabul ya da ret) yalnızca `deliberation` ve `reconciliation` evrelerinde verilebilir. Yazar karar vermeden bu evrelerden çıkılırsa (oylama başlar; ya da öneri geri çekilir, düşer veya kesin sonuca ulaşır) açık öneriler **karar verilmeden kapanır** (`lapsed`). Bu öneriler de herkese açık kalır, öneren kişiye bildirim gider ve öneri ayrı bir öneri olarak açılabilir. Böylece karar vermemek de sessiz bir veto olamaz.
 - Her durum geçişi deftere `PHASE_CHANGED {proposalId, from, to, textHash, at}` olarak yazılır.
 - Faz geçişlerinin tek otoritesi sunucudaki zamanlayıcıdır. Bu sayede web ve Android istemcileri hiçbir zaman farklı durum görmez.
 
@@ -212,7 +212,7 @@ Geçerli itiraz `reconciliation(origin=objection)` başlatır. Bir öneri yalnı
 
 Süre: §2'deki tabloya göre. Bu sürede şunlar yapılır:
 
-1. Yapay zekâ **iki çıktı** üretir: azınlık görüşleri özeti ve 4–8 arası "köprü taslağı" (Habermas Machine benzeri). İnsan onayı olmadan hiçbir şey değişmez.
+1. Yapay zekâ **iki çıktı** üretir: azınlık görüşleri özeti ve 4–8 arası "köprü taslağı" (Habermas Machine benzeri). İnsan onayı olmadan hiçbir şey değişmez. Özetin azınlık bölümü önerinin dondurulmuş küme anlık görüntüsünü kullanır: **nüfusa** göre en küçük anlamlı küme (tartışmaya yazan kişi sayısına göre değil), azınlık raporları ve köprü testini geçemeyen kümenin "hayır" tarafı.
 2. Karşı kümelerin üyeleri **azınlık raporu** yazabilir. Bu rapor karar kaydına kalıcı olarak eklenir.
 3. Yazar metni revize edebilir. Revizyon yeni bir sürüm üretir ve yeniden ontoloji denetiminden geçer. Denetimde ihlal çıkarsa revizyon reddedilir ve eski metin oylanır.
 4. Kategori bilirkişi gerektiriyorsa ve rapor yoksa ya da bir **karşı bilirkişi talebi** varsa yeni panel çekilir (§8).
@@ -227,7 +227,7 @@ Süre: §2'deki tabloya göre. Bu sürede şunlar yapılır:
 5. **Tohum:** `seed = SHA256(sonİşlenmişBlokHash ‖ proposalId ‖ round)`. Bu tohum deftere `EXPERT_DRAW` ile, aday listesi ve ağırlıklarla birlikte yazılır. Herkes çekilişi yeniden üretebilir.
 6. **Çekiliş:** Tohumlu sözde rastgele sayı üreteciyle, ağırlıklı ve yerine koymadan `k=3` kişi seçilir (aday azsa hepsi alınır). Adaylar kimliğe göre sıralanır; bu sıralama belirlenimciliği sağlar.
 7. Aday bulunamazsa üst kategoriye genişletilir. Yine yoksa "bilirkişi bulunamadı" bayrağı konur ve süreç durmaz.
-8. **Rapor şeması:** `assessment ∈ {feasible, infeasible, uncertain}`, `confidence ∈ [0,1]`, riskler, sorulara yanıtlar, karşı görüş. Hukuki nitelendirme yasaktır (6754 s. Kanun md. 3/2). Yapay zekâ denetleyicisi bu tür ifadeleri işaretler.
+8. **Rapor şeması:** `assessment ∈ {feasible, infeasible, uncertain}`, `confidence ∈ [0,1]`, riskler, sorulara yanıtlar, karşı görüş. Hukuki nitelendirme yasaktır (6754 s. Kanun md. 3/2). Yapay zekâ denetleyicisi bu tür ifadeleri işaretler. **Azınlık güvenceli soru** (en küçük anlamlı görüş kümesinden o öneriye sorulan ilk soru) yanıtlanmadan rapor kabul edilmez (yanıt en az 10 karakter); diğer soruların yanıtlanması yalnızca itibar ölçütüdür (madde 11).
 9. **Askı kuralı:** Rapor verenlerin ≥2/3'ü `infeasible` derse ve güven medyanı ≥0,8 ise tartışma bir kez, uzatma süresi kadar uzatılır. Oylama ekranında uyarı gösterilir. Eşik değişmez.
 10. Süre içinde rapor gelmezse oylama raporsuz başlar ve bu durum işaretlenir. Gecikme bilirkişinin itibarını düşürür.
 11. **İtibar:** `R' = 0,8R + 0,2·S`. `S ∈ [0,1]` şu kontrol listesiyle hesaplanır: zamanında teslim, tüm soruların yanıtlanması, alan içinde kalma, hukuki nitelendirme yapmama. Başlangıç değeri `R₀ = 0,75`'tir. **Çoğunlukla aynı fikirde olmak asla ödüllendirilmez.**
@@ -266,11 +266,11 @@ Tohum, `SHA256(sonBlokHash ‖ "cluster" ‖ zaman damgası)` olarak alınır.
 - faz geçişleri
 - oy taahhütleri `commit = SHA256(proposalId ‖ round ‖ ballotId ‖ choice ‖ salt)`
 - oylama sonunda tek bir `BALLOT_REVEAL` kaydı `[{ballotId, choice, salt, cluster, via}]`
-- sayım sonucu ve girdi özetleri
+- sayım sonucu ve girdi özetleri (DEL'de yeniden sayım için hedef mesaj yazarının küme kimliği `authorClusterId` dahil; bu, KVKK.md §4.3'te açıklanan zorunlu istisnadır ve arayüz grubu adıyla anmaz)
 - küme ve graf çalışma özetleri
 - bilirkişi çekilişleri
 - yapay zekâ çıktı özetleri
-- yönetmelik sürüm özetleri
+- yönetmelik sürüm özetleri (kurucu sürüm 1 dahil; ilk açılışta sabitlenir, §12.21)
 
 **Yok:** ad, soyad, TCKN, adres, doğum tarihi (şifreli halleri de yok), ham mesaj metni, kullanıcı ile oy arasındaki bağ.
 
@@ -295,7 +295,7 @@ Aşağıdaki maddeler spesifikasyonun belirsiz bıraktığı noktaları **en kor
 9. **Bilirkişi tohumunun öğütülmesine karşı.** Panel çekilişini yazar değil zamanlayıcı başlatır. Tohumdaki blok, tartışma evresi açılırken **önceden taahhüt edilen** yüksekliktir (`o anki yükseklik + 2`), yani çekiliş anı seçilerek uygun bir blok hash'i yakalanamaz.
 10. **Küme manipülasyonuna karşı.** Kümeleme girdisine yalnızca en az 3 gündür doğrulanmış hesapların oyları alınır. Anlık görüntü oylama açılışında dondurulur ve yeniden oylamada aynı görüntü kullanılır. Kilit adım (lockstep) oy grupları graf modülünde işaretlenir: tarama her **kesin** sayımda (ara sayımda değil) yapılır, sonucu **kararı değiştirmez**; yalnızca bütünlük uyarısı olarak denetim günlüğüne yazılır ve gösterilir (herkese grup sayısı ve büyüklüğü, üyeler yalnız denetçi/yöneticiye; deftere yazılmaz).
 11. **Hak etkisi bayrakları: yalnızca yükseltme.** Yazar dışındaki üyelerin ve yapay zekânın eklediği "temel hak kısıtlaması" bayrakları katmanı en fazla T1'e yükseltir, uyarı üretir ve bilirkişiyi zorunlu kılar. Öneriyi T3 (geçersiz) yapamazlar. Bayrağı yalnızca ilgili alandaki bilirkişi ya da yönetici kaldırabilir.
-12. **Silme talebi kötüye kullanımına karşı.** Bir kullanıcının aynı anda en fazla 3 açık silme talebi olabilir ve 24 saatte en fazla 5 talep açabilir. Acil gerekçeli daraltma, karar çıkana kadar sürer; talep reddedilir, düşer ya da geri çekilirse kaldırılır.
+12. **Silme talebi kötüye kullanımına karşı.** Bir kullanıcının aynı anda en fazla 3 açık silme talebi olabilir ve 24 saatte en fazla 5 talep açabilir. Acil gerekçeli daraltma, karar çıkana kadar sürer; talep reddedilir, düşer ya da geri çekilirse kaldırılır. Bir mesaj için aynı anda yalnızca bir etkin silme talebi açılabilir (kural talep oluşturulurken ve taslak gönderilirken denetlenir). İki istisna vardır: (a) geçersiz talep ("Görüş ayrılığı" gerekçeli ya da gönderimde yönetmeliğe aykırı bulunmuş) başka talebi engellemez; (b) mevcut talep acil değilse kişisel veri ifşası ya da tehdit gerekçeli talep yine açılır ve mesaj talep anında daraltılır (§10 madde 3). Böylece olağan bir talep, acil daraltmayı geciktiremez; bir mesajı aynı anda en çok bir olağan ve bir acil talep hedefler. Talepler ayrı ayrı oylanır; biri kabul edilirse mesaj gizlenir, öbürünün kabulü bir şey değiştirmez.
 
 ### r2 eklemeleri
 
@@ -306,3 +306,11 @@ Aşağıdaki maddeler spesifikasyonun belirsiz bıraktığı noktaları **en kor
 17. **Kümeleme yapı testi (§9).** Permütasyon sıfır modeli: `siluet ≥ 0,25` ve `siluet − siluet_sıfır ≥ 0,10`. Algoritma kimliği `pca2-kmeans-silhouette-null/2` olur. Kümeleme girdisinin süzülmesi (madde 10) çağıranın sorumluluğundadır.
 18. **İtiraz kümesi (§4.3, §6).** İmzacının kümesi ilk tur bülteninden alınır. Güçlü itiraz yalnızca anlamlı kümeler için değerlendirilir.
 19. **Bağımsız yeniden sayımda hata.** `verifyTally`, bozuk ya da uyumsuz bir `TALLY` kaydında (ör. T3 katmanı, `round = 2` ama `revote` yok) istisna fırlatmaz. Bunun yerine "Yeniden sayım yapılamadı: …" uyuşmazlığı raporlar ve `ok = false` döner.
+
+### Kabul denetimi sonrası eklemeler
+
+Bu maddeler karar fonksiyonunun sonucunu değiştirmez; nötr küme kuralının (madde 13) yönetmelik yamasıyla köprü testini dolaylı olarak kapatmasını önler ve sonuç açıklamasını dürüstleştirir.
+
+20. **Nötr küme kuralının dolaylı kötüye kullanımına karşı (§4.1, Madde 5).** Nötr küme kuralı, uzatmadan sonra `μ_votes`'un altında kalan anlamlı kümeyi köprü tabanından muaf tuttuğu için `μ_votes` her kümeden büyük seçilirse köprü testi fiilen kapanırdı. Bu yüzden değiştirilemez `fy:AzinlikKorumaSinirlari` `μ_votes ≤ 3` sınırını taşır; ayrıca her katmanda tartışma, oylama ve uzatma süreleri ile T0–T2 uzlaşma süresi 24 saatten kısa olamaz (sıfır saatlik uzatma ya da uzlaşma azınlık raporu, uzatma ve köprü taslakları için süre bırakmazdı). DEL'in tasarım gereği 0 olan itiraz ve uzlaşma süreleri (madde 5) bu tabanların dışındadır. Bu sınırları aşan yama T3'tür (`protection_floor`).
+21. **Kurucu yönetmeliğin deftere sabitlenmesi (§11).** Sürüm 1, sunucunun ilk açılışında (ya da tohumlamada) `BYLAW_VERSION {version: 1, hash, proposalId: null}` olarak deftere yazılır ve `bylaw_versions.ledger_tx`'e bağlanır; sonraki sürümler yürürlüğe girişte yazılır.
+22. **Nötr küme gerekçesinin dürüst gösterimi (§4.2).** Kabul gerekçesi "tüm anlamlı görüş gruplarında köprü desteği sağlandı" ifadesini yalnız nötr sayılan küme yoksa kullanır; nötr sayılan kümeleri adıyla anar, hepsi nötrse köprü desteğinin hiçbir grupta sınanamadığını yazar. Nötr küme satırı, muafiyet olmasaydı kümenin tabanın altında kalıp kalmayacağını da gösterir.

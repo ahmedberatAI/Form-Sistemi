@@ -246,7 +246,7 @@ export function RegistrationForm({ onSubmit, mode = "self", submitLabel, resetOn
             value={s.nickname}
             onChange={(e) => set("nickname", e.target.value)}
             error={errors.nickname}
-            hint="Forumda herkesin göreceği tek ad budur. Gerçek adınızı kullanmanız gerekmez."
+            hint="Forumda herkesin göreceği tek ad budur. Gerçek adınızı kullanmanız gerekmez. Kayıtlı bir takma ada çok benzeyenler (büyük/küçük harf, ş/s, 0/o farkı) kabul edilmez; sonradan Profil'den 30 günde bir değiştirebilirsiniz."
             maxLength={32}
           />
           <div />

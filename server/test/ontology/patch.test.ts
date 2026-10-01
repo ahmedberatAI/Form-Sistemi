@@ -1,5 +1,8 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import { fy, rat, type AuditReport, type RegulationPatch, type RegulationPatchOp } from "@forum/shared";
+import { SERVER_ROOT } from "../../src/core/config";
 import { makeCtx, type TestCtx } from "../helpers/fakes";
 import { createOntologyService } from "../../src/ontology";
 import { AppError } from "../../src/core/errors";
@@ -24,7 +27,12 @@ describe("validatePatch — meta-kurallar", () => {
   });
 
   it("olağan bir parametre değişikliği T2'de kabul edilebilir; nitelikli hükümde 3/4 ve 0,50", async () => {
-    const r = await svc.validatePatch(patch({ op: "setParam", rule: fy("KuralImar"), param: "sureTartisma", value: 144 }));
+    const r = await svc.validatePatch(
+      patch(
+        { op: "setParam", rule: fy("KuralImar"), param: "sureTartisma", value: 144 },
+        { op: "amendArticleText", article: fy("Madde_24_2"), text: "İmar ve kentsel dönüşüm kategorisindeki (deprem güvenliği dahil) önerilerde tartışma süresi en az 144 saattir." },
+      ),
+    );
     expect(r.tier).toBe("T2");
     expect(r.admissible).toBe(true);
     expect(r.params).toMatchObject({ tier: "T2", quorum: rat(2, 5), threshold: rat(2, 3) });
@@ -127,6 +135,79 @@ describe("validatePatch — meta-kurallar", () => {
     }
     const ok = await svc.validatePatch(patch({ op: "setParam", rule: fy("KatmanT0"), param: "kumeTabani", value: 0.25 }));
     expect(ok.admissible).toBe(true);
+  });
+
+  it("köprü testi dolaylı yoldan kapatılamaz: μ_votes üst sınırı ve süre tabanları (denetim bulgusu 1) → T3", async () => {
+    const cases: [RegulationPatchOp, string][] = [
+      // μ_votes her kümeden büyük olursa her küme uzatmadan sonra "nötr" sayılır ve köprü testi fiilen kapanır
+      [{ op: "setParam", rule: fy("GenelParametreler"), param: "kumeBasinaAsgariOy", value: 50 }, "Madde 5 (1)"],
+      [{ op: "setParam", rule: fy("GenelParametreler"), param: "kumeBasinaAsgariOy", value: 4 }, "Madde 5 (1)"],
+      [{ op: "setParam", rule: fy("KatmanT0"), param: "sureUzlasma", value: 0 }, "Madde 5 (2)"],
+      [{ op: "setParam", rule: fy("KatmanT2"), param: "sureUzlasma", value: 12 }, "Madde 5 (2)"],
+      [{ op: "setParam", rule: fy("KatmanT0"), param: "sureUzatma", value: 0 }, "Madde 5 (1)"],
+      [{ op: "setParam", rule: fy("KatmanT1"), param: "sureTartisma", value: 0 }, "Madde 5 (1)"],
+      [{ op: "setParam", rule: fy("KatmanT0"), param: "sureOylama", value: 12 }, "Madde 5 (1)"],
+      [{ op: "setParam", rule: fy("KatmanDEL"), param: "sureTartisma", value: 0 }, "Madde 5 (1)"],
+    ];
+    for (const [op, art] of cases) {
+      const r = await svc.validatePatch(patch(op));
+      expect(r.tier, JSON.stringify(op)).toBe("T3");
+      expect(r.admissible, JSON.stringify(op)).toBe(false);
+      const v = r.violations.find((f) => f.code === "protection_floor")!;
+      expect(v, JSON.stringify(op)).toBeDefined();
+      expect(v.articleLabel, JSON.stringify(op)).toBe(art);
+    }
+    // Sınırın içindeki değişiklikler olağandır; DEL'in tasarım gereği 0 olan uzlaşma süresi sınırın dışındadır
+    for (const op of [
+      { op: "setParam", rule: fy("GenelParametreler"), param: "kumeBasinaAsgariOy", value: 3 },
+      { op: "setParam", rule: fy("KatmanT0"), param: "sureUzlasma", value: 24 },
+      { op: "setParam", rule: fy("KatmanT0"), param: "sureUzatma", value: 48 },
+      { op: "setParam", rule: fy("KatmanDEL"), param: "sureOylama", value: 24 },
+    ] as RegulationPatchOp[]) {
+      const r = await svc.validatePatch(patch(op));
+      expect(r.admissible, JSON.stringify(op)).toBe(true);
+      expect(r.tier).toBe("T2");
+    }
+  });
+
+  it("sınır üçlüsü olmayan eski bir sürümde de μ_votes ve süre sınırları kod varsayılanıyla uygulanır", async () => {
+    const c = makeCtx();
+    const ttl = readFileSync(join(SERVER_ROOT, "ontology", "yonetmelik.ttl"), "utf8")
+      .replace(/ ; fy:kumeBasinaAsgariOyAzami 3 ;\s*fy:sureTartismaAsgari 24 ; fy:sureOylamaAsgari 24 ; fy:sureUzatmaAsgari 24 ; fy:sureUzlasmaAsgari 24 \./, " .");
+    expect(ttl).not.toContain("kumeBasinaAsgariOyAzami");
+    c.db.run("INSERT INTO bylaw_versions(version, ttl, hash, via_proposal_id, ledger_tx, created_at) VALUES (1, ?, ?, NULL, NULL, ?)", ttl, hashQuads(parseTurtle(ttl)), c.clock.now());
+    const { svc: old } = await fresh(c);
+    const mu = await old.validatePatch(patch({ op: "setParam", rule: fy("GenelParametreler"), param: "kumeBasinaAsgariOy", value: 50 }));
+    expect(mu.tier).toBe("T3");
+    expect(codes(mu)).toContain("protection_floor");
+    const rec = await old.validatePatch(patch({ op: "setParam", rule: fy("KatmanT0"), param: "sureUzlasma", value: 0 }));
+    expect(codes(rec)).toContain("protection_floor");
+  });
+
+  it("madde metni parametreyle çelişemez: değeri metinde geçen kural değişirse aynı yamada madde metni de güncellenmeli (Madde 23 (1))", async () => {
+    // Madde 24 (4): "… oylama süresi en az 96 saattir." — değer düşürülürse metin yanlış olurdu
+    const stale = await svc.validatePatch(patch({ op: "setParam", rule: fy("KuralSaglik"), param: "sureOylama", value: 72 }));
+    expect(stale.admissible).toBe(false);
+    expect(stale.tier).toBe("T2");
+    const v = stale.violations.find((f) => f.code === "article_text_stale")!;
+    expect(v).toBeDefined();
+    expect(v.articleLabel).toBe("Madde 23 (1)");
+    expect(v.message).toMatch(/Madde 24 \(4\) metni/);
+    expect(v.message).toMatch(/96/);
+    expect(v.message).toMatch(/amendArticleText/);
+    // Aynı yamada metin de güncellenirse kabul edilebilir
+    const fixed = await svc.validatePatch(
+      patch(
+        { op: "setParam", rule: fy("KuralSaglik"), param: "sureOylama", value: 72 },
+        { op: "amendArticleText", article: fy("Madde_24_4"), text: "Sağlık kategorisindeki önerilerde oylama süresi en az 72 saattir." },
+      ),
+    );
+    expect(fixed.admissible).toBe(true);
+    // Oran parametreleri Türkçe ondalıkla eşleşir: Madde 12 (2) "(0,70)"; Madde 24 (1) "0,30"
+    expect(codes(await svc.validatePatch(patch({ op: "setParam", rule: fy("KuralIcerikEtiketi"), param: "yuksekGuvenEsigi", value: 0.8 })))).toContain("article_text_stale");
+    expect(codes(await svc.validatePatch(patch({ op: "setParam", rule: fy("KuralButce"), param: "yeterSayi", value: 0.35 })))).toContain("article_text_stale");
+    // Metninde sayı geçmeyen dayanak (Madde 9 (2)) için ek adım gerekmez
+    expect(codes(await svc.validatePatch(patch({ op: "setParam", rule: fy("KatmanT0"), param: "sureTartisma", value: 96 })))).not.toContain("article_text_stale");
   });
 
   it("kalıcılaştırma sınırları ve eşit oy sınırları → T3", async () => {

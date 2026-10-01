@@ -306,7 +306,7 @@ export function ExpertPanelCard({ proposal: p, onUpdated }: { proposal: Proposal
             >
               <Textarea
                 label="Bilirkişiye soru sor"
-                hint="10–2000 karakter. En küçük anlamlı görüş grubundan gelen ilk soru “azınlık güvenceli” olur ve yanıtlanması zorunludur."
+                hint="10–2000 karakter. En küçük anlamlı görüş grubundan gelen ilk soru “azınlık güvenceli” olur: henüz rapor vermemiş bilirkişiler bu soruyu yanıtlamadan rapor gönderemez."
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
                 maxLength={2000}

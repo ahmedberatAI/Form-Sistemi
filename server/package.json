@@ -7,7 +7,6 @@
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "seed": "tsx src/seed.ts",
-    "ledger:node": "tsx src/ledger/standalone.ts",
     "test": "vitest run",
     "sim": "tsx scripts/simulate.ts",
     "typecheck": "tsc -p tsconfig.json"

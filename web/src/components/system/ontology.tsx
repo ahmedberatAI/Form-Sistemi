@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { compactIri, TIER_LABELS, type ArticleInfo, type CategoryNode, type GroundInfo, type OntologyOverview, type ProtectionLevel } from "@forum/shared";
 import { getOntologyVersions, getTurtle } from "../../api/endpoints";
-import { downloadText } from "../../lib/download";
+import { canDownloadFiles, downloadText } from "../../lib/download";
 import { formatDateTime, formatNumber, formatPercent, normalizeSearch } from "../../lib/format";
 import { routes } from "../../lib/routes";
 import { useAsync } from "../../lib/useAsync";
@@ -313,9 +313,12 @@ export function TurtleView({ versions, version, onVersion }: { versions: number[
         data ? (
           <div className="row">
             <CopyButton text={data} />
-            <Button size="sm" variant="ghost" onClick={() => downloadText(name, data, "text/turtle;charset=utf-8")}>
-              İndir
-            </Button>
+            {/* Android uygulamasında dosya indirilemez; yalnız kopyalama gösterilir. */}
+            {canDownloadFiles() ? (
+              <Button size="sm" variant="ghost" onClick={() => downloadText(name, data, "text/turtle;charset=utf-8")}>
+                İndir
+              </Button>
+            ) : null}
           </div>
         ) : null
       }

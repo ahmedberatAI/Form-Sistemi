@@ -136,7 +136,13 @@ function PendingItem({ u, canWrite, onDone }: { u: PendingUser; canWrite: boolea
       </div>
       {canWrite ? (
         <div className="stack-sm">
-          <Input label="Karar notu (isteğe bağlı)" value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} hint="Not denetim günlüğüne yazılır; kişisel veri yazmayın." />
+          <Input
+            label="Karar notu (isteğe bağlı)"
+            value={note}
+            maxLength={1000}
+            onChange={(e) => setNote(e.target.value)}
+            hint="En çok 1000 karakter. Not başvurana bildirim olarak gider; denetim günlüğüne yalnızca not olup olmadığı yazılır. Kişisel veri yazmayın."
+          />
           <div className="row">
             <Button size="sm" variant="primary" loading={busy === "approve"} disabled={!!busy} onClick={() => void decide("approve")}>
               Onayla

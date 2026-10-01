@@ -7,7 +7,7 @@ import { createAuditLogger } from "./core/audit";
 import { DbNotifier } from "./core/notifier";
 import { json, openDb, type Db } from "./db";
 import { createLedgerService } from "./ledger";
-import { createOntologyService } from "./ontology";
+import { anchorFoundingBylaw, createOntologyService } from "./ontology";
 import { createGovernanceMath } from "./governance";
 import { createGraphService } from "./graph";
 import { createIdentityService } from "./identity";
@@ -124,6 +124,8 @@ export async function createApp(config: Config, opts: CreateAppOptions = {}): Pr
     ledger = led;
     const ontology = createOntologyService(ctx);
     await ontology.init();
+    // Kurucu yönetmelik (sürüm 1) deftere sabitlenir (ilk açılış/tohumlama; kayıt varsa bir şey yapılmaz).
+    anchorFoundingBylaw(ontology, led);
     const graph = createGraphService(ctx, { ledger: led });
     const math = createGovernanceMath();
     const identity = createIdentityService(ctx, { ledger: led, notifier, audit });

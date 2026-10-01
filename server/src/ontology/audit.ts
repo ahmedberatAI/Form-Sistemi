@@ -160,7 +160,8 @@ function buildProposalGraph(env: AuditEnv, input: ProposalAuditInput): ProposalG
     add(a, fyN("etiket"), namedNode(iri));
     add(a, fyN("guven"), decimalLiteral(Math.round(Math.min(1, Math.max(0, Number(l.confidence) || 0)) * 10000) / 10000));
     add(a, fyN("guvenDuzeyi"), fyN(confidenceLevel(Number(l.confidence), high, mid)));
-    add(a, fyN("kaynak"), fyN(l.source === "rule" ? "KaynakKural" : "KaynakYZ"));
+    // Kaynak: yalnız kural tabanlı tespit ve bilirkişi teyidi yüksek güvende ihlal doğurur; YZ etiketi danışmadır (K6).
+    add(a, fyN("kaynak"), fyN(l.source === "rule" ? "KaynakKural" : l.source === "expert" ? "KaynakBilirkisi" : "KaynakYZ"));
   });
 
   // Üst konu (alt konu) / hedef konu (düzenleme)
@@ -189,7 +190,7 @@ function buildProposalGraph(env: AuditEnv, input: ProposalAuditInput): ProposalG
   return { node: p, quads: qs, findings, explicitCategories: explicit, rights };
 }
 
-const ENRICH_CODES = new Set([...T3_CODES, "advisory_core_right_flag", "content_label_high", "content_label_medium", "deletion_ground_invalid"]);
+const ENRICH_CODES = new Set([...T3_CODES, "advisory_core_right_flag", "content_label_high", "content_label_ai_high", "content_label_medium", "deletion_ground_invalid"]);
 
 /** SHACL bulgusunu, ilgili değerlerin adlarıyla zenginleştirerek Finding'e çevirir. */
 function toFinding(env: AuditEnv, store: Store, sf: ShaclFinding, proposalIri: string): Finding {
@@ -361,8 +362,12 @@ export async function runAudit(env: AuditEnv, input: ProposalAuditInput): Promis
     tierRule = activeRules.find((r) => model.tierByIri(r.minTier)?.tierCode === "DEL") ?? null;
   }
 
-  // Bilirkişi: yazar talebi, orta güvenli içerik etiketi ya da bilirkişi gerektiren (devre dışı kalmamış) bir kural
-  const requiresExpertClass = !!input.requestExpert || store.getObjects(p, fyN("ortaGuvenliEtiket"), null).length > 0;
+  // Bilirkişi: yazar talebi, orta güvenli ya da YZ kaynaklı yüksek güvenli içerik etiketi veya bilirkişi gerektiren
+  // (devre dışı kalmamış) bir kural
+  const requiresExpertClass =
+    !!input.requestExpert ||
+    store.getObjects(p, fyN("ortaGuvenliEtiket"), null).length > 0 ||
+    store.getObjects(p, fyN("danismaYuksekGuvenliEtiket"), null).length > 0;
   const explicit = [...new Set([...graph.explicitCategories, ...inherited])];
   let expertDomains = explicit.filter((c) => model.effectiveRequiresExpert(c));
   if (expertDomains.length === 0) expertDomains = explicit.length ? explicit : categories;
