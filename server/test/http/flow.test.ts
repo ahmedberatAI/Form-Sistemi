@@ -111,7 +111,11 @@ describe("HTTP entegrasyonu (createApp + fastify.inject)", () => {
     const bad = await h.req("POST", "/api/proposals", { token: m.token, body: { kind: "kanun", title: "", body: 3 } });
     expect(bad.statusCode).toBe(400);
     expect(bad.json().error.code).toBe("validation");
-    expect(Object.keys(bad.json().error.details).sort()).toEqual(["body", "kind", "title"]);
+    // Başlık şemada isteğe bağlıdır (ön denetim/otomatik silme başlığı); uzunluğu forum servisi alan bazlı doğrular
+    expect(Object.keys(bad.json().error.details).sort()).toEqual(["body", "kind"]);
+    const shortTitle = await h.req("POST", "/api/proposals", { token: m.token, body: { kind: "topic", title: "", body: "Yeterince uzun bir öneri gövdesi metni.", categories: ["fy:Ulasim"] } });
+    expect(shortTitle.statusCode).toBe(400);
+    expect(Object.keys(shortTitle.json().error.details)).toContain("title");
 
     const nf = await h.req("GET", "/api/yok/boyle-bir-sey");
     expect(nf.statusCode).toBe(404);
