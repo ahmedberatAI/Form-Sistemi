@@ -91,6 +91,7 @@ ontoloji IRI sabitleri ve API tipleri. Böylece bir oylama sonucunu tarayıcı y
 | Defter düğümleri | ≥ 3/4 dürüst | Tek bir düğümün kopyası (kurcalama tespit edilir) |
 | Yapay zekâ | Hiçbir karar | Tüm çıktılar danışma niteliğinde, etiketli, insan onayı olmadan durum değiştirmez |
 | Bilirkişi | Hiçbir karar (oyu 1) | Kura tohumu ve aday ağırlıkları defterde; herkes kurayı yeniden üretebilir |
+| Herkese açık API | — | Kişisel veri yok; görüş kümesi ve koordinat yalnız kişinin kendisine; itiraz imzacıları anonim; aile/hane yakınlık kenarları yalnız denetçiye |
 
 Siyasi seçim düzeyinde zorlamaya dayanıklılık (MACI benzeri) ve cihazda imzalı oy kapsam dışıdır (bkz. ALGORITMA.md §11).
 

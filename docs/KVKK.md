@@ -156,6 +156,16 @@ Herkese açık hiçbir API yanıtında ad, soyad, TCKN, adres, doğum tarihi, e-
   defterde kullanıcı↔oy bağı yoktur.
 - Mesaj özetleri tuzludur (`contentHash = SHA256(tuz ‖ metin)`); tuz defter dışındadır, bu yüzden özet metne geri
   götürülemez (EDPB 02/2025 para. 52–53).
+- **Görüş kümesi bilgisi kişinin kendisine özeldir.** Kişinin görüş kümesi, oy uzlaşısı topluluğu ve görüş haritasındaki
+  koordinatları (özel nitelikli veri — siyasi görüş eğilimi) yalnızca kendisine gösterilir. Herkese açık görüş haritası anonim
+  noktalardan oluşur, kimlik içermez ve noktalar kimliğe göre değil koordinata göre sıralanır. Herkese açık graf düğümleri
+  yalnızca sosyal ilişkileri (takip, kefalet, vekâlet) taşır.
+- **İtiraz imzaları anonimdir.** İtiraz imzacısı ilk turda zorunlu olarak "red" oyu vermiş olduğundan, imzacının takma adını
+  göstermek gizli oyu açığa çıkarırdı. Bu yüzden itiraz listesi başkalarına "Anonim imzacı" olarak görünür, kişi yalnızca kendi
+  imzasını tanır; yalnızca sayı, küme ve gerekçe herkese açıktır. Azınlık raporu ise bilinçli bir kamusal beyandır ve yazarın
+  takma adıyla yayımlanır; arayüz yazmadan önce bunun ilk tur oyunu belli edeceğini açıkça söyler.
+- **Defterde vekâlet ilişkisi yoktur.** Vekâlet kayıtları defterde sunucu sırrıyla anahtarlanmış bir taahhüttür
+  (`HMAC(voteKey, from|to|kapsam|sıra|kenarId)`); az sayıda üyede kaba kuvvetle çözülemez.
 
 ### 4.4 Kimlik doğrulama güvenliği
 

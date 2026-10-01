@@ -14,7 +14,7 @@
     "dev:web": "npm run dev -w web",
     "build": "npm run build -w web",
     "start": "npm run start -w server",
-    "seed": "npm run seed -w server",
+    "seed": "npm run seed -w server --",
     "test": "npm test -w server && npm test -w web --if-present",
     "typecheck": "npm run typecheck -w shared && npm run typecheck -w server && npm run typecheck -w web"
   },
