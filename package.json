@@ -9,16 +9,21 @@
     "web"
   ],
   "scripts": {
-    "dev": "npm run dev -w server & npm run dev -w web",
+    "dev": "node scripts/dev.mjs",
     "dev:server": "npm run dev -w server",
     "dev:web": "npm run dev -w web",
     "build": "npm run build -w web",
     "start": "npm run start -w server",
-    "seed": "npm run seed -w server",
+    "seed": "npm run seed -w server --",
     "test": "npm test -w server && npm test -w web --if-present",
-    "typecheck": "npm run typecheck -w shared && npm run typecheck -w server && npm run typecheck -w web"
+    "typecheck": "npm run typecheck -w shared && npm run typecheck -w server && npm run typecheck -w web",
+    "e2e": "playwright test -c e2e",
+    "e2e:typecheck": "tsc -p e2e/tsconfig.json"
   },
   "engines": {
     "node": ">=22.13"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
   }
 }

@@ -1,0 +1,229 @@
+// Senaryo 1 — 360 px sayfa taraması: tüm rotalar (ziyaretçi, üye, bekleyen üye, bilirkişi, kayıt memuru, denetçi, yönetici),
+// sekmeli sayfalarda her sekme ve tohumdaki her öneri sayfası. Her görünümde:
+//   document.documentElement.scrollWidth - innerWidth === 0 (yatay taşma yok) ve sayfa/konsol hatası yok.
+import { expect, test, type Browser, type Page } from "@playwright/test";
+import type { CommittedTxView, LedgerStatus, ProposalSummary, PublicUser, TopicSummary } from "@forum/shared";
+import { useSeededServer } from "../support/fixtures";
+import { gotoApp, measureOverflow, openSession, waitSettled, type Session } from "../support/ui";
+
+const ctx = useSeededServer("tarama");
+
+const PHONE = { viewport: { width: 360, height: 780 }, deviceScaleFactor: 2, hasTouch: true };
+
+interface View {
+  label: string;
+  path: string;
+  /** Sayfadaki ilk sekme listesinin her sekmesini de tara */
+  tabs?: boolean;
+  /** Görünüm yüklendikten sonra yapılacak ek etkileşim (ör. alt sayfa / pencere açma); ayrı görünüm olarak ölçülür */
+  extra?: { label: string; run: (page: Page) => Promise<void> };
+}
+
+interface Problem {
+  view: string;
+  issue: string;
+}
+
+let scanned = 0;
+const problems: Problem[] = [];
+
+async function check(page: Page, label: string, s: Session, errorsBefore: number): Promise<void> {
+  scanned++;
+  const o = await measureOverflow(page);
+  if (o.overflow !== 0) problems.push({ view: label, issue: `yatay taşma ${o.overflow} px (scrollWidth ${o.scrollWidth}, innerWidth ${o.innerWidth}): ${o.offenders.join("; ")}` });
+  for (const e of s.errors.slice(errorsBefore)) problems.push({ view: label, issue: e });
+}
+
+async function scan(s: Session, role: string, views: View[]): Promise<void> {
+  const { page } = s;
+  for (const v of views) {
+    const label = `${role} · ${v.label} (${v.path})`;
+    let errorsBefore = s.errors.length;
+    await gotoApp(page, v.path);
+    await check(page, label, s, errorsBefore);
+    if (v.tabs) {
+      const tabs = page.locator("main [role=tablist]").first().getByRole("tab");
+      const n = await tabs.count();
+      for (let i = 0; i < n; i++) {
+        const tab = tabs.nth(i);
+        if ((await tab.getAttribute("aria-selected")) === "true" || (await tab.isDisabled())) continue;
+        const name = (await tab.innerText()).trim().replace(/\s+/g, " ");
+        errorsBefore = s.errors.length;
+        await tab.click();
+        await expect(tab).toHaveAttribute("aria-selected", "true");
+        await waitSettled(page);
+        await check(page, `${label} › sekme "${name}"`, s, errorsBefore);
+      }
+    }
+    if (v.extra) {
+      await gotoApp(page, v.path);
+      errorsBefore = s.errors.length;
+      await v.extra.run(page);
+      await waitSettled(page);
+      await check(page, `${label} › ${v.extra.label}`, s, errorsBefore);
+    }
+  }
+}
+
+/** Mobil alt gezinmedeki "Daha fazla" alt sayfası. */
+const moreSheet: View["extra"] = {
+  label: "“Daha fazla” alt sayfası",
+  run: async (page) => {
+    await page.getByRole("button", { name: /Daha fazla/ }).click();
+    await expect(page.getByRole("dialog", { name: "Daha fazla" })).toBeVisible();
+  },
+};
+
+const sessions: Session[] = [];
+let data: {
+  topics: TopicSummary[];
+  proposals: ProposalSummary[];
+  ayse: PublicUser;
+  expert: PublicUser;
+  height: number;
+  tx: CommittedTxView;
+};
+
+test.beforeAll(async () => {
+  const { api } = ctx;
+  const [topics, proposals, users, experts, status, txs] = await Promise.all([
+    api.get<TopicSummary[]>("/api/topics"),
+    api.proposals(),
+    api.get<PublicUser[]>("/api/users?q=ayse"),
+    api.get<PublicUser[]>("/api/users?q=bk_saglik1"),
+    api.get<LedgerStatus>("/api/ledger/status"),
+    api.get<CommittedTxView[]>("/api/ledger/txs?type=TALLY&limit=1"),
+  ]);
+  data = {
+    topics,
+    proposals,
+    ayse: users.find((u) => u.nickname === "ayse")!,
+    expert: experts.find((u) => u.nickname === "bk_saglik1")!,
+    height: status.height,
+    tx: txs[0],
+  };
+  expect(data.proposals.length).toBeGreaterThan(30);
+});
+
+test.afterAll(async () => {
+  await Promise.all(sessions.splice(0).map((s) => s.close()));
+});
+
+/** Testin kendi görünümlerinde bulunan sorunları raporlar (taşma ya da sayfa/konsol hatası olmamalı). */
+function expectNoProblems(fromIndex: number, scannedBefore: number): void {
+  const mine = problems.slice(fromIndex);
+  const summary = `${scanned - scannedBefore} görünüm tarandı (toplam ${scanned}), ${mine.length} sorun`;
+  test.info().annotations.push({ type: "tarama", description: summary });
+  console.log(`[tarama] ${test.info().title}: ${summary}`);
+  expect(mine, mine.map((p) => `${p.view}: ${p.issue}`).join("\n")).toEqual([]);
+}
+
+async function phone(browser: Browser, as?: string): Promise<Session> {
+  const s = await openSession(browser, ctx.api, { as, contextOptions: PHONE });
+  sessions.push(s);
+  return s;
+}
+
+test("ziyaretçi: tüm genel sayfalar ve her öneri (360 px)", async ({ browser }) => {
+  test.setTimeout(420_000);
+  const [p0, n0] = [problems.length, scanned];
+  const s = await phone(browser);
+  const t = data.topics;
+  const withSub = t.find((x) => t.some((y) => y.parentId === x.id)) ?? t[0];
+  const views: View[] = [
+    { label: "Ana sayfa", path: "/", extra: moreSheet },
+    { label: "Giriş", path: "/giris" },
+    { label: "Kayıt", path: "/kayit" },
+    { label: "Konular", path: "/konular" },
+    { label: "Konu ayrıntısı (gizlenmiş mesajlı)", path: `/konular/${t[0].id}` },
+    { label: "Konu ayrıntısı (alt konulu)", path: `/konular/${withSub.id}` },
+    { label: "Öneriler", path: "/oneriler", tabs: true },
+    ...data.proposals.map((p) => ({ label: `Öneri #K-${p.seq} (${p.status})`, path: `/oneriler/${p.id}` })),
+    { label: "Oyum kayıtlı mı?", path: "/oy-dogrula" },
+    { label: "Bilirkişiler", path: "/bilirkisiler", tabs: true },
+    { label: "Üye profili", path: `/uyeler/${data.ayse.id}` },
+    { label: "Bilirkişi profili", path: `/uyeler/${data.expert.id}` },
+    { label: "Ayarlar", path: "/ayarlar" },
+    { label: "Graf", path: "/graf", tabs: true },
+    { label: "Defter", path: "/defter", tabs: true },
+    { label: "Blok", path: `/defter/blok/${data.height}` },
+    { label: "İşlem (TALLY)", path: `/defter/islem/${data.tx.hash}` },
+    { label: "Yönetmelik", path: "/yonetmelik", tabs: true },
+    { label: "Bulunamadı", path: "/olmayan-bir-sayfa" },
+  ];
+  await scan(s, "ziyaretçi", views);
+  expect(scanned - n0).toBeGreaterThan(50);
+  expectNoProblems(p0, n0);
+});
+
+test("üye ve bekleyen üye: profil, bildirimler, yeni öneri formları, oy paneli (360 px)", async ({ browser }) => {
+  test.setTimeout(300_000);
+  const [p0, n0] = [problems.length, scanned];
+  const voting = data.proposals.find((p) => p.status === "voting" && p.kind === "topic")!;
+  const s = await phone(browser, "ayse");
+  await scan(s, "üye (ayse)", [
+    { label: "Ana sayfa (görevler)", path: "/", extra: moreSheet },
+    { label: "Profil", path: "/profil" },
+    { label: "Bildirimler", path: "/bildirimler", tabs: true },
+    { label: "Yeni öneri", path: "/oneriler/yeni" },
+    { label: "Yeni öneri: yeni konu", path: "/oneriler/yeni?tur=topic" },
+    { label: "Yeni öneri: alt konu", path: `/oneriler/yeni?tur=subtopic&konu=${data.topics[0].id}` },
+    { label: "Yeni öneri: düzenleme teklifi", path: `/oneriler/yeni?tur=amendment&konu=${data.topics[0].id}` },
+    { label: "Yeni öneri: silme talebi", path: "/oneriler/yeni?tur=deletion" },
+    { label: "Yeni öneri: yönetmelik değişikliği", path: "/oneriler/yeni?tur=regulation" },
+    { label: `Oylamadaki öneri #K-${voting.seq} (oy paneli)`, path: `/oneriler/${voting.id}` },
+    { label: "Oyum kayıtlı mı?", path: "/oy-dogrula" },
+    { label: "Graf (kendi görüş haritası)", path: "/graf", tabs: true },
+  ]);
+  const pending = await phone(browser, "berk_n");
+  await scan(pending, "bekleyen üye (berk_n)", [
+    { label: "Ana sayfa (onay bekleniyor şeridi)", path: "/" },
+    { label: "Yeni öneri (doğrulama gerekli)", path: "/oneriler/yeni" },
+    { label: "Profil", path: "/profil" },
+  ]);
+  expectNoProblems(p0, n0);
+});
+
+test("görevliler: kayıt memuru, denetçi, yönetici, bilirkişi (360 px)", async ({ browser }) => {
+  test.setTimeout(300_000);
+  const [p0, n0] = [problems.length, scanned];
+  const deliberation = data.proposals.find((p) => p.status === "deliberation")!;
+  const registrar = await phone(browser, "kayitmemuru");
+  await scan(registrar, "kayıt memuru", [
+    {
+      label: "Kayıt memuru",
+      path: "/kayit-memuru",
+      tabs: true,
+      extra: {
+        label: "amaçlı kişisel veri penceresi",
+        run: async (page) => {
+          const item = page.getByRole("list", { name: "Doğrulama bekleyen üyeler" }).locator("li.list-item").first();
+          await item.getByRole("button", { name: "Kişisel veriyi görüntüle…" }).click();
+          const dialog = page.getByRole("dialog", { name: /Kişisel veri: @/ });
+          await dialog.getByRole("button", { name: "Kimlik doğrulaması: yüz yüze belge kontrolü" }).click();
+          await dialog.getByRole("button", { name: "Amacı kaydet ve görüntüle" }).click();
+          await expect(dialog.getByText("T.C. kimlik no (maskeli)")).toBeVisible();
+        },
+      },
+    },
+  ]);
+  const auditor = await phone(browser, "denetci");
+  await scan(auditor, "denetçi", [
+    { label: "Denetim günlüğü", path: "/yonetim" },
+    { label: "Kayıt memuru (salt okunur)", path: "/kayit-memuru" },
+    { label: "Konu (gizli metni oku düğmesi)", path: `/konular/${data.topics[0].id}` },
+  ]);
+  const admin = await phone(browser, "yonetici");
+  await scan(admin, "yönetici", [
+    { label: "Yönetim", path: "/yonetim", tabs: true },
+    { label: "Defter (kurcalama demosu dahil)", path: "/defter", tabs: true },
+    { label: "Bilirkişiler (yönetim)", path: "/bilirkisiler", tabs: true },
+  ]);
+  const expert = await phone(browser, "bk_saglik1");
+  await scan(expert, "bilirkişi (bk_saglik1)", [
+    { label: "Ana sayfa (görevler)", path: "/" },
+    { label: "Profil", path: "/profil" },
+    { label: `Tartışmadaki öneri #K-${deliberation.seq} (bilirkişi paneli)`, path: `/oneriler/${deliberation.id}` },
+  ]);
+  expectNoProblems(p0, n0);
+});

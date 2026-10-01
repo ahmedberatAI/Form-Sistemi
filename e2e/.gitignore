@@ -1,0 +1,3 @@
+# Playwright çıktıları (her çalıştırmada yeniden üretilir)
+test-results/
+playwright-report/
