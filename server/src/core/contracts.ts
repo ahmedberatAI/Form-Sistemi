@@ -119,6 +119,10 @@ export interface OntologyService {
   articles(): ArticleInfo[];
   deletionGrounds(): GroundInfo[];
   objectionGrounds(): GroundInfo[];
+  /** İçerik etiketleri (fy:IcerikEtiketi) — moderasyon ve denetim için */
+  contentLabels(): { iri: string; label: string }[];
+  /** Yönetmelik yaması oluşturucusu için ayarlanabilir parametreler (değiştirilemez olanlar işaretli) */
+  adjustableParams(): { rule: string; param: string; label: string; value: number | boolean | string; immutable: boolean }[];
   tiers(): { tier: Tier; label: string; quorum: number; threshold: number; clusterFloor: number }[];
   /** Kategori anahtar kelimeleri (çevrimdışı sınıflandırma için) */
   keywordIndex(): { iri: string; keywords: string[] }[];
@@ -339,7 +343,21 @@ export interface ExpertService {
    * ALGORITMA.md §8. Tohum = SHA256(sonBlokHash ‖ proposalId ‖ round). EXPERT_DRAW defter kaydı yapılır.
    * opts.counter: karşı panel (önceki panelistler hariç).
    */
-  drawPanel(proposalId: string, opts: { categories: string[]; authorId: string; k: number; dueAt: number; counter?: boolean }): Promise<ExpertPanelInfo>;
+  drawPanel(
+    proposalId: string,
+    opts: {
+      categories: string[];
+      authorId: string;
+      k: number;
+      dueAt: number;
+      counter?: boolean;
+      /**
+       * Tohum öğütmeye karşı: çekilişi zamanlayıcı başlatır ve tohum, ÖNCEDEN taahhüt edilmiş yükseklikteki
+       * bloğun hash'inden alınır (ör. tartışma açılışında "o anki yükseklik + 2"). Verilmezse son blok kullanılır.
+       */
+      seedBlock?: { height: number; hash: string };
+    },
+  ): Promise<ExpertPanelInfo>;
   respond(assignmentId: string, expertId: string, decision: "accept" | "recuse", reason?: string): Promise<ExpertPanelInfo>;
   submitReport(assignmentId: string, expertId: string, input: ExpertReportInput): Promise<ExpertReportView>;
   panel(proposalId: string): ExpertPanelInfo | null;

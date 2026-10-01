@@ -151,3 +151,14 @@ export function clusterLabel(clusterId: string | null | undefined): string {
 }
 
 export const AI_LABEL_PREFIX = "Yapay zekâ ile üretildi";
+
+/** "Yapay zekâ ile üretildi · model · tarih" etiketi (her YZ çıktısında gösterilir). */
+export function aiLabel(model: string, at: number): string {
+  const d = new Date(at);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const date = `${pad(d.getUTCDate())}.${pad(d.getUTCMonth() + 1)}.${d.getUTCFullYear()} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`;
+  const m = model === "offline-heuristic" ? "çevrimdışı sezgisel mod" : model;
+  return `${AI_LABEL_PREFIX} · ${m} · ${date}`;
+}
+
+export const OFFLINE_MODEL = "offline-heuristic";
