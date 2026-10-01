@@ -381,6 +381,8 @@ export interface ExpertService {
   panel(proposalId: string): ExpertPanelInfo | null;
   /** §8 adım 9: rapor verenlerin ≥2/3'ü infeasible ve güven medyanı ≥0,8 */
   suspensiveFlag(proposalId: string): boolean;
+  /** Öneri kapandığında (geri çekildi, düştü, kabul/red) bekleyen atamaları itibar cezası olmadan iptal eder. */
+  cancelPending(proposalId: string): number;
   /** Süresi geçen atamaları işaretler, itibarı günceller. */
   markOverdue(now: number): number;
   assignmentsFor(expertId: string): { assignmentId: string; proposalId: string; status: string; dueAt: number }[];

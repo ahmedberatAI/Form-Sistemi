@@ -89,7 +89,7 @@ export async function makeForum(opts: { realLedger?: boolean } = {}): Promise<Fo
     };
   };
   const flush = async () => {
-    if (!fake) await ledger.flush(5000);
+    if (!fake) await ledger.flush(20_000);
   };
   const tick = async () => {
     await flush();

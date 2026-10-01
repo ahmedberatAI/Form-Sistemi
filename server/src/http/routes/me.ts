@@ -76,7 +76,7 @@ export function registerMeRoutes(app: FastifyInstance, { services }: RouteDeps):
         kind: "delegation_revoked",
         title: "Vekâletiniz düştü",
         body: "Vekâlet verdiğiniz üye hesabını kapattığı için bu vekâlet geri alındı. Dilerseniz başka bir üyeye vekâlet verebilirsiniz.",
-        link: "/profile",
+        link: "/profil",
       });
     }
     await identity.eraseSelf(user.id);

@@ -360,7 +360,7 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
       kind: "expert_invited",
       title: "Bilirkişi paneline seçildiniz",
       body: `Bir öneri için bilirkişi kurasında seçildiniz. Görevi kabul edin ya da çıkar çatışmanız varsa çekinme beyan edin. Son teslim: ${fmtTime(dueAt)}.`,
-      link: `/proposals/${proposalId}`,
+      link: `/oneriler/${proposalId}`,
     });
   };
 
@@ -512,7 +512,7 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
             kind: "expert_application",
             title: "Yeni bilirkişi başvurusu",
             body: `${u.nickname} bilirkişi olmak için başvurdu. Alanlar: ${doms.map(label).join(", ")}.`,
-            link: "/experts",
+            link: "/bilirkisiler",
           });
         }
         audit.log(userId, "expert.apply", `user:${userId}`, { domains: doms });
@@ -547,7 +547,7 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
           kind: "expert_decision",
           title: approve ? "Bilirkişi başvurunuz onaylandı" : "Bilirkişi başvurunuz reddedildi",
           body: (approve ? "Artık bilirkişi kuralarına katılabilirsiniz." : "Başvurunuz yönetici tarafından reddedildi.") + (text ? ` Not: ${text}` : ""),
-          link: "/experts",
+          link: "/bilirkisiler",
         });
         audit.log(actorId, approve ? "expert.approve" : "expert.reject", `user:${userId}`, text ? { note: text } : null);
       });
@@ -597,7 +597,7 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
             throw badRequest("invalid_action", "Yaptırım türü warn, suspend, remove ya da reinstate olmalıdır.");
         }
         db.run("UPDATE experts SET sanction_note = ? WHERE user_id = ?", text, userId);
-        notifier.notify(userId, { kind: "expert_sanction", title, body: `Gerekçe: ${text}`, link: "/experts" });
+        notifier.notify(userId, { kind: "expert_sanction", title, body: `Gerekçe: ${text}`, link: "/bilirkisiler" });
         audit.log(actorId, `expert.sanction.${action}`, `user:${userId}`, { note: text, replacedAssignments: replaced });
       });
       if (action === "remove") syncExpertEdges(userId, []);
@@ -797,7 +797,7 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
             kind: "expert_unavailable",
             title: "Bilirkişi bulunamadı",
             body: "Önerinizin alanında (üst kategoriler dahil) uygun bilirkişi bulunamadı. Süreç raporsuz devam edecek.",
-            link: `/proposals/${proposalId}`,
+            link: `/oneriler/${proposalId}`,
           });
         }
         audit.log(null, "expert.draw", `proposal:${proposalId}`, { panelId, round, counter, widened, selected: selected.length, noExpert });
@@ -964,7 +964,7 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
             kind: "expert_report",
             title: "Önerinize bilirkişi raporu geldi",
             body: `Bir bilirkişi raporu eklendi (değerlendirme: ${ASSESSMENT_LABELS[input.assessment]}).`,
-            link: `/proposals/${a.proposal_id}`,
+            link: `/oneriler/${a.proposal_id}`,
           });
         }
         audit.log(expertId, "expert.report", `assignment:${a.id}`, { proposalId: a.proposal_id, reportId, score });
@@ -979,6 +979,16 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
 
     suspensiveFlag(proposalId) {
       return suspensiveFor(proposalId);
+    },
+
+    cancelPending(proposalId) {
+      const n = db.run(
+        `UPDATE expert_assignments SET status = 'cancelled', updated_at = ? WHERE proposal_id = ? AND status IN ${PENDING_SQL}`,
+        clock.now(),
+        proposalId,
+      ).changes;
+      if (n > 0) audit.log(null, "expert.cancel_pending", `proposal:${proposalId}`, { count: n });
+      return n;
     },
 
     markOverdue(now) {
@@ -996,7 +1006,7 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
             kind: "expert_overdue",
             title: "Bilirkişi raporunun süresi geçti",
             body: "Rapor süresi içinde teslim edilmedi; görev gecikmiş olarak işaretlendi ve itibarınız düşürüldü.",
-            link: `/proposals/${a.proposal_id}`,
+            link: `/oneriler/${a.proposal_id}`,
           });
         }
       });

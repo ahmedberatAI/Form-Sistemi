@@ -105,10 +105,11 @@ export function buildProposalDetail(core: ForumCore, clusters: ClusterServiceImp
     createdAt: Number(s.created_at),
     decidedAt: s.decided_at === null ? null : Number(s.decided_at),
   }));
+  // Oy gizliliği: itiraz imzacısı tur-1'de zorunlu olarak "red" oyu vermiştir; kimliği yalnız kendisine gösterilir.
   const objections: ObjectionInfo[] = objectionRows.map((o) => ({
     id: o.id,
-    userId: o.user_id,
-    nickname: nick.get(o.user_id) ?? "",
+    userId: o.user_id === viewer?.id ? o.user_id : "",
+    nickname: o.user_id === viewer?.id ? (nick.get(o.user_id) ?? "") : "Anonim imzacı",
     ground: o.ground,
     statement: o.statement,
     clusterId: o.cluster_id,

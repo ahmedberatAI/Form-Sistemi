@@ -323,8 +323,8 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
   }
 
   /** Oy/itiraz için güncel seçmen koşulları (rıza geri çekilmiş olabilir; askıdaki üye oy veremez). */
-  function requireVoter(p: ProposalRow, actor: AuthUser): void {
-    requireVerified(actor, "Oy vermek");
+  function requireVoter(p: ProposalRow, actor: AuthUser, what = "Oy vermek"): void {
+    requireVerified(actor, what);
     const me = core.user(actor.id);
     if (!me || me.status !== "verified") throw forbidden("Askıdaki ya da silinmiş üye bu işlemi yapamaz.");
     if (!isEligible(p.id, actor.id)) {
@@ -857,7 +857,7 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
       const p = visibleProposal(core, id, actor);
       requireStatus(p, ["objection_window"], "İtiraz yalnızca itiraz süresinde yapılabilir.");
       if (!phaseOpen(p)) throw conflict("invalid_state", "İtiraz süresi doldu.");
-      requireVoter(p, actor);
+      requireVoter(p, actor, "İtiraz etmek");
       const ground = normIri(data.ground);
       if (!safe(() => deps.ontology.objectionGrounds(), []).some((g) => g.iri === ground)) {
         throw fieldError("ground", "Geçersiz itiraz gerekçesi; yönetmelikteki itiraz gerekçelerinden biri seçilmelidir.");
@@ -905,7 +905,7 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
       requireVerified(actor, "Azınlık raporu");
       const p = visibleProposal(core, id, actor);
       requireStatus(p, ["reconciliation", "objection_window"], "Azınlık raporu yalnızca itiraz süresinde ve uzlaşma turunda yazılabilir.");
-      requireVoter(p, actor);
+      requireVoter(p, actor, "Azınlık raporu yazmak");
       if (firstRoundChoice(core, p, actor.id) !== "no") {
         throw unprocessable("not_eligible", "Azınlık raporunu yalnızca ilk turda etkin oyu “Red” olan seçmenler yazabilir.");
       }
@@ -966,7 +966,7 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
     expertQuestion(actor: AuthUser, id: string, bodyIn: string): ExpertQuestion {
       requireVerified(actor, "Bilirkişiye soru");
       const p = visibleProposal(core, id, actor);
-      if (isClosed(p.status)) throw conflict("invalid_state", "Kapanmış öneri için bilirkişiye soru sorulamaz.");
+      if (isClosed(p.status) || p.status === "draft") throw conflict("invalid_state", "Bilirkişiye soru yalnızca açık (gönderilmiş, kapanmamış) öneriler için sorulabilir.");
       const body = checkLength(String(bodyIn ?? ""), 10, 2000, "body", "Soru");
       assertNoPii(core, body, false);
       let minorityGuaranteed = false;

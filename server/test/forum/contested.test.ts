@@ -144,6 +144,12 @@ describe("forum: görüş kümeleri, tartışmalı sonuç ve azınlık itirazı"
     expect(d.status).toBe("reconciliation");
     expect(d.reconciliationOrigin).toBe("objection");
     expect(d.objections).toHaveLength(3);
+    // Oy gizliliği: imzacılar (tur-1'de "red" verenler) başkalarına anonim; kişi yalnız kendi imzasını görür
+    const asStranger = h.forum.proposals.get(id, b.A[0]).objections;
+    expect(asStranger.every((o) => o.userId === "" && o.nickname === "Anonim imzacı")).toBe(true);
+    const asSigner = h.forum.proposals.get(id, b.C[3]).objections;
+    expect(asSigner.filter((o) => o.userId === b.C[3].id)).toHaveLength(1);
+    expect(asSigner.filter((o) => o.userId !== "" && o.userId !== b.C[3].id)).toHaveLength(0);
     expect(JSON.parse(h.ctx.db.get<{ v: string }>("SELECT objection_budget_used AS v FROM users WHERE id = ?", b.C[5].id)!.v)).toHaveLength(2);
     expect(h.ledger.findTxs({ type: "OBJECTION", proposalId: id })).toHaveLength(3);
 

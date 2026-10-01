@@ -23,17 +23,35 @@ export function registerGraphRoutes(app: FastifyInstance, { services }: RouteDep
     // includePrivate sözleşme tipinde yok; graf modülü ek alan olarak okur (yoksa özel kenarlar hiç verilmez).
     const opts: Parameters<typeof graph.visualization>[0] & { includePrivate: boolean } = { includeEdgeTypes, limit, includePrivate };
     const { nodes, edges } = graph.visualization(opts);
-    return { nodes, edges: includePrivate ? edges : edges.filter((e) => !PRIVATE_EDGE_TYPES.includes(e.type)) };
+    // Siyasi görüş özel nitelikli veridir (KVKK md. 6): kişinin görüş kümesi, oy uzlaşısı topluluğu ve görüş
+    // koordinatları yalnız KENDİSİNE gösterilir; herkese açık grafta düğümler yalnız sosyal ilişkileri taşır.
+    const viewerId = req.user?.id ?? null;
+    const safeNodes = nodes.map((n) => (n.id === viewerId ? n : { ...n, cluster: null, community: null, x: undefined, y: undefined }));
+    return { nodes: safeNodes, edges: includePrivate ? edges : edges.filter((e) => !PRIVATE_EDGE_TYPES.includes(e.type)) };
   });
 
   app.get("/api/graph/stats", async (): Promise<GraphStats> => graph.stats());
 
-  app.get("/api/clusters/latest", async (): Promise<ClusterSnapshotView | null> => forum.clusters.latest() ?? null);
+  app.get("/api/clusters/latest", async (req): Promise<ClusterSnapshotView | null> => {
+    const snap = forum.clusters.latest();
+    return snap ? anonymizeSnapshot(snap, req.user) : null;
+  });
 
   app.get("/api/clusters/:id", async (req): Promise<ClusterSnapshotView> => {
     const { id } = parseParams(idParams, req.params);
     const snap = forum.clusters.get(id);
     if (!snap) throw notFound("Görüş kümesi anlık görüntüsü");
-    return snap;
+    return anonymizeSnapshot(snap, req.user);
   });
+}
+
+/**
+ * Görüş haritası anonimdir: noktalar küme ve koordinat taşır, kimlik taşımaz (yalnız görüntüleyenin kendi noktası
+ * işaretlenir). Sıra kimliğe göre değil koordinata göre — sıralamadan kimlik çıkarılamasın.
+ */
+function anonymizeSnapshot(snap: ClusterSnapshotView, viewer: AuthUser | null): ClusterSnapshotView {
+  const points = snap.points
+    .map((p) => (viewer && p.userId === viewer.id ? p : { ...p, userId: "", nickname: "" }))
+    .sort((a, b) => a.clusterId.localeCompare(b.clusterId) || a.x - b.x || a.y - b.y);
+  return { ...snap, points };
 }

@@ -50,6 +50,8 @@ export interface TransitionOpts {
  * Tek bir faz geçişi (çağıran işlemin İÇİNDE çalışır): proposals güncellemesi (durum + sürüm koşullu),
  * phase_events satırı ve PHASE_CHANGED defter kaydı {proposalId, from, to, textHash, at, reason}.
  */
+const CLOSED_FOR_EXPERTS = new Set<ProposalStatus>(["withdrawn", "expired", "inadmissible", "rejected", "enacted"]);
+
 export function applyTransition(core: ForumCore, p: ProposalRow, to: ProposalStatus, reason: string, o: TransitionOpts): Transition {
   const set: Record<string, SqlValue> = { ...(o.set ?? {}), status: to, phase_ends_at: o.endsAt, updated_at: o.now };
   if (!o.keepStart) set.phase_started_at = o.now;
@@ -62,6 +64,8 @@ export function applyTransition(core: ForumCore, p: ProposalRow, to: ProposalSta
     p.version,
   );
   if (r.changes !== 1) throw new StaleState();
+  // Öneri kapandıysa bekleyen bilirkişi görevleri itibar cezası olmadan iptal edilir.
+  if (CLOSED_FOR_EXPERTS.has(to)) core.deps.experts.cancelPending(p.id);
   const tx = core.submit("PHASE_CHANGED", { proposalId: p.id, from: p.status, to, textHash: textHash(p.title, p.body), at: o.now, reason });
   core.db.run(
     "INSERT INTO phase_events(id, proposal_id, from_status, to_status, reason, at, ledger_tx) VALUES (?, ?, ?, ?, ?, ?, ?)",

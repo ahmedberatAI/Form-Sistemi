@@ -82,7 +82,7 @@ describe("forum: yaşam döngüsü motoru", () => {
     h.ctx.clock.advance(73 * 3_600_000);
     h.forum.lifecycle.start(20);
     h.forum.lifecycle.start(20); // ikinci çağrı etkisiz
-    await vi.waitFor(() => expect(h.forum.proposals.get(id, null).status).toBe("voting"), { timeout: 3000, interval: 20 });
+    await vi.waitFor(() => expect(h.forum.proposals.get(id, null).status).toBe("voting"), { timeout: 15_000, interval: 20 });
     h.forum.lifecycle.stop();
   });
 

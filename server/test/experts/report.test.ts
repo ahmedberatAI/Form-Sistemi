@@ -185,4 +185,16 @@ describe("süresi geçen görevler", () => {
     expect(w.svc.markOverdue(w.clock.now())).toBe(0);
     expect((await catchAsync(w.svc.submitReport(byExpert["e-b"].id, "e-b", input()))).code).toBe("invalid_state");
   });
+
+  it("cancelPending: kapanan öneride bekleyen görevler itibar cezası olmadan iptal edilir", async () => {
+    const { w, panel, byExpert, input, rep } = await setup();
+    await w.svc.submitReport(byExpert["e-a"].id, "e-a", input());
+    expect(w.svc.cancelPending("p-1")).toBe(2);
+    expect(w.svc.assignmentsFor("e-b")[0].status).toBe("cancelled");
+    expect(w.svc.assignmentsFor("e-a")[0].status).toBe("reported");
+    w.clock.set(panel.assignments[0].dueAt + 1);
+    expect(w.svc.markOverdue(w.clock.now())).toBe(0);
+    expect(rep("e-b")).toBe(0.75);
+    expect(w.svc.cancelPending("p-1")).toBe(0);
+  });
 });

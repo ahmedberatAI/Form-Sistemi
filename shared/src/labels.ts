@@ -102,6 +102,7 @@ export const ASSIGNMENT_STATUS_LABELS: Record<AssignmentStatus, string> = {
   reported: "Rapor verdi",
   overdue: "Süresi geçti",
   replaced: "Yerine başkası seçildi",
+  cancelled: "İptal edildi (öneri kapandı)",
 };
 
 export const EDGE_LABELS: Record<EdgeType, string> = {

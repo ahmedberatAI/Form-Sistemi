@@ -322,7 +322,7 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
           kind: "registration_pending",
           title: "Yeni üye doğrulama bekliyor",
           body: `"${row.nickname}" takma adlı yeni üyenin kimlik doğrulaması bekleniyor.`,
-          link: "/registrar",
+          link: "/kayit-memuru",
         });
       }
       deps.audit.log(row.id, "identity.register", row.id, { via: "self" });
@@ -339,7 +339,7 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
         kind: "account_verified",
         title: "Hesabınız oluşturuldu ve doğrulandı",
         body: "Hesabınız kayıt memuru tarafından oluşturuldu ve kimliğiniz doğrulandı. İlk girişte şifrenizi değiştirmeniz önerilir.",
-        link: "/profile",
+        link: "/profil",
       });
       deps.audit.log(actorId, "identity.create_by_registrar", row.id, { via: "registrar" });
       return { user: meOf(row) };
@@ -392,7 +392,7 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
             "Kimliğiniz kayıt memuru tarafından doğrulandı. Artık konu açabilir ve tartışmalara katılabilirsiniz" +
             (canVote ? "; oy da kullanabilirsiniz." : ".") +
             (cleanNote ? ` Not: ${cleanNote}` : ""),
-          link: "/profile",
+          link: "/profil",
         });
         deps.audit.log(actorId, "identity.verify", userId, { decision: "approve", hasNote: cleanNote.length > 0 });
       } else {
@@ -542,7 +542,7 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
           kind: "roles_changed",
           title: "Rolleriniz güncellendi",
           body: `Güncel rolleriniz: ${next.map((r) => ROLE_LABELS[r]).join(", ")}.`,
-          link: "/profile",
+          link: "/profil",
         });
       }
       return meOf(requireRow(userId));
@@ -681,7 +681,7 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
         kind: "password_changed",
         title: "Şifreniz değiştirildi",
         body: "Hesabınızın şifresi değiştirildi ve diğer oturumlarınız kapatıldı. Bu işlemi siz yapmadıysanız kayıt memuruna başvurun.",
-        link: "/profile",
+        link: "/profil",
       });
     },
 

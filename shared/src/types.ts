@@ -493,7 +493,7 @@ export interface MessageVersionView {
 
 export type ExpertStatus = "applied" | "active" | "suspended" | "removed" | "rejected";
 export type ExpertAssessment = "feasible" | "infeasible" | "uncertain";
-export type AssignmentStatus = "invited" | "accepted" | "recused" | "reported" | "overdue" | "replaced";
+export type AssignmentStatus = "invited" | "accepted" | "recused" | "reported" | "overdue" | "replaced" | "cancelled";
 
 export interface ExpertInfo {
   userId: string;
