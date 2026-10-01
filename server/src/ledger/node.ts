@@ -468,7 +468,7 @@ export class ValidatorNode {
   }
 
   private onMessage(from: string, msg: NetMessage): void {
-    if (!this.running || this.fault === "crash" || !this.params.validators.has(from) || !isPlainObject(msg)) return;
+    if (!this.running || this.fault === "crash" || !this.params.validators.has(from) || typeof msg !== "object" || msg === null) return;
     switch (msg.kind) {
       case "tx":
         if (this.addTx(msg.tx) === "added") this.broadcast(msg);
@@ -850,7 +850,7 @@ export class ValidatorNode {
     try {
       do {
         this.again = false;
-        for (let guard = 0; guard < 1000 && this.running && this.fault !== "crash"; guard++) if (!this.applyRules()) break;
+        for (let guard = 0; guard < 1000 && this.running; guard++) if (!this.applyRules()) break;
       } while (this.again);
     } finally {
       this.evaluating = false;
