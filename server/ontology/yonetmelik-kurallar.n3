@@ -14,9 +14,10 @@
 { ?a rdfs:subClassOf ?b . ?b rdfs:subClassOf ?c . } => { ?a rdfs:subClassOf ?c . } .
 { ?x a ?c . ?c rdfs:subClassOf ?d . } => { ?x a ?d . } .
 
-# ─── K2. Kategoriler: öneri, kategorisinin ve tüm üst kategorilerinin üyesidir ───
-{ ?p a fy:Oneri . ?p fy:kategori ?c . } => { ?p a ?c . } .
-{ ?p a fy:Oneri . ?p a ?c . ?c rdfs:subClassOf fy:Kategori . } => { ?p fy:kategori ?c . } .
+# ─── K2. Kategoriler: karar önerisi, kategorisinin ve tüm üst kategorilerinin üyesidir ───
+# (Silme talepleri kategori sınıflarına girmez; kategori kuralları ve bilirkişi gereksinimi onlara uygulanmaz.)
+{ ?p a fy:KararOnerisi . ?p fy:kategori ?c . } => { ?p a ?c . } .
+{ ?p a fy:KararOnerisi . ?p a ?c . ?c rdfs:subClassOf fy:Kategori . } => { ?p fy:kategori ?c . } .
 # Yönetmelik önerileri "Forum yönetmeliği" kategorisindedir
 { ?p a fy:YonetmelikOnerisi . } => { ?p fy:kategori fy:ForumYonetmeligi . } .
 
@@ -25,9 +26,9 @@
 { ?p a fy:AltKonuOnerisi . ?p fy:ustKonu ?t . ?t fy:konuKategorisi ?c . } => { ?p fy:mirasKategori ?c . ?p fy:kategori ?c . } .
 { ?p a fy:DuzenlemeOnerisi . ?p fy:hedefKonu ?t . ?t fy:konuKategorisi ?c . } => { ?p fy:mirasKategori ?c . ?p fy:kategori ?c . } .
 
-# ─── K4. Bilirkişi gereksinimi: kategoriden (üst sınıftan miras) ───
-{ ?p a fy:Oneri . ?p a ?c . ?c fy:bilirkisiGerekli true . } =>
-  { ?p a fy:BilirkisiGerektirenOneri . ?p fy:bilirkisiAlani ?c . ?p fy:uygulananKural fy:KuralBilirkisiKategorisi . } .
+# ─── K4. Bilirkişi gereksinimi: kategoriden (üst sınıftan miras); sonuç K12'de kuralın parametresiyle doğar ───
+{ ?p a fy:KararOnerisi . ?p a ?c . ?c fy:bilirkisiGerekli true . } =>
+  { ?p fy:bilirkisiAlani ?c . ?p fy:uygulananKural fy:KuralBilirkisiKategorisi . } .
 { ?p a fy:Oneri . ?p fy:bilirkisiTalebi true . } => { ?p a fy:BilirkisiGerektirenOneri . } .
 
 # ─── K5. Temel haklar ───
@@ -41,7 +42,7 @@
 # DANIŞMA kaynaklı (yapay zekâ / üye bayrağı) kısıtlama → yalnızca yükseltme: T1 + uyarı + bilirkişi
 { ?p fy:hakEtkisi ?e . ?e fy:yon fy:Kisitlama . ?e fy:hak ?h . ?h fy:cekirdekDegistirilemez true .
   ?e fy:kaynak ?k . ?k a fy:DanismaKaynagi . } =>
-  { ?p fy:danismaCekirdekHakUyarisi ?h . ?p a fy:BilirkisiGerektirenOneri . ?p fy:uygulananKural fy:KuralDanismaYukseltmesi . } .
+  { ?p fy:danismaCekirdekHakUyarisi ?h . ?p fy:uygulananKural fy:KuralDanismaYukseltmesi . } .
 
 # ─── K6. İçerik etiketleri (güven düzeyi denetimden önce eşiklere göre atanır) ───
 { ?p fy:icerikEtiketAtamasi ?a . ?a fy:guvenDuzeyi fy:YuksekGuven . ?a fy:etiket ?l . ?l a fy:IcerikEtiketi . } =>

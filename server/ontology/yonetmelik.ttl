@@ -82,7 +82,7 @@ fy:Madde_7_2 a fy:Madde ; fy:maddeNo "Madde 7 (2)" ; fy:baslik "Öneri hakkı" ;
 
 fy:Madde_8_1 a fy:Madde ; fy:maddeNo "Madde 8 (1)" ; fy:baslik "Kategoriler" ; fy:bolum fy:Bolum2 ; fy:sira 801 ;
     fy:korumaDuzeyi fy:Olagan ;
-    fy:metin "Her öneri en az bir kategoriye bağlanır. Kategoriler bir sınıf ağacı oluşturur; bir alt kategoriye bağlanan öneri, üst kategorilerine de bağlı sayılır ve onların kurallarına tabidir." .
+    fy:metin "Konu, alt konu, düzenleme ve Yönetmelik önerileri en az bir kategoriye bağlanır. Kategoriler bir sınıf ağacı oluşturur; bir alt kategoriye bağlanan öneri, üst kategorilerine de bağlı sayılır ve onların kurallarına tabidir. Silme (karartma) talepleri kategori kurallarına tabi değildir." .
 fy:Madde_8_2 a fy:Madde ; fy:maddeNo "Madde 8 (2)" ; fy:baslik "Kategoriler" ; fy:bolum fy:Bolum2 ; fy:sira 802 ;
     fy:korumaDuzeyi fy:Nitelikli ;
     fy:metin "Kategori ve hak etkisi etiketleri yalnızca yükseltilebilir: her üye ve yapay zekâ etiket ekleyebilir; eklenen bir etiketi yalnızca bilirkişi kaldırabilir. Danışma niteliğindeki bu etiketler öneriyi en çok nitelikli katmana yükseltir, tek başına geçersiz kılmaz." .

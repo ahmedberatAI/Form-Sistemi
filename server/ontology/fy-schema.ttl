@@ -50,7 +50,7 @@ fy:Kategori a owl:Class ;
     rdfs:label "Kategori"@tr ;
     rdfs:comment "Konu kategorileri bu sınıfın alt sınıflarıdır (rdfs:subClassOf ağacı). Bir alt kategoriye bağlanan öneri üst kategorilerin de üyesidir."@tr .
 fy:anahtarKelime a owl:AnnotationProperty ; rdfs:label "anahtar kelime"@tr .
-fy:bilirkisiGerekli a owl:AnnotationProperty ; rdfs:range xsd:boolean ; rdfs:label "bilirkişi gerekli"@tr ;
+fy:bilirkisiGerekli a owl:AnnotationProperty ; rdfs:range xsd:boolean ; rdfs:label "Bilirkişi gerekli"@tr ;
     rdfs:comment "Kategoride (ve tüm alt kategorilerinde) bilirkişi paneli çekilir; kurallarda parametre olarak da kullanılır."@tr .
 
 # ───────────────────────── Haklar ─────────────────────────
@@ -146,11 +146,13 @@ fy:vekaletAzamiAdimAzami a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Vek�
 # ───────────────────────── Öneri alt grafı (denetim anında kurulur) ─────────────────────────
 
 fy:Oneri a owl:Class ; rdfs:label "Öneri"@tr .
-fy:KonuOnerisi a owl:Class ; rdfs:subClassOf fy:Oneri ; rdfs:label "Konu önerisi"@tr .
-fy:AltKonuOnerisi a owl:Class ; rdfs:subClassOf fy:Oneri ; rdfs:label "Alt konu önerisi"@tr .
-fy:DuzenlemeOnerisi a owl:Class ; rdfs:subClassOf fy:Oneri ; rdfs:label "Düzenleme teklifi"@tr .
+fy:KararOnerisi a owl:Class ; rdfs:subClassOf fy:Oneri ; rdfs:label "Karar önerisi (konu, alt konu, düzenleme, yönetmelik)"@tr ;
+    rdfs:comment "Kategoriye bağlanan ve kategori kurallarına (bilirkişi, Madde 24) tabi öneriler. Silme talepleri bu sınıfta değildir: mesaj karartma kararı kategori politikası değildir."@tr .
+fy:KonuOnerisi a owl:Class ; rdfs:subClassOf fy:KararOnerisi ; rdfs:label "Konu önerisi"@tr .
+fy:AltKonuOnerisi a owl:Class ; rdfs:subClassOf fy:KararOnerisi ; rdfs:label "Alt konu önerisi"@tr .
+fy:DuzenlemeOnerisi a owl:Class ; rdfs:subClassOf fy:KararOnerisi ; rdfs:label "Düzenleme teklifi"@tr .
 fy:SilmeOnerisi a owl:Class ; rdfs:subClassOf fy:Oneri ; rdfs:label "Silme (karartma) talebi"@tr .
-fy:YonetmelikOnerisi a owl:Class ; rdfs:subClassOf fy:Oneri ; rdfs:label "Yönetmelik değişikliği önerisi"@tr .
+fy:YonetmelikOnerisi a owl:Class ; rdfs:subClassOf fy:KararOnerisi ; rdfs:label "Yönetmelik değişikliği önerisi"@tr .
 
 # Çıkarımla oluşan öneri sınıfları
 fy:HakKisitlayanOneri a owl:Class ; rdfs:subClassOf fy:Oneri ; rdfs:label "Temel hak kısıtlayan öneri"@tr .

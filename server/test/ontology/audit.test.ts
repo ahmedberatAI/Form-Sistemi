@@ -194,6 +194,16 @@ describe("silme (karartma)", () => {
     expect(r.inferredClasses).toEqual(expect.arrayContaining([fy("AcilSilmeTalebi"), fy("MuhurluSilmeTalebi")]));
   });
 
+  it("kategori kuralları ve kategori bilirkişi gereksinimi silme talebine uygulanmaz", async () => {
+    const r = await svc.audit({ ...del(fy("Spam"), 1), categories: [fy("HalkSagligi"), fy("KatilimciButce")] });
+    expect(r.tier).toBe("DEL");
+    expect(r.requiresExpert).toBe(false);
+    expect(r.params!.quorum).toEqual(rat(3, 10));
+    expect(r.params!.durationsHours.voting).toBe(48);
+    expect(r.inferredClasses).not.toContain(fy("Saglik"));
+    expect(r.categories).toEqual(expect.arrayContaining([fy("HalkSagligi"), fy("KatilimciButce")]));
+  });
+
   it("mesaj yok, gerekçe bilinmiyor ya da hiç silme bilgisi yok → ihlal", async () => {
     expect(codes((await svc.audit(del(fy("Spam"), 0))).violations)).toContain("deletion_no_messages");
     expect(codes((await svc.audit(del(fy("Sikici"), 1))).violations)).toContain("deletion_ground_unknown");

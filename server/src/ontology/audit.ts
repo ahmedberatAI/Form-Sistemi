@@ -403,8 +403,10 @@ export async function runAudit(env: AuditEnv, input: ProposalAuditInput): Promis
     infos.push(makeFinding(model, "info", "rule_overridden", art("Madde_6_3"), `${h.label} kuralı, öncelikli bir kural nedeniyle uygulanmadı.`, r));
   }
 
-  const violations = all.filter((f) => f.severity === "violation");
-  const warnings = all.filter((f) => f.severity === "warning");
+  const order = (f: Finding) => model.articles.get(f.article ?? "")?.order ?? 999999;
+  const byArticle = (a: Finding, b: Finding) => order(a) - order(b) || (a.code < b.code ? -1 : a.code > b.code ? 1 : 0);
+  const violations = all.filter((f) => f.severity === "violation").sort(byArticle);
+  const warnings = all.filter((f) => f.severity === "warning").sort(byArticle);
   const allInfos = dedupFindings([...all.filter((f) => f.severity === "info"), ...infos]);
 
   const appliedRules: AppliedRule[] = activeRules.map((r) => {

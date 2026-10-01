@@ -519,6 +519,11 @@ a:focus:not(:focus-visible) {
 .header-actions .user-menu-button {
   min-width: 0;
 }
+@media (min-width: 900px) {
+  .user-menu-button {
+    max-width: 240px;
+  }
+}
 @media (max-width: 599.98px) {
   .user-menu-button > .icon:first-child {
     display: none;
