@@ -240,6 +240,28 @@ describe("applyPatch — sürümleme", () => {
     expect(r.params!.quorum).toEqual(rat(1, 5));
     expect(r.params!.durationsHours.deliberation).toBe(80);
     expect(r.infos.map((i) => i.code)).toContain("rule_overridden");
+    // Nitelikli kuralı (bilirkişi kategorisi, Madde 13 (1)) devre dışı bırakmak nitelikli çoğunluk ister
+    const q = await svc.validatePatch(
+      patch(
+        { op: "setParam", rule: fy("KuralSporBilirkisiz"), param: "dayanak", value: fy("Madde_24_1") },
+        { op: "setParam", rule: fy("KuralSporBilirkisiz"), param: "uygulanirSinif", value: fy("Butce") },
+        { op: "setParam", rule: fy("KuralSporBilirkisiz"), param: "overrides", value: fy("KuralBilirkisiKategorisi") },
+      ),
+    );
+    expect(q.admissible).toBe(true);
+    expect(q.inferredClasses).toContain(fy("NitelikliHukumDegisikligi"));
+    expect(q.params).toMatchObject({ threshold: rat(3, 4), quorum: rat(1, 2) });
+    await svc.applyPatch(
+      patch(
+        { op: "setParam", rule: fy("KuralSporBilirkisiz"), param: "dayanak", value: fy("Madde_24_1") },
+        { op: "setParam", rule: fy("KuralSporBilirkisiz"), param: "uygulanirSinif", value: fy("Butce") },
+        { op: "setParam", rule: fy("KuralSporBilirkisiz"), param: "overrides", value: fy("KuralBilirkisiKategorisi") },
+      ),
+      "p2",
+    );
+    const b = await svc.audit({ kind: "topic", title: "Mahalle bütçesi", body: BODY, categories: [fy("KatilimciButce")], verifiedMembers: 40 });
+    expect(b.requiresExpert).toBe(false);
+    expect(b.appliedRules.map((a) => a.iri)).not.toContain(fy("KuralBilirkisiKategorisi"));
     // Değiştirilemez maddeye dayanan kural hiçbir zaman devre dışı kalmaz
     const t = await svc.audit({ kind: "topic", title: "Mahalle bütçesi", body: BODY, categories: [fy("KatilimciButce")], verifiedMembers: 40, rightsAffected: [{ right: fy("MulkiyetHakki"), direction: "restrict", source: "author" }] });
     expect(t.tier).toBe("T1");

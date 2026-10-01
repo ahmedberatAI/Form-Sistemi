@@ -348,8 +348,17 @@ export function createLifecycle(core: ForumCore, parts: LifecycleParts): Lifecyc
     return [];
   }
 
+  /** Kura hatası evre ilerlemesini asla durdurmaz (canlılık): hata günlüğe yazılır, sonraki tick yeniden dener. */
+  async function drawSafely(p: ProposalRow, now: number): Promise<void> {
+    try {
+      await maybeDrawPanel(p, now);
+    } catch (e) {
+      console.error(`[forum] ${proposalRef(p)} bilirkişi kurası yapılamadı:`, e);
+    }
+  }
+
   async function stepDeliberation(p: ProposalRow, now: number): Promise<Transition[]> {
-    await maybeDrawPanel(p, now);
+    await drawSafely(p, now);
     if (p.phase_ends_at === null || now < p.phase_ends_at) return [];
     if (!p.expert_extension_used && safe(() => deps.experts.suspensiveFlag(p.id), false)) {
       return core.tx(() => {
@@ -533,13 +542,14 @@ export function createLifecycle(core: ForumCore, parts: LifecycleParts): Lifecyc
     return core.tx(() => {
       const cur = fresh(p);
       const t = enact(cur, prep, "İtiraz süresi geçerli bir itiraz olmadan doldu; karar yürürlüğe girdi.", now);
-      notifyPhase(cur, t.to, t.reason);
+      const voters = db.all<{ user_id: string }>("SELECT user_id FROM ballots WHERE proposal_id = ? AND round = 1", cur.id).map((r) => r.user_id);
+      notifyPhase(cur, t.to, t.reason, voters);
       return [t];
     });
   }
 
   async function stepReconciliation(p: ProposalRow, now: number): Promise<Transition[]> {
-    await maybeDrawPanel(p, now);
+    await drawSafely(p, now);
     if (p.phase_ends_at === null || now < p.phase_ends_at) return [];
     return core.tx(() => {
       const cur = fresh(p);

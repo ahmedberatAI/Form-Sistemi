@@ -366,7 +366,7 @@ fy:TelifIhlali a fy:SilmeGerekcesi, fy:IcerikEtiketi ; rdfs:label "Telif ihlali"
     rdfs:comment "Hak sahibinin izni olmadan eser paylaşımı." ;
     fy:dayanak fy:Madde_20_1 .
 fy:GorusAyriligi a fy:SilmeGerekcesi, fy:GecersizGerekce ; rdfs:label "Görüş ayrılığı" ;
-    rdfs:comment "Bir görüşe katılmamak silme gerekçesi OLAMAZ (değiştirilemez madde)." ;
+    rdfs:comment "Bir görüşe katılmamak ya da bir görüşü yanlış bulmak silme gerekçesi olamaz; görüşe tartışmada yanıt verilir." ;
     fy:dayanak fy:Madde_20_2 .
 
 # ═════════════════════════ İtiraz gerekçeleri ═════════════════════════

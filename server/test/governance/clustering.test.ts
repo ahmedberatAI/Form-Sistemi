@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createRng } from "@forum/shared";
 import type { VoteMatrixEntry } from "../../src/core/contracts";
 import { CLUSTER_ALGO, computeClusters, createGovernanceMath } from "../../src/governance";
-import { selectPartition } from "../../src/governance/clustering";
+import { bestPartition, CLUSTER_ALGO_V1, computeClustersDetailed } from "../../src/governance/clustering";
 
 const uid = (i: number) => `u${String(i).padStart(3, "0")}`;
 const pid = (j: number) => `p${String(j).padStart(2, "0")}`;
@@ -34,6 +34,7 @@ describe("computeClusters (§9)", () => {
   it("60/30/10 bloklu oy geçmişinde K=3; bloklar eksiksiz ayrılır ve büyüklüğe göre g0/g1/g2", () => {
     const r = computeClusters(entries, "tohum-1");
     expect(r.algo).toBe(CLUSTER_ALGO);
+    expect(CLUSTER_ALGO).toBe("pca2-kmeans-silhouette-null/2");
     expect(r.k).toBe(3);
     expect(r.silhouette).toBeGreaterThan(0.5);
     expect(r.sizes).toEqual({ g0: 60, g1: 30, g2: 10 });
@@ -110,16 +111,52 @@ describe("computeClusters (§9)", () => {
     expect(new Set(Object.values(r.assignments))).toEqual(new Set(["g0"]));
   });
 
+  it("gürültülü homojen veri: v1 sahte küme bulur, sıfır modeli (r2) K=1'e düşürür", () => {
+    for (const flip of [0.1, 0.2, 0.3]) {
+      const { entries: homo } = blockHistory([150], { flip, seed: `homojen-${flip}` });
+      const v1 = computeClustersDetailed(homo, "s", {}, { nullModel: false });
+      expect(v1.result.algo).toBe(CLUSTER_ALGO_V1);
+      expect(v1.result.k, `v1 flip=${flip}`).toBeGreaterThanOrEqual(2);
+      const v2 = computeClustersDetailed(homo, "s");
+      expect(v2.result.k, `r2 flip=${flip}`).toBe(1);
+      expect(v2.diagnostics.rejectedBy).toBe("null_gap");
+      expect(v2.diagnostics.candidateK).toBeGreaterThanOrEqual(2);
+      expect(v2.diagnostics.candidateSilhouette).toBeGreaterThanOrEqual(0.25);
+      expect(v2.diagnostics.candidateSilhouette - v2.diagnostics.nullSilhouette!).toBeLessThan(0.1);
+      expect(v2.result.silhouette).toBeCloseTo(v2.diagnostics.candidateSilhouette, 5);
+      expect(v2.result.inputHash).not.toBe(v1.result.inputHash); // algo sürümü özetin parçası
+    }
+  });
+
+  it("gerçek yapıda sıfır modeli farkı ≥ 0,10; tanılar belirlenimci", () => {
+    const a = computeClustersDetailed(entries, "tohum-1");
+    expect(a.diagnostics.rejectedBy).toBeNull();
+    expect(a.diagnostics.candidateK).toBe(3);
+    expect(a.diagnostics.nullSilhouette).not.toBeNull();
+    expect(a.diagnostics.candidateSilhouette - a.diagnostics.nullSilhouette!).toBeGreaterThanOrEqual(0.1);
+    expect(computeClustersDetailed(entries, "tohum-1")).toEqual(a);
+  });
+
+  it("performans: 300 kullanıcı × 60 öneri < 2 sn", () => {
+    const { entries: big } = blockHistory([180, 90, 30], { proposals: 60, flip: 0.2, participation: 0.55, seed: "büyük" });
+    const t = performance.now();
+    const r = computeClusters(big, "perf");
+    expect(performance.now() - t).toBeLessThan(2000);
+    expect(r.clusteredTotal).toBe(300);
+  });
+
   it("yapısız küçük veri: en iyi siluet < 0,25 → K=1 (kare köşeleri, siluet ≈ 0,17)", () => {
     const corners: [number, number][] = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
     const e: VoteMatrixEntry[] = corners.flatMap(([a, b], i) => [
       { userId: uid(i), proposalId: "p0", value: a as 1 | -1 },
       { userId: uid(i), proposalId: "p1", value: b as 1 | -1 },
     ]);
-    const r = computeClusters(e, "s");
+    const { result: r, diagnostics } = computeClustersDetailed(e, "s");
     expect(r.k).toBe(1);
     expect(r.silhouette).toBeCloseTo((Math.SQRT2 + 1 - 2) / (Math.SQRT2 + 1), 5); // K=2 denemesinin değeri
     expect(r.sizes).toEqual({ g0: 4 });
+    expect(diagnostics.rejectedBy).toBe("silhouette");
+    expect(diagnostics.nullSilhouette).toBeNull(); // eşik altındaysa sıfır modeli hesaplanmaz
   });
 
   it("n < 4 → K=1; boş girdi", () => {
@@ -148,10 +185,11 @@ describe("computeClusters (§9)", () => {
     expect(() => computeClusters([{ userId: "a", proposalId: "p", value: 2 as never }], "s")).toThrow(/geçersiz oy değeri/);
   });
 
-  it("selectPartition: özdeş noktalar → K=1; iki uzak öbek → K=2", () => {
-    expect(selectPartition(Array.from({ length: 10 }, () => [0, 0] as [number, number]), "s", 5).k).toBe(1);
+  it("bestPartition: özdeş noktalar ya da n < 4 → aday yok; iki uzak öbek → K=2", () => {
+    expect(bestPartition(Array.from({ length: 10 }, () => [0, 0] as [number, number]), "s", 5)).toBeNull();
+    expect(bestPartition([[0, 0], [1, 1], [2, 2]], "s", 5)).toBeNull();
     const two = [...Array.from({ length: 10 }, (_, i) => [i * 0.01, 0] as [number, number]), ...Array.from({ length: 10 }, (_, i) => [5 + i * 0.01, 0] as [number, number])];
-    const r = selectPartition(two, "s", 5);
+    const r = bestPartition(two, "s", 5)!;
     expect(r.k).toBe(2);
     expect(r.silhouette).toBeGreaterThan(0.9);
   });

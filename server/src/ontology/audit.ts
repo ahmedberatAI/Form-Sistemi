@@ -361,8 +361,8 @@ export async function runAudit(env: AuditEnv, input: ProposalAuditInput): Promis
     tierRule = activeRules.find((r) => model.tierByIri(r.minTier)?.tierCode === "DEL") ?? null;
   }
 
-  // Bilirkişi
-  const requiresExpertClass = types.includes(FY_NS + "BilirkisiGerektirenOneri") || !!input.requestExpert;
+  // Bilirkişi: yazar talebi, orta güvenli içerik etiketi ya da bilirkişi gerektiren (devre dışı kalmamış) bir kural
+  const requiresExpertClass = !!input.requestExpert || store.getObjects(p, fyN("ortaGuvenliEtiket"), null).length > 0;
   const explicit = [...new Set([...graph.explicitCategories, ...inherited])];
   let expertDomains = explicit.filter((c) => model.effectiveRequiresExpert(c));
   if (expertDomains.length === 0) expertDomains = explicit.length ? explicit : categories;

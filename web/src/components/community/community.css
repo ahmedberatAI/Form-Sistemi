@@ -1,0 +1,307 @@
+/* ── Topluluk ajanı: bilirkişi, profil, üye, graf ve görüş haritası ── */
+
+/* Görüş kümesi renkleri (kategorik; validate_palette ile denetlendi: ilk üç yuva tüm çiftlerde geçer,
+   dördüncü ve beşinci küme ayrıca şekil ile ayrılır). Koyu tema kendi adımlarını kullanır. */
+:root {
+  --viz-c0: #2a78d6;
+  --viz-c1: #eb6834;
+  --viz-c2: #1baf7a;
+  --viz-c3: #eda100;
+  --viz-c4: #e87ba4;
+  --viz-none: #8b929c;
+  --viz-edge: #b7bfcb;
+  --viz-ring: #18202b;
+}
+:root[data-theme="dark"] {
+  --viz-c0: #3987e5;
+  --viz-c1: #d95926;
+  --viz-c2: #199e70;
+  --viz-c3: #c98500;
+  --viz-c4: #d55181;
+  --viz-none: #6b7380;
+  --viz-edge: #3f4b59;
+  --viz-ring: #e5e9ef;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]),
+  :root[data-theme="system"] {
+    --viz-c0: #3987e5;
+    --viz-c1: #d95926;
+    --viz-c2: #199e70;
+    --viz-c3: #c98500;
+    --viz-c4: #d55181;
+    --viz-none: #6b7380;
+    --viz-edge: #3f4b59;
+    --viz-ring: #e5e9ef;
+  }
+}
+
+.cm-filters {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 640px) {
+  .cm-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.cm-expert-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem 0.75rem;
+}
+.cm-expert-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+.cm-rep {
+  max-width: 320px;
+}
+.cm-prewrap {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 0;
+}
+.cm-formula {
+  font-family: var(--mono);
+  font-size: 1.05rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.6rem;
+  display: inline-block;
+}
+
+.cm-range {
+  width: 100%;
+  accent-color: var(--primary);
+}
+.cm-range-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.cm-range-row output {
+  min-width: 3.5rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.cm-risk-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+}
+.cm-risk-row > .field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.cm-lint-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.cm-lint-quote {
+  margin: 0.25rem 0;
+  padding: 0.3rem 0.6rem;
+  border-left: 3px solid var(--warning);
+  background: var(--warning-soft);
+  font-style: italic;
+  overflow-wrap: anywhere;
+}
+
+.cm-question {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.75rem;
+  background: var(--surface-2);
+}
+
+.cm-user-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--surface);
+}
+.cm-user-results li + li {
+  border-top: 1px solid var(--border);
+}
+.cm-user-result {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.55rem 0.75rem;
+  background: none;
+  border: 0;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+.cm-user-result:hover,
+.cm-user-result:focus-visible {
+  background: var(--surface-2);
+}
+.cm-user-result[aria-pressed="true"] {
+  background: var(--primary-soft);
+}
+.cm-selected-user {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cm-stat-grid {
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 130px), 1fr));
+}
+
+/* ───── Graf ───── */
+.cm-graph-box {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.cm-graph-box canvas {
+  display: block;
+}
+.cm-graph-hover {
+  position: absolute;
+  left: 0.5rem;
+  top: 0.5rem;
+  max-width: calc(100% - 1rem);
+  padding: 0.3rem 0.55rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow);
+  font-size: 0.85rem;
+  pointer-events: none;
+  overflow-wrap: anywhere;
+}
+.cm-graph-tools {
+  position: absolute;
+  right: 0.5rem;
+  bottom: 0.5rem;
+  display: flex;
+  gap: 0.35rem;
+}
+.cm-edge-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.cm-edge-filters .check {
+  margin: 0;
+}
+
+.cm-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+.cm-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.cm-legend svg {
+  flex: none;
+}
+.cm-swatch-line {
+  display: inline-block;
+  width: 18px;
+  height: 0;
+  border-top: 2px solid var(--viz-edge);
+}
+.cm-swatch-line.is-dashed {
+  border-top-style: dashed;
+}
+
+.cm-map svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 520px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.cm-map-axis {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.cm-map-label {
+  fill: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+.cm-map-point {
+  stroke: var(--surface);
+  stroke-width: 1.5;
+}
+.cm-map-point:hover {
+  stroke: var(--viz-ring);
+}
+.cm-map-me {
+  fill: none;
+  stroke: var(--viz-ring);
+  stroke-width: 2;
+}
+.cm-map-centroid {
+  stroke: var(--viz-ring);
+  stroke-width: 2;
+}
+
+.cm-node-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.cm-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  vertical-align: middle;
+}

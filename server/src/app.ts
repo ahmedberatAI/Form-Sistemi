@@ -11,7 +11,7 @@ import { createOntologyService } from "./ontology";
 import { createGovernanceMath } from "./governance";
 import { createGraphService } from "./graph";
 import { createIdentityService } from "./identity";
-import { createAiRecordSink, createAiService } from "./ai";
+import { createAiRecordSink, createAiService, type AnthropicLike } from "./ai";
 import { createExpertService } from "./experts";
 import { createForumServices } from "./forum";
 import { buildServer } from "./http";
@@ -112,19 +112,18 @@ export async function createApp(config: Config, opts: CreateAppOptions = {}): Pr
   try {
     const notifier = new DbNotifier(ctx);
     const audit = createAuditLogger(ctx);
-    ledger = createLedgerService(ctx);
+    const led = createLedgerService(ctx);
+    ledger = led;
     const ontology = createOntologyService(ctx);
     await ontology.init();
-    const graph = createGraphService(ctx, { ledger });
+    const graph = createGraphService(ctx, { ledger: led });
     const math = createGovernanceMath();
-    const identity = createIdentityService(ctx, { ledger, notifier, audit });
-    const ai =
-      opts.aiClient === undefined
-        ? createAiService(ctx)
-        : createAiService(ctx, { client: opts.aiClient as NonNullable<Parameters<typeof createAiService>[1]>["client"] });
-    const aiSink = createAiRecordSink(ctx, { ledger });
+    const identity = createIdentityService(ctx, { ledger: led, notifier, audit });
+    // client undefined: YZ modülü ortamdan karar verir (AI_ENABLED + ANTHROPIC_API_KEY); null: zorla çevrimdışı.
+    const ai = createAiService(ctx, { client: opts.aiClient as AnthropicLike | null | undefined });
+    const aiSink = createAiRecordSink(ctx, { ledger: led });
     const experts = createExpertService(ctx, {
-      ledger,
+      ledger: led,
       graph,
       math,
       ai,
@@ -133,11 +132,11 @@ export async function createApp(config: Config, opts: CreateAppOptions = {}): Pr
       ontology,
       householdOf: (userId) => identity.householdOf(userId),
     });
-    const forum = createForumServices({ ctx, ledger, ontology, graph, math, identity, ai, aiSink, experts, notifier, audit });
+    const forum = createForumServices({ ctx, ledger: led, ontology, graph, math, identity, ai, aiSink, experts, notifier, audit });
 
-    const services: AppServices = { ctx, clock, ledger, ontology, graph, math, identity, ai, aiSink, experts, notifier, audit, forum };
+    const services: AppServices = { ctx, clock, ledger: led, ontology, graph, math, identity, ai, aiSink, experts, notifier, audit, forum };
 
-    await ledger.start();
+    await led.start();
     ledgerStarted = true;
 
     if (opts.startTimers !== false) {
@@ -166,7 +165,7 @@ export async function createApp(config: Config, opts: CreateAppOptions = {}): Pr
         forum.lifecycle.stop();
         for (const t of timers) clearInterval(t);
         try {
-          await ledger!.stop();
+          await led.stop();
         } finally {
           persistClock();
           try {

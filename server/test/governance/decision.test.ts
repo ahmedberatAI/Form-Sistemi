@@ -151,7 +151,7 @@ describe("decide — T0 olağan", () => {
     expect(r.overrideMet).toBeNull();
     expect(r.checks.map((c) => c.key)).toEqual(["quorum", "threshold", "bridge:g0", "bridge:g1", "bridge:g2"]);
     expect(check(r, "quorum")).toMatchObject({ label: "Katılım (yeter sayı)", passed: true, value: "55/100", required: "≥ 20" });
-    expect(check(r, "quorum")!.detail).toContain("⌈1,5·√100⌉ = 15");
+    expect(check(r, "quorum")!.detail).toBe("Gerekli katılım, %20 yeter sayı (20 kişi) ile mutlak taban ⌈1,5·√100⌉ = 15 değerlerinin büyüğüdür.");
     expect(check(r, "threshold")).toMatchObject({ label: "Onay oranı", passed: true, value: "%78,2 (43 kabul / 12 red)", required: "> %50,0" });
     expect(check(r, "threshold")!.detail).toBe("Çekimser oylar katılıma sayılır, onay oranına sayılmaz.");
     expect(check(r, "bridge:g2")).toMatchObject({ label: "Görüş Grubu C desteği (köprü testi)", passed: true, value: "P=0,57 (3 kabul / 2 red)", required: "≥ 0,30" });
@@ -200,9 +200,12 @@ describe("decide — T0 olağan", () => {
     expect(check(first, "participation_shortfall")).toMatchObject({ passed: false, detail: "Oylama bir kez uzatılır." });
     const after = decide(input({ votes: v, extensionAvailable: false }));
     expect(after.outcome).toBe("accept");
-    expect(after.clusters.find((c) => c.clusterId === "g2")!.pg).toBe(0.5);
+    const g2 = after.clusters.find((c) => c.clusterId === "g2")!;
+    expect(g2.pg).toBe(0.5);
+    expect(g2.passed).toBeNull(); // nötr: köprüden muaf
     expect(check(after, "bridge:g2")).toMatchObject({ passed: true, value: "P=0,50 (0 kabul / 0 red)" });
     expect(check(after, "bridge:g2")!.detail).toContain("Küme yeterince katılmadı");
+    expect(check(after, "participation_shortfall")).toMatchObject({ passed: true, value: "Görüş Grubu C: 0" });
     expect(check(after, "participation_shortfall")!.detail).toContain("Uzatma kullanıldı");
     // T1 (φ = 0,40) için de boykot engel değildir
     expect(decide(input({ params: T("T1"), votes: v })).outcome).toBe("accept");
@@ -217,10 +220,38 @@ describe("decide — T0 olağan", () => {
     expect(decide(input({ votes: abst, extensionAvailable: true })).outcome).toBe("needs_more_votes");
   });
 
-  it("uzatma sonrası eksik kümede tek 'hayır': T0'da P=1/3 ≥ 0,30 geçer, T1'de 1/3 < 0,40 → contested", () => {
+  it("nötr kural (r2): uzatma sonrası μ_votes altındaki anlamlı küme köprüden muaf — tek 'hayır' engelleyemez", () => {
     const v = votes({ g0: [40, 5], g1: [15, 5], g2: [0, 1] });
-    expect(decide(input({ votes: v })).outcome).toBe("accept");
-    expect(decide(input({ params: T("T1"), votes: v })).outcome).toBe("contested");
+    for (const tier of ["T0", "T1", "T2"] as const) {
+      const r = decide(input({ params: T(tier), votes: tier === "T2" ? votes({ g0: [45, 5], g1: [20, 5], g2: [0, 1] }) : v }));
+      expect(r.outcome, tier).toBe("accept");
+      expect(r.bridgeMet, tier).toBe(true);
+      expect(r.clusters.find((c) => c.clusterId === "g2")!.passed, tier).toBeNull();
+      expect(check(r, "bridge:g2"), tier).toMatchObject({ passed: true, value: "P=0,33 (0 kabul / 1 red)" });
+      expect(check(r, "bridge:g2")!.detail, tier).toContain("köprü tabanından muaf");
+    }
+    // uzatma hâlâ varken eksiklik muafiyet değil, uzatma gerekçesidir
+    const ext = decide(input({ params: T("T1"), votes: v, extensionAvailable: true }));
+    expect(ext.outcome).toBe("needs_more_votes");
+    expect(ext.clusters.find((c) => c.clusterId === "g2")!.passed).toBe(false);
+    expect(check(ext, "participation_shortfall")).toMatchObject({ passed: false, detail: "Oylama bir kez uzatılır." });
+    expect(check(ext, "bridge:g2")!.detail).toContain("oylama bir kez uzatılır");
+  });
+
+  it("nötr kural yalnız μ_votes altında: tam 2 'hayır' (P = 1/4) T1'de contested", () => {
+    const r = decide(input({ params: T("T1"), votes: votes({ g0: [40, 5], g1: [15, 5], g2: [0, 2] }) }));
+    expect(r.outcome).toBe("contested");
+    expect(check(r, "participation_shortfall")).toBeUndefined();
+  });
+
+  it("nötr kural contested kökenli yeniden oylamada da uzatmadan sonra geçerlidir", () => {
+    const rv = { round: 2 as const, revote: { origin: "contested" as const, strongObjection: false } };
+    const v = votes({ g0: [30, 10], g1: [10, 8], g2: [0, 1] }); // 40/59 < 2/3
+    expect(decide(input({ ...rv, params: T("T1"), votes: v, extensionAvailable: true })).outcome).toBe("needs_more_votes");
+    const r = decide(input({ ...rv, params: T("T1"), votes: v, extensionAvailable: false }));
+    expect(r.overrideMet).toBe(false);
+    expect(r.bridgeMet).toBe(true);
+    expect(r.outcome).toBe("accept");
   });
 
   it("yeter sayı: 19/20 → uzatma varken needs_more_votes, yoksa reject; tam 20 → geçer; çekimser katılıma sayılır", () => {
@@ -320,6 +351,16 @@ describe("decide — soğuk başlangıç (§4.4)", () => {
     expect(check(r, "cold_start")).toBeDefined();
   });
 
+  it("τ' = max(τ, min(τ+δ, 2/3)): τ > 2/3 ise soğuk başlangıç eşiği düşürmez", () => {
+    const p: DecisionParams = { ...T("T2"), threshold: rat(3, 4) };
+    const cold = { params: p, clusterSizes: {}, clusteredTotal: 0, k: 1, eligibleCount: 20 };
+    const r = decide(input({ ...cold, votes: votes({ "-": [9, 3] }) })); // tam 3/4
+    expect(r.thresholdUsed).toEqual(rat(3, 4));
+    expect(r.thresholdStrict).toBe(false);
+    expect(r.outcome).toBe("accept");
+    expect(decide(input({ ...cold, votes: votes({ "-": [7, 3] }) })).outcome).toBe("reject"); // 0,70 ≥ 2/3 ama < 3/4
+  });
+
   it("τ+δ en çok 2/3: T1 → 2/3 (0,70 değil), T2 ve DEL → 2/3; tam 2/3 kabul", () => {
     const cold = { clusterSizes: {}, clusteredTotal: 0, k: 1, eligibleCount: 30 };
     for (const tier of ["T1", "T2", "DEL"] as const) {
@@ -396,6 +437,13 @@ describe("decide — DEL (silme) yazar kümesi koruması", () => {
     expect(r.outcome).toBe("contested");
   });
 
+  it("nötr küme muafiyeti yazar kümesi korumasına uygulanmaz: uzatma sonrası yazarın kümesinden tek 'hayır' yeter", () => {
+    const r = decide(del({ authorClusterId: "g2", votes: votes({ g0: [40, 2], g1: [10, 2], g2: [0, 1] }) }));
+    expect(r.clusters.find((c) => c.clusterId === "g2")!.passed).toBeNull(); // köprüden muaf
+    expect(check(r, "author_cluster")).toMatchObject({ passed: false, value: "P=0,33 (0 kabul / 1 red)" });
+    expect(r.outcome).toBe("contested");
+  });
+
   it("DEL eşiği 2/3 ≥ (tam 2/3 kabul)", () => {
     const r = decide(del({ authorClusterId: "g0", votes: votes({ g0: [14, 6], g1: [4, 2], g2: [2, 2] }) })); // 20/30
     expect(r.thresholdMet).toBe(true);
@@ -455,6 +503,10 @@ describe("decide — yeniden oylama (round 2)", () => {
     expect(check(r, "revote_threshold")).toMatchObject({ label: "Yeniden oylama eşiği (itiraz sonrası)", passed: true, required: "≥ %60,0" });
     expect(check(r, "revote_threshold")!.detail).toContain("Küme tabanları bu turda uygulanmaz");
     expect(r.reason).toContain("%60,0 eşiği sağlandı");
+    // küme tabanı satırları yalnız bilgi: ✘ görünmez
+    expect(check(r, "bridge:g2")).toMatchObject({ label: "Görüş Grubu C desteği (bilgi — bu turda uygulanmaz)", passed: true });
+    expect(check(r, "bridge:g2")!.detail).toContain("< 0,30");
+    expect(r.clusters.find((c) => c.clusterId === "g2")!.passed).toBe(false); // küme tablosunda hesaplanıp gösterilir
     const under = decide(input({ ...objection(), votes: votes({ g0: [57, 30], g1: [2, 1], g2: [0, 10] }) })); // 59/100
     expect(under.outcome).toBe("reject");
   });
@@ -477,6 +529,22 @@ describe("decide — yeniden oylama (round 2)", () => {
     const del = decide(input({ ...objection(true), params: T("DEL"), votes: twoThirds }));
     expect(del.outcome).toBe("reject");
     expect(check(del, "revote_threshold")!.required).toBe("≥ %75,0");
+  });
+});
+
+describe("decide — gösterimin karşılaştırmayla tutarlılığı", () => {
+  it("P_g yuvarlaması tabanla aynı görünürse hassasiyet artar (29/97 → 0,299 < 0,30)", () => {
+    const r = decide(input({ eligibleCount: 400, clusterSizes: { g0: 300, g1: 100 }, clusteredTotal: 400, k: 2, votes: votes({ g0: [250, 10], g1: [28, 67] }) }));
+    expect(check(r, "bridge:g1")).toMatchObject({ passed: false, value: "P=0,299 (28 kabul / 67 red)", required: "≥ 0,30" });
+    expect(r.outcome).toBe("contested");
+  });
+  it("onay oranı eşikle aynı görünürse hassasiyet artar (1499/2500 → %59,96 < %60,0); tam eşitlikte %60,0", () => {
+    const big = { eligibleCount: 3000, clusterSizes: { g0: 2000, g1: 1000 }, clusteredTotal: 3000, k: 2, params: T("T1") };
+    const r = decide(input({ ...big, votes: votes({ g0: [1000, 500], g1: [499, 501] }) }));
+    expect(check(r, "threshold")).toMatchObject({ passed: false, value: "%59,96 (1499 kabul / 1001 red)", required: "≥ %60,0" });
+    expect(r.reason).toContain("%59,96");
+    const exact = decide(input({ ...big, votes: votes({ g0: [1000, 500], g1: [500, 500] }) }));
+    expect(check(exact, "threshold")).toMatchObject({ passed: true, value: "%60,0 (1500 kabul / 1000 red)" });
   });
 });
 
@@ -511,6 +579,8 @@ describe("decide — hatalar ve özet", () => {
   it("küçük |E|: |E| = 2 iken iki oyla kabul mümkün", () => {
     const r = decide(input({ eligibleCount: 2, clusterSizes: {}, clusteredTotal: 0, k: 1, votes: votes({ "-": [2, 0] }) }));
     expect(r.quorumRequired).toBe(2);
+    expect(check(r, "quorum")!.required).toBe("≥ 2");
+    expect(check(r, "quorum")!.detail).toContain("uygun seçmen sayısını (|E| = 2) aşamaz");
     expect(r.outcome).toBe("accept");
   });
   it("küçük |E| = 8: floor_abs = 5 baskın; 4 katılım yetmez", () => {
@@ -565,6 +635,15 @@ describe("evaluateObjection", () => {
     expect(oneCluster.valid).toBe(false);
     const nine = evaluateObjection({ ...base, firstRoundVotes: fr, signatures: [...noKeys("g0", 2), ...noKeys("g1", 3), ...noKeys("g2", 3), ...noKeys("-", 1)] });
     expect(nine.valid).toBe(false);
+  });
+
+  it("imzacının kümesi ilk tur oyundan alınır (imzadaki küme bilgisi yanlış olsa da)", () => {
+    const wrong = noKeys("g2", 6).map((x) => ({ ...x, clusterId: "g0" }));
+    const r = evaluateObjection({ ...base, signatures: wrong });
+    expect(r.perCluster.find((p) => p.clusterId === "g2")!.signers).toBe(6);
+    expect(r.perCluster.find((p) => p.clusterId === "g0")!.signers).toBe(0);
+    expect(r.valid).toBe(true);
+    expect(r.rule).toBe("cluster");
   });
 
   it("'no' vermeyen imzacılar ve yinelenen imzalar süzülür", () => {
@@ -703,6 +782,17 @@ describe("verifyTally — defterden bağımsız yeniden sayım", () => {
     expect(wrongOutcome.mismatches).toEqual(["Sonuç farklı: defterde reject, yeniden sayımda accept"]);
     const wrongVersion = verifyTally({ ...tally, algoVersion: "KC-0.9" }, reveals, commitments);
     expect(wrongVersion.mismatches).toContain("Algoritma sürümü farklı: KC-0.9 ≠ KC-1.0");
+  });
+
+  it("yeniden sayım hata verirse (bozuk TALLY) istisna fırlatmaz, uyuşmazlık raporlar", () => {
+    const { reveals, commitments, tally } = serverTally(ballots);
+    const t3 = verifyTally({ ...tally, params: { ...tally.params, tier: "T3" } }, reveals, commitments);
+    expect(t3.ok).toBe(false);
+    expect(t3.mismatches).toContain("Yeniden sayım yapılamadı: decide: T3 (değiştirilemez) öneriler oylanamaz");
+    expect(t3.recomputed.checks[0]).toMatchObject({ key: "recount_error", passed: false });
+    const r2 = verifyTally({ ...tally, round: 2, revote: null }, reveals);
+    expect(r2.ok).toBe(false);
+    expect(r2.mismatches.some((m) => m.startsWith("Yeniden sayım yapılamadı"))).toBe(true);
   });
 
   it("commitments verilmezse yalnız sayım denetlenir", () => {

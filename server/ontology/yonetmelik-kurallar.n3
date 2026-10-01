@@ -2,7 +2,8 @@
 #  Forum Sistemi — N3 çıkarım kuralları (Horn kuralları, ileri zincirleme)
 #  n3 paketinin Reasoner'ı ile T-kutusu + yürürlükteki A-kutusu + öneri alt grafı
 #  üzerinde sabit noktaya kadar uygulanır. Sayısal karşılaştırma yoktur: güven
-#  düzeyleri (yüksek/orta/düşük) ve sürüm eşitliği denetim öncesinde hesaplanır.
+#  düzeyleri (yüksek/orta/düşük) denetim öncesinde rasyonel karşılaştırmayla atanır,
+#  sürüm eşitliği SHACL (sh:equals) ile, koruma tabanları meta-denetimle sınanır.
 #  İhlal/uyarı "bayrakları" burada çıkarılır, yonetmelik-sekiller.ttl (SHACL)
 #  tarafından maddeye atıfla raporlanır.
 # ═══════════════════════════════════════════════════════════════════════════
@@ -79,8 +80,14 @@
   { ?p fy:degistirilemezAtlatma ?r . ?p fy:uygulananKural fy:KuralDegistirilemezAtlatma . } .
 
 # ─── K11. Nitelikli hüküm değişikliği (3/4 eşik, 0,50 yeter sayı) ───
+# Nitelikli hükmü (ya da ona dayanan kuralı) değiştirmek, "overrides" ile devre dışı bırakmak, bir kuralı
+# nitelikli hükme dayandırmak ya da nitelikli koruma vermek aynı nitelikli çoğunluğu gerektirir.
 { ?p fy:yamaIslemi ?o . ?o fy:hedef ?m . ?m fy:korumaDuzeyi fy:Nitelikli . } => { ?p a fy:NitelikliHukumDegisikligi . } .
 { ?p fy:yamaIslemi ?o . ?o fy:hedef ?r . ?r fy:dayanak ?m . ?m fy:korumaDuzeyi fy:Nitelikli . } => { ?p a fy:NitelikliHukumDegisikligi . } .
+{ ?p fy:yamaIslemi ?o . ?o fy:param fy:overrides . ?o fy:yeniDeger ?m . ?m fy:korumaDuzeyi fy:Nitelikli . } => { ?p a fy:NitelikliHukumDegisikligi . } .
+{ ?p fy:yamaIslemi ?o . ?o fy:param fy:overrides . ?o fy:yeniDeger ?r . ?r fy:dayanak ?m . ?m fy:korumaDuzeyi fy:Nitelikli . } => { ?p a fy:NitelikliHukumDegisikligi . } .
+{ ?p fy:yamaIslemi ?o . ?o fy:param fy:dayanak . ?o fy:yeniDeger ?m . ?m fy:korumaDuzeyi fy:Nitelikli . } => { ?p a fy:NitelikliHukumDegisikligi . } .
+{ ?p fy:yamaIslemi ?o . ?o fy:yeniKoruma fy:Nitelikli . } => { ?p a fy:NitelikliHukumDegisikligi . } .
 
 # ─── K12. Sınıfa bağlı kuralların uygulanması ve katman / bilirkişi sonuçları ───
 { ?r a fy:Kural . ?r fy:uygulanirSinif ?k . ?p a fy:Oneri . ?p a ?k . } => { ?p fy:uygulananKural ?r . } .

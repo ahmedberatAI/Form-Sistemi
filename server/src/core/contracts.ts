@@ -132,6 +132,8 @@ export interface OntologyService {
   validatePatch(patch: RegulationPatch): Promise<AuditReport>;
   /** Kabul edilen yamayı uygular → yeni sürüm (bylaw_versions), BYLAW_VERSION defter kaydı çağıran tarafından yapılır. */
   applyPatch(patch: RegulationPatch, proposalId: string): Promise<BylawVersionInfo>;
+  /** BYLAW_VERSION defter kaydının hash'ini sürüme bağlar. */
+  setLedgerTx(version: number, txHash: string): void;
   /** Yürürlükteki yönetmeliğin Turtle çıktısı */
   exportTurtle(version?: number): string;
 }
@@ -247,6 +249,8 @@ export interface AuthUser {
 
 export interface IdentityService {
   register(input: RegistrationInput): Promise<{ user: Me }>;
+  /** Kurulum: sistemde hiç yönetici yokken ilk yöneticiyi doğrulanmış olarak oluşturur (yoksa 409 admin_exists). */
+  bootstrapAdmin(input: RegistrationInput): Promise<{ user: Me }>;
   /** "Sistem tarafından girilir": kayıt memuru üyeyi doğrudan doğrulanmış olarak oluşturur. */
   createByRegistrar(actorId: string, input: RegistrationInput): Promise<{ user: Me }>;
   verify(actorId: string, userId: string, decision: "approve" | "reject", note?: string): Promise<Me>;

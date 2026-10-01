@@ -1,18 +1,31 @@
-// ALGORITMA.md §9: Polis benzeri görüş kümeleme — PCA (2 bileşen, kuvvet yinelemesi) + k-means++/Lloyd + siluet.
+// ALGORITMA.md §9: Polis benzeri görüş kümeleme — PCA (2 bileşen, kuvvet yinelemesi) + k-means++/Lloyd + siluet
+// + permütasyon sıfır modeli (KC-1.0 r2, algo "pca2-kmeans-silhouette-null/2").
 // SAF ve BELİRLENİMCİ: tüm rastgelelik tohumlu (createRng), satır/sütun sırası kimliklere göre sabit,
 // kayan nokta toplamları her zaman aynı sırada yapılır.
 import { createRng, hashCanonical, type Rng } from "@forum/shared";
 import type { ClusterComputation, VoteMatrixEntry } from "../core/contracts";
 
-export const CLUSTER_ALGO = "pca2-kmeans-silhouette/1";
+export const CLUSTER_ALGO = "pca2-kmeans-silhouette-null/2";
+/** Sıfır modeli olmayan ilk sürüm (yalnız karşılaştırma/simülasyon için). */
+export const CLUSTER_ALGO_V1 = "pca2-kmeans-silhouette/1";
 const PCA_ITERATIONS = 100;
 const LLOYD_ITERATIONS = 100;
 const KMEANS_RESTARTS = 10;
 const MIN_SILHOUETTE = 0.25;
+const NULL_PERMUTATIONS = 5;
+const MIN_NULL_GAP = 0.1;
 const MIN_USERS_FOR_SPLIT = 4;
 const EPS = 1e-12;
 
 export type Point = [number, number];
+
+/** Merkezlenmiş oy matrisi (satır ana sıralı); eksik hücre = sütun ortalaması → 0. */
+interface Matrix {
+  n: number;
+  m: number;
+  data: Float64Array;
+  observed: Uint8Array;
+}
 
 function cmp(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
@@ -23,14 +36,10 @@ function round6(x: number): number {
   return r === 0 ? 0 : r;
 }
 
-function dot(a: Float64Array, b: Float64Array): number {
-  let s = 0;
-  for (let j = 0; j < a.length; j++) s += a[j] * b[j];
-  return s;
-}
-
 function normalize(v: Float64Array): boolean {
-  const norm = Math.sqrt(dot(v, v));
+  let ss = 0;
+  for (let j = 0; j < v.length; j++) ss += v[j] * v[j];
+  const norm = Math.sqrt(ss);
   if (!(norm > EPS)) return false;
   for (let j = 0; j < v.length; j++) v[j] /= norm;
   return true;
@@ -43,28 +52,65 @@ function canonicalSign(v: Float64Array): void {
   if (v.length > 0 && v[idx] < 0) for (let j = 0; j < v.length; j++) v[j] = -v[j];
 }
 
-/** XᵀX'in baskın özvektörü (kuvvet yinelemesi). Matris sıfırsa sıfır vektör döner. */
-function powerIteration(X: Float64Array[], m: number, rng: Rng): Float64Array {
-  let v = new Float64Array(m);
+function rowDot(data: Float64Array, i: number, m: number, v: Float64Array): number {
+  const off = i * m;
+  let s = 0;
+  for (let j = 0; j < m; j++) s += data[off + j] * v[j];
+  return s;
+}
+
+/** XᵀX'in baskın özvektörü (kuvvet yinelemesi, başlangıç U(−0,5; 0,5)ᵐ). Matris sıfırsa sıfır vektör döner. */
+function powerIteration(data: Float64Array, n: number, m: number, rng: Rng): Float64Array {
+  const v = new Float64Array(m);
   for (let j = 0; j < m; j++) v[j] = rng.next() - 0.5;
   if (!normalize(v)) {
     if (m === 0) return v;
     v[0] = 1;
   }
-  const xv = new Float64Array(X.length);
+  const xv = new Float64Array(n);
+  const w = new Float64Array(m);
   for (let it = 0; it < PCA_ITERATIONS; it++) {
-    for (let i = 0; i < X.length; i++) xv[i] = dot(X[i], v);
-    const w = new Float64Array(m);
-    for (let i = 0; i < X.length; i++) {
-      const row = X[i];
+    for (let i = 0; i < n; i++) xv[i] = rowDot(data, i, m, v);
+    w.fill(0);
+    for (let i = 0; i < n; i++) {
+      const off = i * m;
       const s = xv[i];
-      for (let j = 0; j < m; j++) w[j] += row[j] * s;
+      for (let j = 0; j < m; j++) w[j] += data[off + j] * s;
     }
     if (!normalize(w)) return new Float64Array(m);
-    v = w;
+    v.set(w);
   }
   canonicalSign(v);
   return v;
+}
+
+/** İki bileşenli PCA (deflasyonla) → kullanıcı koordinatları. */
+function pca2(M: Matrix, rng: Rng): Point[] {
+  const { n, m, data } = M;
+  const v1 = powerIteration(data, n, m, rng);
+  const deflated = new Float64Array(data.length);
+  for (let i = 0; i < n; i++) {
+    const p = rowDot(data, i, m, v1);
+    const off = i * m;
+    for (let j = 0; j < m; j++) deflated[off + j] = data[off + j] - p * v1[j];
+  }
+  const v2 = powerIteration(deflated, n, m, rng);
+  const points: Point[] = new Array(n);
+  for (let i = 0; i < n; i++) points[i] = [rowDot(data, i, m, v1), rowDot(data, i, m, v2)];
+  return points;
+}
+
+/** Sıfır modeli: her sütunun gözlenen değerleri, o sütunda oy vermiş satırlar arasında tohumlu karıştırılır. */
+function permuteColumns(M: Matrix, rng: Rng): Matrix {
+  const { n, m } = M;
+  const data = new Float64Array(M.data);
+  for (let j = 0; j < m; j++) {
+    const rows: number[] = [];
+    for (let i = 0; i < n; i++) if (M.observed[i * m + j]) rows.push(i);
+    const vals = rng.shuffle(rows.map((i) => M.data[i * m + j]));
+    rows.forEach((i, k) => (data[i * m + j] = vals[k]));
+  }
+  return { n, m, data, observed: M.observed };
 }
 
 function dist2(a: Point, b: Point): number {
@@ -187,13 +233,13 @@ function nonEmpty(labels: Int32Array, K: number): number {
 }
 
 /**
- * §9.4: K ∈ 2..min(kMax, n−1) için k-means; en yüksek ortalama siluet (eşitlikte küçük K).
- * n < 4 ya da en iyi siluet < 0,25 → K = 1 (tüm etiketler 0). `silhouette`: seçilen K'nın değeri;
- * K = 1 sonucunda denenen en iyi değer (hiç denenmediyse 0).
+ * §9.4: K ∈ 2..min(kMax, n−1) için k-means (`${seed}|kmeans|K|r` tohumlarıyla 10 başlangıç);
+ * en yüksek ortalama siluet (eşitlikte küçük K). Geçerli bölümleme yoksa (n < 4 ya da özdeş noktalar) null.
+ * Eşik uygulanmaz; eşikler computeClusters'ta.
  */
-export function selectPartition(points: Point[], seed: string, kMax: number): { k: number; silhouette: number; labels: Int32Array } {
+export function bestPartition(points: Point[], seed: string, kMax: number): { k: number; silhouette: number; labels: Int32Array } | null {
   const n = points.length;
-  if (n < MIN_USERS_FOR_SPLIT) return { k: 1, silhouette: 0, labels: new Int32Array(n) };
+  if (n < MIN_USERS_FOR_SPLIT) return null;
   let best: { k: number; silhouette: number; labels: Int32Array } | null = null;
   for (let K = 2; K <= Math.min(kMax, n - 1); K++) {
     const labels = kmeans(points, K, seed);
@@ -201,22 +247,37 @@ export function selectPartition(points: Point[], seed: string, kMax: number): { 
     const sil = meanSilhouette(points, labels, K);
     if (!best || sil > best.silhouette) best = { k: K, silhouette: sil, labels };
   }
-  if (!best) return { k: 1, silhouette: 0, labels: new Int32Array(n) };
-  if (best.silhouette < MIN_SILHOUETTE) return { k: 1, silhouette: best.silhouette, labels: new Int32Array(n) };
   return best;
 }
 
+export interface ClusterDiagnostics {
+  algo: string;
+  /** Eşiklerden önce siluetin en yüksek olduğu K (yoksa 1) ve siluet değeri */
+  candidateK: number;
+  candidateSilhouette: number;
+  /** Sıfır modeli siluet ortalaması; hesaplanmadıysa (n < 4, aday yok, siluet < 0,25 ya da v1) null */
+  nullSilhouette: number | null;
+  /** K = 1'e düşürme nedeni */
+  rejectedBy: "too_few" | "no_partition" | "silhouette" | "null_gap" | null;
+}
+
 /**
- * ALGORITMA.md §9.
+ * ALGORITMA.md §9 (KC-1.0 r2).
  * - Aynı (kullanıcı, öneri) için birden çok girdi varsa hücre değeri bunların ortalamasıdır (sıradan bağımsız).
- * - `silhouette`: bkz. selectPartition.
- * - `inputHash` tohumu içermez: aynı oy geçmişi aynı özeti verir (ClusterService yeniden kullanım için karşılaştırır).
+ * - K ≥ 2 yalnızca siluet ≥ 0,25 VE siluet − siluet_sıfır ≥ 0,10 ise kabul edilir. siluet_sıfır: sütunları
+ *   `${seed}|null|i` (i = 0..4) tohumlarıyla karıştırılmış matriste aynı boru hattının en iyi siluetinin ortalaması.
+ * - `silhouette`: seçilen bölümlemenin değeri; K = 1 sonucunda eşik öncesi en iyi aday (aday yoksa 0).
+ * - `inputHash` tohumu içermez (ClusterService aynı girdiyi tanır); `outputHash` sıfır siluetini de içerir.
+ * - `mode.nullModel = false` yalnız karşılaştırma içindir (v1 davranışı, algo "pca2-kmeans-silhouette/1").
  */
-export function computeClusters(
+export function computeClustersDetailed(
   entries: VoteMatrixEntry[],
   seed: string,
   opts: { minVotes?: number; kMax?: number } = {},
-): ClusterComputation {
+  mode: { nullModel?: boolean } = {},
+): { result: ClusterComputation; diagnostics: ClusterDiagnostics } {
+  const useNull = mode.nullModel !== false;
+  const algo = useNull ? CLUSTER_ALGO : CLUSTER_ALGO_V1;
   const cells = new Map<string, Map<string, { sum: number; count: number }>>();
   const proposalSet = new Set<string>();
   for (const e of entries) {
@@ -238,8 +299,9 @@ export function computeClusters(
   const sortedEntries = entries
     .map((e) => [e.userId, e.proposalId, e.value] as [string, string, number])
     .sort((a, b) => cmp(a[0], b[0]) || cmp(a[1], b[1]) || a[2] - b[2]);
-  const inputHash = hashCanonical({ algo: CLUSTER_ALGO, minVotes, kMax: opts.kMax ?? null, entries: sortedEntries });
+  const inputHash = hashCanonical({ algo, minVotes, kMax: opts.kMax ?? null, entries: sortedEntries });
 
+  // Katılım: çekimser (0) dahil en az minVotes oy.
   const participants: string[] = [];
   const excluded: string[] = [];
   for (const u of users) (cells.get(u)!.size >= minVotes ? participants : excluded).push(u);
@@ -248,44 +310,67 @@ export function computeClusters(
   // Sütun ortalamaları (yalnız katılımcıların gözlenen hücreleri); eksik hücre = ortalama → merkezlenmiş 0.
   const colSum = new Float64Array(m);
   const colCnt = new Int32Array(m);
-  const raw: (number | null)[][] = participants.map((u) => {
+  const raw = new Float64Array(n * m);
+  const observed = new Uint8Array(n * m);
+  participants.forEach((u, i) => {
     const row = cells.get(u)!;
-    return proposals.map((p, j) => {
+    proposals.forEach((p, j) => {
       const c = row.get(p);
-      if (!c) return null;
+      if (!c) return;
       const v = c.sum / c.count;
+      raw[i * m + j] = v;
+      observed[i * m + j] = 1;
       colSum[j] += v;
       colCnt[j]++;
-      return v;
     });
   });
-  const means = new Float64Array(m);
-  for (let j = 0; j < m; j++) means[j] = colCnt[j] > 0 ? colSum[j] / colCnt[j] : 0;
-  const X: Float64Array[] = raw.map((r) => {
-    const row = new Float64Array(m);
-    for (let j = 0; j < m; j++) row[j] = r[j] === null ? 0 : (r[j] as number) - means[j];
-    return row;
-  });
+  const data = new Float64Array(n * m);
+  for (let j = 0; j < m; j++) {
+    const mean = colCnt[j] > 0 ? colSum[j] / colCnt[j] : 0;
+    for (let i = 0; i < n; i++) if (observed[i * m + j]) data[i * m + j] = raw[i * m + j] - mean;
+  }
+  const M: Matrix = { n, m, data, observed };
 
-  // PCA: iki bileşen, deflasyon.
-  const pcaRng = createRng(`${seed}|pca`);
-  const v1 = powerIteration(X, m, pcaRng);
-  const deflated = X.map((row) => {
-    const p = dot(row, v1);
-    const d = new Float64Array(m);
-    for (let j = 0; j < m; j++) d[j] = row[j] - p * v1[j];
-    return d;
-  });
-  const v2 = powerIteration(deflated, m, pcaRng);
-  const points: Point[] = X.map((row) => [dot(row, v1), dot(row, v2)]);
-
+  const points = pca2(M, createRng(`${seed}|pca`));
   const kMax = opts.kMax ?? Math.min(5, 2 + Math.floor(n / 12));
-  const { k: bestK, silhouette: bestSil, labels: bestLabels } = selectPartition(points, seed, kMax);
+  const cand = bestPartition(points, seed, kMax);
+
+  const diagnostics: ClusterDiagnostics = {
+    algo,
+    candidateK: cand?.k ?? 1,
+    candidateSilhouette: cand?.silhouette ?? 0,
+    nullSilhouette: null,
+    rejectedBy: null,
+  };
+  let accepted = cand;
+  if (n < MIN_USERS_FOR_SPLIT) {
+    diagnostics.rejectedBy = "too_few";
+  } else if (!cand) {
+    diagnostics.rejectedBy = "no_partition";
+  } else if (cand.silhouette < MIN_SILHOUETTE) {
+    diagnostics.rejectedBy = "silhouette";
+    accepted = null;
+  } else if (useNull) {
+    let acc = 0;
+    for (let i = 0; i < NULL_PERMUTATIONS; i++) {
+      const base = `${seed}|null|${i}`;
+      const permuted = permuteColumns(M, createRng(base));
+      const nullPoints = pca2(permuted, createRng(`${base}|pca`));
+      acc += bestPartition(nullPoints, base, kMax)?.silhouette ?? 0;
+    }
+    const nullSil = acc / NULL_PERMUTATIONS;
+    diagnostics.nullSilhouette = nullSil;
+    if (cand.silhouette - nullSil < MIN_NULL_GAP) {
+      diagnostics.rejectedBy = "null_gap";
+      accepted = null;
+    }
+  }
+  const bestSil = cand?.silhouette ?? 0;
 
   // Yeniden numaralandırma: büyüklük ↓, merkez x ↑, merkez y ↑, ilk üye sırası ↑.
   const groups = new Map<number, number[]>();
   for (let i = 0; i < n; i++) {
-    const l = bestK === 1 ? 0 : bestLabels[i];
+    const l = accepted ? accepted.labels[i] : 0;
     let g = groups.get(l);
     if (!g) groups.set(l, (g = []));
     g.push(i);
@@ -318,6 +403,14 @@ export function computeClusters(
 
   const k = ordered.length;
   const silhouette = round6(bestSil);
-  const outputHash = hashCanonical({ algo: CLUSTER_ALGO, k, silhouette, assignments, coords, sizes, clusteredTotal: n, excluded });
-  return { algo: CLUSTER_ALGO, k, silhouette, assignments, coords, sizes, clusteredTotal: n, excluded, inputHash, outputHash, seed };
+  const nullSilhouette = useNull ? (diagnostics.nullSilhouette === null ? null : round6(diagnostics.nullSilhouette)) : undefined;
+  const outputHash = hashCanonical({ algo, k, silhouette, nullSilhouette, assignments, coords, sizes, clusteredTotal: n, excluded });
+  return {
+    result: { algo, k, silhouette, assignments, coords, sizes, clusteredTotal: n, excluded, inputHash, outputHash, seed },
+    diagnostics,
+  };
+}
+
+export function computeClusters(entries: VoteMatrixEntry[], seed: string, opts: { minVotes?: number; kMax?: number } = {}): ClusterComputation {
+  return computeClustersDetailed(entries, seed, opts).result;
 }

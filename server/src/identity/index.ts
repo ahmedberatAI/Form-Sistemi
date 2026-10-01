@@ -345,6 +345,22 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
       return { user: meOf(row) };
     },
 
+    async bootstrapAdmin(input) {
+      const existing = db.get<{ n: number }>(
+        `SELECT COUNT(*) AS n FROM users WHERE status = 'verified' AND EXISTS (SELECT 1 FROM json_each(users.roles) WHERE value = 'admin')`,
+      );
+      if ((existing?.n ?? 0) > 0) {
+        throw conflict("admin_exists", "Sistemde zaten bir yönetici var; ilk yönetici yalnızca kurulumda oluşturulabilir.");
+      }
+      const row = await createAccount(input, "kurulum");
+      db.run(`UPDATE users SET roles = '["member","admin"]' WHERE id = ?`, row.id);
+      const memberRef = vault.memberRef(row.id);
+      submitLedger("MEMBER_REGISTERED", { memberRef, at: row.created_at });
+      submitLedger("MEMBER_VERIFIED", { memberRef });
+      deps.audit.log(null, "identity.bootstrap_admin", row.id, { via: "kurulum" });
+      return { user: meOf(requireRow(row.id)) };
+    },
+
     async verify(actorId, userId, decision, note) {
       requireActor(actorId, STAFF_REGISTRAR, "Üye doğrulamasını yalnızca kayıt memuru ya da yönetici yapabilir.");
       if (decision !== "approve" && decision !== "reject") {

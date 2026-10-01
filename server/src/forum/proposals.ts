@@ -449,7 +449,7 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
           q: z.string().max(200).optional(),
           topicId: z.string().max(200).optional(),
           authorId: z.string().max(200).optional(),
-          mine: z.coerce.boolean().optional(),
+          mine: z.preprocess((v) => v === true || v === 1 || v === "1" || v === "true", z.boolean()).optional(),
           limit: z.coerce.number().int().min(1).max(1000).optional(),
         }),
         query ?? {},
@@ -1062,11 +1062,13 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
       const p = visibleProposal(core, id, actor);
       const contested = db.get("SELECT 1 FROM tallies WHERE proposal_id = ? AND interim = 0 AND json_extract(result, '$.outcome') = 'contested'", id);
       if (p.status !== "reconciliation" && !contested) throw conflict("invalid_state", "Köprü taslakları uzlaşma turunda (ya da tartışmalı sonuçtan sonra) üretilebilir.");
-      const claude = deps.ai.mode() === "claude";
+      // Claude kipinde yalnız YZ rızası veren yazarların içeriği gönderilir. Önerinin yazarı rıza vermemişse tüm
+      // hesaplama çevrimdışı (sunucuda) yapılır; veri yurt dışına çıkmaz, bu yüzden süzme gerekmez.
       const { rows, consent } = threadMessagesForAi(p);
+      const offlineOnly = deps.ai.mode() !== "claude" || !consent.get(p.author_id);
       let skipped = 0;
       const ok = (authorId: string) => {
-        if (!claude || consent.get(authorId)) return true;
+        if (offlineOnly || consent.get(authorId)) return true;
         skipped++;
         return false;
       };
@@ -1079,12 +1081,11 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
           .map((u) => [u.id, u.ai_consent === 1] as const),
       );
       for (const r of reports) {
-        if (!claude || reportConsent.get(r.author_id)) minorityPoints.push(r.body);
+        if (offlineOnly || reportConsent.get(r.author_id)) minorityPoints.push(r.body);
         else skipped++;
       }
-      const authorOk = !claude || !!consent.get(p.author_id);
-      const input = { title: authorOk ? p.title : `Öneri ${proposalRef(p)}`, body: authorOk ? p.body : "", majorityPoints, minorityPoints };
-      const out = await deps.ai.bridgingDrafts(input, { forceOffline: !authorOk });
+      const input = { title: p.title, body: p.body, majorityPoints, minorityPoints };
+      const out = await deps.ai.bridgingDrafts(input, { forceOffline: offlineOnly });
       const output = { ...out, baseVersion: p.version, excludedItems: skipped, note: skipped > 0 ? `${skipped} katkı, yazarları yapay zekâ analizine rıza vermediği için kullanılmadı.` : null };
       return deps.aiSink.record({
         task: "bridging_drafts",

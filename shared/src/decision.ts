@@ -95,14 +95,41 @@ function fmtPct(x: number): string {
   return "%" + (x * 100).toFixed(1).replace(".", ",");
 }
 
+/**
+ * Değeri, karşılaştırıldığı sınırla GÖRSEL OLARAK TUTARLI yazar: yuvarlanmış hâlleri aynı görünüyor ama
+ * değerler eşit değilse hassasiyet artırılır (en çok +3 basamak), yine ayırt edilemezse kesir yazılır.
+ * Böylece "P=0,30 < 0,30 ✘" gibi çelişkili satırlar oluşmaz.
+ */
+function fmtVs(x: number, bound: number, equal: boolean, digits: number, scale: number): string | null {
+  for (let d = digits; d <= digits + 3; d++) {
+    const xs = (x * scale).toFixed(d);
+    if (equal || xs !== (bound * scale).toFixed(d)) return xs.replace(".", ",");
+  }
+  return null;
+}
+
+/** Laplace desteği P_g, taban ile tutarlı gösterim (varsayılan 2 ondalık). */
+function fmtRatVs(r: Rational, bound: Rational): string {
+  const equal = r.num * bound.den === bound.num * r.den;
+  return fmtVs(ratToNumber(r), ratToNumber(bound), equal, 2, 1) ?? `${r.num}/${r.den}`;
+}
+
+/** Onay oranı Y/(Y+N), eşik ile tutarlı gösterim (varsayılan %, 1 ondalık). */
+function fmtApprovalVs(yes: number, total: number, bound: Rational): string {
+  const a = total > 0 ? yes / total : 0;
+  const equal = total > 0 && yes * bound.den === bound.num * total;
+  const s = fmtVs(a, ratToNumber(bound), equal, 1, 100);
+  return s === null ? `${yes}/${total}` : "%" + s;
+}
+
 function isSignificant(size: number, clusteredTotal: number, p: DecisionParams): boolean {
   return clusteredTotal > 0 && size >= p.significantMinMembers && fracAtLeast(size, clusteredTotal, p.significantShare);
 }
 
-/** Soğuk başlangıç ve tur kurallarına göre kullanılacak eşik. */
+/** Soğuk başlangıç ve tur kurallarına göre kullanılacak eşik: τ' = max(τ, min(τ+δ_cold, 2/3)), `≥` (§4.4, r2). */
 export function effectiveThreshold(p: DecisionParams, bridgeApplicable: boolean): { threshold: Rational; strict: boolean } {
   if (bridgeApplicable) return { threshold: p.threshold, strict: p.thresholdStrict };
-  return { threshold: ratMin(ratAdd(p.threshold, p.coldStartBump), rat(2, 3)), strict: false };
+  return { threshold: ratMax(p.threshold, ratMin(ratAdd(p.threshold, p.coldStartBump), rat(2, 3))), strict: false };
 }
 
 function sortedVotes(votes: EffectiveVote[]): EffectiveVote[] {
@@ -165,13 +192,18 @@ export function decide(input: DecisionInput): DecisionResult {
   // 1. Katılım
   const qReq = quorumRequired(p.quorum, E);
   const quorumMet = P >= qReq && P > 0;
+  const qPct = Math.round(ratToNumber(p.quorum) * 100);
+  const qBase = Math.max(ceilMul(p.quorum, E), floorAbs(E));
   checks.push({
     key: "quorum",
     label: "Katılım (yeter sayı)",
     passed: quorumMet,
     value: `${P}/${E}`,
     required: `≥ ${qReq}`,
-    detail: `Gerekli katılım, %${Math.round(ratToNumber(p.quorum) * 100)} yeter sayı ile mutlak taban ⌈1,5·√${E}⌉ = ${floorAbs(E)} değerlerinin büyüğüdür.`,
+    detail:
+      qBase > E
+        ? `Gerekli katılım normalde %${qPct} yeter sayı (${ceilMul(p.quorum, E)} kişi) ile mutlak taban ⌈1,5·√${E}⌉ = ${floorAbs(E)} değerlerinin büyüğüdür (${qBase}); ancak uygun seçmen sayısını (|E| = ${E}) aşamaz.`
+        : `Gerekli katılım, %${qPct} yeter sayı (${ceilMul(p.quorum, E)} kişi) ile mutlak taban ⌈1,5·√${E}⌉ = ${floorAbs(E)} değerlerinin büyüğüdür.`,
   });
 
   // 2. Köprü uygulanabilir mi? (soğuk başlangıç §4.4)
@@ -195,25 +227,32 @@ export function decide(input: DecisionInput): DecisionResult {
     key: "threshold",
     label: "Onay oranı",
     passed: thresholdMet,
-    value: `${fmtPct(approval)} (${Y} kabul / ${N} red)`,
+    value: `${fmtApprovalVs(Y, Y + N, threshold)} (${Y} kabul / ${N} red)`,
     required: `${strict ? ">" : "≥"} ${ratToPercent(threshold)}`,
     detail: "Çekimser oylar katılıma sayılır, onay oranına sayılmaz.",
   });
 
-  // 3. Küme sonuçları
+  // 3. Küme sonuçları. Köprünün karar kuralında kullanıldığı turlarda (ilk tur, contested yeniden oylaması)
+  //    uzatma KULLANILDIKTAN sonra hâlâ μ_votes'un altında kalan anlamlı küme nötr sayılır ve tabandan muaftır
+  //    (§4.1 r2): böylece neredeyse sessiz bir kümede tek bir oy kararı ertelemeye zorlayamaz.
+  const bridgeUsedInRule = input.round === 1 || input.revote?.origin === "contested";
+  const exemptionActive = bridgeApplicable && bridgeUsedInRule && !input.extensionAvailable;
   const clusters: ClusterResult[] = [];
   const pgs: Rational[] = [];
+  const shortClusters: string[] = [];
+  const exempt = new Set<string>();
   let allSigPass = true;
-  let shortfall = false;
   for (const g of clusterIds) {
     const c = perCluster[g] ?? { yes: 0, no: 0, abstain: 0 };
     const sig = significant.includes(g);
     const pg = laplaceSupport(c.yes, c.no);
     const passes = ratGe(pg, p.clusterFloor);
+    const short = c.yes + c.no < p.minVotesPerCluster;
     if (sig) {
       pgs.push(pg);
-      if (!passes) allSigPass = false;
-      if (c.yes + c.no < p.minVotesPerCluster) shortfall = true;
+      if (short) shortClusters.push(g);
+      if (short && exemptionActive) exempt.add(g);
+      else if (!passes) allSigPass = false;
     }
     clusters.push({
       clusterId: g,
@@ -226,7 +265,7 @@ export function decide(input: DecisionInput): DecisionResult {
       voted: c.yes + c.no + c.abstain,
       pg: ratToNumber(pg),
       floor: sig ? ratToNumber(p.clusterFloor) : null,
-      passed: sig && bridgeApplicable ? passes : null,
+      passed: sig && bridgeApplicable && !exempt.has(g) ? passes : null,
     });
   }
 
@@ -234,21 +273,35 @@ export function decide(input: DecisionInput): DecisionResult {
   if (bridgeApplicable) {
     for (const cr of clusters) {
       if (!cr.significant) continue;
+      const pg = laplaceSupport(cr.yes, cr.no);
+      const passes = ratGe(pg, p.clusterFloor);
+      const formula = `P = (1+${cr.yes})/(2+${cr.yes}+${cr.no})`;
+      let label = `${cr.label} desteği (köprü testi)`;
+      let passed = cr.passed === true;
+      let detail = formula;
+      if (!bridgeUsedInRule) {
+        label = `${cr.label} desteği (bilgi — bu turda uygulanmaz)`;
+        passed = true;
+        detail = `${formula} ${passes ? "≥" : "<"} ${fmtRat(p.clusterFloor)}. İtiraz sonrası yeniden oylamada küme tabanları uygulanmaz, yalnızca gösterilir.`;
+      } else if (exempt.has(cr.clusterId)) {
+        passed = true;
+        detail = `Küme yeterince katılmadı (en az ${p.minVotesPerCluster} kabul/red oyu toplanamadı); uzatmadan sonra nötr sayıldı ve köprü tabanından muaf tutuldu.`;
+      } else if (cr.yes + cr.no < p.minVotesPerCluster) {
+        detail = `Küme yeterince katılmadı; oylama bir kez uzatılır. ${formula}`;
+      }
       checks.push({
         key: `bridge:${cr.clusterId}`,
-        label: `${cr.label} desteği (köprü testi)`,
-        passed: cr.passed === true,
-        value: `P=${fmtRat(laplaceSupport(cr.yes, cr.no))} (${cr.yes} kabul / ${cr.no} red)`,
+        label,
+        passed,
+        value: `P=${fmtRatVs(pg, p.clusterFloor)} (${cr.yes} kabul / ${cr.no} red)`,
         required: `≥ ${fmtRat(p.clusterFloor)}`,
-        detail:
-          cr.yes + cr.no < p.minVotesPerCluster
-            ? "Küme yeterince katılmadı; Laplace yumuşatması nedeniyle nötr sayıldı."
-            : `P = (1+${cr.yes})/(2+${cr.yes}+${cr.no})`,
+        detail,
       });
     }
   }
 
-  // DEL: yazarın kümesi koruması (yazar kümelenmişse; köprü uygulanamasa bile — en koruyucu yorum)
+  // DEL: yazarın kümesi koruması (yazar kümelenmişse; köprü uygulanamasa bile — en koruyucu yorum).
+  // Nötr küme muafiyeti burada UYGULANMAZ: yazarın kümesinden tek bir "hayır" bile silmeyi ertelemeye yeter.
   let authorOk: boolean | null = null;
   if (p.authorClusterFloor && input.authorClusterId) {
     const c = perCluster[input.authorClusterId] ?? { yes: 0, no: 0, abstain: 0 };
@@ -258,7 +311,7 @@ export function decide(input: DecisionInput): DecisionResult {
       key: "author_cluster",
       label: `Mesaj yazarının kümesi (${clusterLabel(input.authorClusterId)})`,
       passed: authorOk,
-      value: `P=${fmtRat(pa)} (${c.yes} kabul / ${c.no} red)`,
+      value: `P=${fmtRatVs(pa, p.authorClusterFloor)} (${c.yes} kabul / ${c.no} red)`,
       required: `≥ ${fmtRat(p.authorClusterFloor)}`,
       detail: "Silme kararı, yazarın kendi görüş grubunun çoğunluğu karşı çıkıyorsa geçemez.",
     });
@@ -269,16 +322,23 @@ export function decide(input: DecisionInput): DecisionResult {
   const gac = pgs.length > 0 ? Math.pow(pgs.reduce((acc, r) => acc * ratToNumber(r), 1), 1 / pgs.length) : null;
 
   // 4. Uzatma koşulu: köprü kararda kullanılıyorsa küme oy eksiği de sayılır
-  const bridgeUsedInRule = input.round === 1 || input.revote?.origin === "contested";
-  const clusterShortfall = bridgeApplicable && bridgeUsedInRule && shortfall;
+  const clusterShortfall = bridgeApplicable && bridgeUsedInRule && shortClusters.length > 0;
   if (clusterShortfall) {
+    const list = shortClusters
+      .map((g) => {
+        const c = perCluster[g] ?? { yes: 0, no: 0, abstain: 0 };
+        return `${clusterLabel(g)}: ${c.yes + c.no}`;
+      })
+      .join(", ");
     checks.push({
       key: "participation_shortfall",
       label: "Anlamlı kümelerde asgari oy",
-      passed: false,
-      value: "en az bir kümede eksik",
+      passed: !input.extensionAvailable,
+      value: list,
       required: `her anlamlı kümede ≥ ${p.minVotesPerCluster} kabul/red oyu`,
-      detail: input.extensionAvailable ? "Oylama bir kez uzatılır." : "Uzatma kullanıldı; eksik küme nötr sayıldı.",
+      detail: input.extensionAvailable
+        ? "Oylama bir kez uzatılır."
+        : "Uzatma kullanıldı; eksik kalan küme nötr sayıldı ve köprü tabanından muaf tutuldu.",
     });
   }
 
@@ -297,7 +357,7 @@ export function decide(input: DecisionInput): DecisionResult {
   } else if (input.round === 1) {
     if (!thresholdMet) {
       outcome = "reject";
-      reason = `Onay oranı (${fmtPct(approval)}) gerekli eşiğin (${strict ? ">" : "≥"} ${ratToPercent(threshold)}) altında kaldı.`;
+      reason = `Onay oranı (${fmtApprovalVs(Y, Y + N, threshold)}) gerekli eşiğin (${strict ? ">" : "≥"} ${ratToPercent(threshold)}) altında kaldı.`;
     } else if (bridgeMet === false) {
       outcome = "contested";
       const failing = clusters.filter((c) => c.passed === false).map((c) => c.label);
@@ -307,7 +367,7 @@ export function decide(input: DecisionInput): DecisionResult {
       outcome = "accept";
       reason = bridgeApplicable
         ? `Genel onay (${fmtPct(approval)}) ve tüm anlamlı görüş gruplarında köprü desteği sağlandı.`
-        : `Nitelikli çoğunluk (${fmtPct(approval)} ≥ ${ratToPercent(threshold)}) sağlandı (soğuk başlangıç).`;
+        : `Nitelikli çoğunluk (${fmtApprovalVs(Y, Y + N, threshold)} ≥ ${ratToPercent(threshold)}) sağlandı (soğuk başlangıç).`;
     }
   } else {
     const rv = input.revote!;
@@ -317,7 +377,7 @@ export function decide(input: DecisionInput): DecisionResult {
         key: "override",
         label: "Aşma eşiği (yeniden oylama)",
         passed: overrideMet,
-        value: fmtPct(approval),
+        value: fmtApprovalVs(Y, Y + N, p.overrideThreshold),
         required: `≥ ${ratToPercent(p.overrideThreshold)}`,
         detail: "Köprü testi yeniden sağlanamazsa nitelikli çoğunluk tabanı aşabilir; azınlığın gücü erteleyicidir.",
       });
@@ -335,7 +395,7 @@ export function decide(input: DecisionInput): DecisionResult {
         key: "revote_threshold",
         label: "Yeniden oylama eşiği (itiraz sonrası)",
         passed: met,
-        value: fmtPct(approval),
+        value: fmtApprovalVs(Y, Y + N, rho),
         required: `≥ ${ratToPercent(rho)}`,
         detail: rv.strongObjection
           ? "İtiraz, ilgili kümenin üyelerinin en az 2/3'ünce imzalandığı için eşik 2/3'e yükseltildi."
@@ -386,12 +446,19 @@ export interface ObjectionInput {
   params: DecisionParams;
 }
 
-/** ALGORITMA.md §6: alarm zili itirazının geçerliliği. */
+/**
+ * ALGORITMA.md §6: alarm zili itirazının geçerliliği.
+ * İmzacının kümesi ilk tur oyundan (bülten) alınır; imzadaki `clusterId` yalnızca oy kaydında yoksa kullanılır.
+ */
 export function evaluateObjection(input: ObjectionInput): ObjectionEvaluation {
   const p = input.params;
   const noVoters = new Set(input.firstRoundVotes.filter((v) => v.choice === "no").map((v) => v.voterKey));
+  const voteCluster = new Map(input.firstRoundVotes.map((v) => [v.voterKey, v.clusterId ?? null] as const));
   const uniq = new Map<string, ObjectionSignature>();
-  for (const s of input.signatures) if (noVoters.has(s.voterKey) && !uniq.has(s.voterKey)) uniq.set(s.voterKey, s);
+  for (const s of input.signatures) {
+    if (!noVoters.has(s.voterKey) || uniq.has(s.voterKey)) continue;
+    uniq.set(s.voterKey, { voterKey: s.voterKey, clusterId: voteCluster.has(s.voterKey) ? voteCluster.get(s.voterKey)! : s.clusterId });
+  }
   const signers = [...uniq.values()];
 
   const noPerCluster: Record<string, number> = {};
@@ -435,6 +502,31 @@ export function evaluateObjection(input: ObjectionInput): ObjectionEvaluation {
   if (strong) explanation += " İmzacılar ilgili kümenin üyelerinin en az 2/3'ü olduğundan yeniden oylama eşiği en az 2/3 olur.";
 
   return { valid, rule, signers: signers.length, perCluster, crossClusterRequired, strong: valid && strong, explanation };
+}
+
+/** Yeniden sayım hata verdiğinde (bozuk/uyumsuz TALLY) dönen yer tutucu sonuç; `ok` her zaman false olur. */
+function failedRecount(tally: TallyPayload, message: string): DecisionResult {
+  return {
+    algoVersion: ALGO_VERSION,
+    round: tally.round === 2 ? 2 : 1,
+    outcome: "reject",
+    totals: { eligible: Number(tally.eligibleCount) || 0, participants: 0, yes: 0, no: 0, abstain: 0, delegated: 0, unrouted: 0 },
+    approval: 0,
+    quorumRequired: 0,
+    thresholdUsed: rat(0, 1),
+    thresholdStrict: false,
+    quorumMet: false,
+    thresholdMet: false,
+    bridgeApplicable: false,
+    bridgeMet: null,
+    overrideMet: null,
+    gac: null,
+    clusters: [],
+    checks: [{ key: "recount_error", label: "Bağımsız yeniden sayım", passed: false, value: "yapılamadı", required: "—", detail: message }],
+    reason: `Yeniden sayım yapılamadı: ${message}`,
+    inputsHash: "",
+    computedAt: Number(tally.computedAt) || 0,
+  };
 }
 
 /** Bülten (BALLOT_REVEAL) girdisi */
@@ -514,15 +606,26 @@ export function verifyTally(
     ids.add(r.ballotId);
   }
   const unique = reveals.filter((r, i) => reveals.findIndex((x) => x.ballotId === r.ballotId) === i);
-  const recomputed = decide(decisionInputFromTally(tally, unique));
+  let recomputed: DecisionResult;
+  let recomputeError: string | null = null;
+  try {
+    recomputed = decide(decisionInputFromTally(tally, unique));
+  } catch (e) {
+    recomputeError = e instanceof Error ? e.message : String(e);
+    recomputed = failedRecount(tally, recomputeError);
+  }
 
   if (tally.algoVersion !== ALGO_VERSION) mismatches.push(`Algoritma sürümü farklı: ${tally.algoVersion} ≠ ${ALGO_VERSION}`);
   if (revealHash(reveals) !== tally.revealHash) mismatches.push("Açıklanan oyların özeti TALLY kaydındaki revealHash ile eşleşmiyor");
-  if (recomputed.outcome !== tally.outcome) mismatches.push(`Sonuç farklı: defterde ${tally.outcome}, yeniden sayımda ${recomputed.outcome}`);
-  for (const key of Object.keys(recomputed.totals) as (keyof DecisionResult["totals"])[]) {
-    if (recomputed.totals[key] !== tally.totals[key]) mismatches.push(`Toplam "${key}" farklı: ${tally.totals[key]} ≠ ${recomputed.totals[key]}`);
+  if (recomputeError !== null) {
+    mismatches.push(`Yeniden sayım yapılamadı: ${recomputeError}`);
+  } else {
+    if (recomputed.outcome !== tally.outcome) mismatches.push(`Sonuç farklı: defterde ${tally.outcome}, yeniden sayımda ${recomputed.outcome}`);
+    for (const key of Object.keys(recomputed.totals) as (keyof DecisionResult["totals"])[]) {
+      if (recomputed.totals[key] !== tally.totals?.[key]) mismatches.push(`Toplam "${key}" farklı: ${tally.totals?.[key]} ≠ ${recomputed.totals[key]}`);
+    }
+    if (recomputed.inputsHash !== tally.inputsHash) mismatches.push("Girdi özeti (inputsHash) eşleşmiyor");
   }
-  if (recomputed.inputsHash !== tally.inputsHash) mismatches.push("Girdi özeti (inputsHash) eşleşmiyor");
 
   if (commitments) {
     for (const r of unique) {

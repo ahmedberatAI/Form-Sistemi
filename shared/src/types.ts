@@ -97,6 +97,9 @@ export interface GroundInfo {
   description: string;
   urgent?: boolean; // silme gerekçesi için: talep anında daraltılır
   legal?: boolean; // bilirkişi görüşü bağlayıcı
+  sealed?: boolean; // silme kabulünde "sealed" (kişisel veri)
+  invalid?: boolean; // geçersiz gerekçe (ör. görüş ayrılığı) — seçilemez
+  article?: string; // dayanak madde IRI'si
 }
 
 export interface RightInfo {

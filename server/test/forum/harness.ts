@@ -204,3 +204,24 @@ export async function seedHistory(h: ForumHarness, b: Blocks, n = 10): Promise<s
   }
   return ids;
 }
+
+/** Test kolaylığı: yürürlükte bir konuyu doğrudan ekler (normalde yalnız kabul edilen öneriyle oluşur). */
+export function insertTopic(h: ForumHarness, title: string, categories: string[] = [CAT.park], parentId: string | null = null): string {
+  const id = `topic-${h.ctx.db.nextSeq("topics")}`;
+  const now = h.ctx.clock.now();
+  const seq = h.ctx.db.nextSeq("topics");
+  const body = `${title} hakkında yürürlükteki konu metni.`;
+  h.ctx.db.run(
+    "INSERT INTO topics(id, seq, parent_id, title, body, categories, current_version, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, 'active', ?, ?)",
+    id,
+    seq,
+    parentId,
+    title,
+    body,
+    JSON.stringify(categories),
+    now,
+    now,
+  );
+  h.ctx.db.run("INSERT INTO topic_revisions(topic_id, version, title, body, content_hash, created_at) VALUES (?, 1, ?, ?, 'x', ?)", id, title, body, now);
+  return id;
+}
