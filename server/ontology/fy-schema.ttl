@@ -1,0 +1,227 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  Forum Sistemi — Yönetmelik ontolojisi: T-KUTUSU (şema)
+#  Ad alanı: https://forumsistemi.org/ont#  (önek fy:)
+#  Bu dosya yalnızca sınıfları ve özellikleri tanımlar; bireyler (maddeler,
+#  kategoriler, haklar, katmanlar, kurallar) yonetmelik.ttl (A-kutusu) içindedir.
+#  T-kutusu yönetmelik yamasıyla DEĞİŞTİRİLEMEZ; sürümlenen yalnızca A-kutusudur.
+# ═══════════════════════════════════════════════════════════════════════════
+@prefix fy:   <https://forumsistemi.org/ont#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+<https://forumsistemi.org/ont> a owl:Ontology ;
+    rdfs:label "Forum Sistemi yönetmelik ontolojisi (T-kutusu)"@tr ;
+    owl:versionInfo "1.0" .
+
+# ───────────────────────── Yönetmelik yapısı ─────────────────────────
+
+fy:Yonetmelik a owl:Class ; rdfs:label "Yönetmelik"@tr .
+fy:Bolum a owl:Class ; rdfs:label "Bölüm"@tr .
+fy:Madde a owl:Class ;
+    rdfs:label "Madde (fıkra)"@tr ;
+    rdfs:comment "Her birey bir maddenin bir fıkrasıdır; numarası \"Madde 9 (2)\" biçimindedir."@tr .
+
+fy:KorumaDuzeyi a owl:Class ;
+    rdfs:label "Koruma düzeyi"@tr ;
+    owl:oneOf ( fy:Degistirilemez fy:Nitelikli fy:Olagan ) .
+fy:Degistirilemez a fy:KorumaDuzeyi ; rdfs:label "Değiştirilemez"@tr ;
+    rdfs:comment "Oylanamaz, değiştirilemez, koruma düzeyi düşürülemez (T3)."@tr .
+fy:Nitelikli a fy:KorumaDuzeyi ; rdfs:label "Nitelikli"@tr ;
+    rdfs:comment "Değişikliği T2 katmanında, yükseltilmiş eşik ve yeter sayıyla yapılır."@tr .
+fy:Olagan a fy:KorumaDuzeyi ; rdfs:label "Olağan"@tr ;
+    rdfs:comment "Değişikliği T2 katmanının olağan parametreleriyle yapılır."@tr .
+
+fy:maddeNo a owl:DatatypeProperty ; rdfs:domain fy:Madde ; rdfs:range xsd:string ; rdfs:label "madde numarası"@tr .
+fy:baslik a owl:DatatypeProperty ; rdfs:range xsd:string ; rdfs:label "başlık"@tr .
+fy:metin a owl:DatatypeProperty ; rdfs:range xsd:string ; rdfs:label "metin"@tr .
+fy:korumaDuzeyi a owl:ObjectProperty, owl:FunctionalProperty ; rdfs:domain fy:Madde ; rdfs:range fy:KorumaDuzeyi ; rdfs:label "koruma düzeyi"@tr .
+fy:bolum a owl:ObjectProperty ; rdfs:domain fy:Madde ; rdfs:range fy:Bolum ; rdfs:label "bölüm"@tr .
+fy:sira a owl:DatatypeProperty ; rdfs:range xsd:integer ; rdfs:label "sıra"@tr .
+fy:dayanak a owl:ObjectProperty ; rdfs:range fy:Madde ; rdfs:label "dayanak madde"@tr ;
+    rdfs:comment "Bir kuralın, parametre taşıyıcısının, hakkın, gerekçenin ya da SHACL şeklinin dayandığı madde."@tr .
+fy:overrides a owl:ObjectProperty ; rdfs:label "önceliklidir (overrides)"@tr ;
+    rdfs:comment "Özel hüküm genel hükmün önüne geçer: ikisi birlikte uygulanırsa hedef kuralın (ya da hedef maddeye dayanan kuralların) parametre katkısı devre dışı kalır. İlişki döngüsüz olmalı ve değiştirilemez hükümleri hedefleyemez."@tr .
+
+# ───────────────────────── Kategoriler ─────────────────────────
+
+fy:Kategori a owl:Class ;
+    rdfs:label "Kategori"@tr ;
+    rdfs:comment "Konu kategorileri bu sınıfın alt sınıflarıdır (rdfs:subClassOf ağacı). Bir alt kategoriye bağlanan öneri üst kategorilerin de üyesidir."@tr .
+fy:anahtarKelime a owl:AnnotationProperty ; rdfs:label "anahtar kelime"@tr .
+fy:bilirkisiGerekli a owl:AnnotationProperty ; rdfs:range xsd:boolean ; rdfs:label "bilirkişi gerekli"@tr ;
+    rdfs:comment "Kategoride (ve tüm alt kategorilerinde) bilirkişi paneli çekilir; kurallarda parametre olarak da kullanılır."@tr .
+
+# ───────────────────────── Haklar ─────────────────────────
+
+fy:TemelHak a owl:Class ; rdfs:label "Temel hak"@tr .
+fy:cekirdekDegistirilemez a owl:DatatypeProperty ; rdfs:domain fy:TemelHak ; rdfs:range xsd:boolean ;
+    rdfs:label "özü oylanamaz"@tr ;
+    rdfs:comment "Bu hakkın kısıtlanması değiştirilemez bir maddeye takılır (T3)."@tr .
+
+# ───────────────────────── Gerekçeler ve içerik etiketleri ─────────────────────────
+
+fy:Gerekce a owl:Class ; rdfs:label "Gerekçe"@tr .
+fy:SilmeGerekcesi a owl:Class ; rdfs:subClassOf fy:Gerekce ; rdfs:label "Silme (karartma) gerekçesi"@tr .
+fy:ItirazGerekcesi a owl:Class ; rdfs:subClassOf fy:Gerekce ; rdfs:label "İtiraz gerekçesi"@tr .
+fy:GecersizGerekce a owl:Class ; rdfs:subClassOf fy:Gerekce ; rdfs:label "Geçersiz gerekçe"@tr ;
+    rdfs:comment "Tanımlıdır ama kullanılamaz; seçilirse ihlal üretir."@tr .
+fy:IcerikEtiketi a owl:Class ; rdfs:label "İçerik etiketi"@tr .
+fy:acil a owl:DatatypeProperty ; rdfs:range xsd:boolean ; rdfs:label "acil (talep anında daraltılır)"@tr .
+fy:muhurlu a owl:DatatypeProperty ; rdfs:range xsd:boolean ; rdfs:label "mühürlenir (kişisel veri)"@tr .
+fy:icerikEtiketiAdi a owl:DatatypeProperty ; rdfs:range xsd:string ; rdfs:label "içerik etiketi adı"@tr .
+
+# ───────────────────────── Parametre taşıyıcıları ─────────────────────────
+
+fy:ParametreTasiyici a owl:Class ; rdfs:label "Parametre taşıyıcısı"@tr .
+fy:Katman a owl:Class ; rdfs:subClassOf fy:ParametreTasiyici ; rdfs:label "Karar katmanı"@tr .
+fy:ParametreKumesi a owl:Class ; rdfs:subClassOf fy:ParametreTasiyici ; rdfs:label "Parametre kümesi"@tr .
+fy:Kural a owl:Class ; rdfs:subClassOf fy:ParametreTasiyici ; rdfs:label "Kural"@tr ;
+    rdfs:comment "Bir maddeye dayanan (fy:dayanak), bir sınıfa uygulanan (fy:uygulanirSinif) ve katman/parametre geçersiz kılmaları taşıyan kural."@tr .
+
+fy:katmanKodu a owl:DatatypeProperty ; rdfs:domain fy:Katman ; rdfs:range xsd:string .
+fy:katmanSirasi a owl:DatatypeProperty ; rdfs:domain fy:Katman ; rdfs:range xsd:integer .
+fy:oylanabilir a owl:DatatypeProperty ; rdfs:domain fy:Katman ; rdfs:range xsd:boolean .
+fy:uygulanirSinif a owl:ObjectProperty ; rdfs:domain fy:Kural ; rdfs:label "uygulandığı sınıf"@tr .
+fy:asgariKatman a owl:ObjectProperty ; rdfs:range fy:Katman ; rdfs:label "asgari katman"@tr .
+
+# Parametre tanımları (fy:Parametre). parametreTuru: oran (0–1 ondalık), saat, sayı, mantıksal.
+fy:Parametre a owl:Class ; rdfs:label "Ayarlanabilir parametre"@tr .
+fy:ParametreTuru a owl:Class .
+fy:OranTuru a fy:ParametreTuru ; rdfs:label "oran"@tr .
+fy:SaatTuru a fy:ParametreTuru ; rdfs:label "saat"@tr .
+fy:SayiTuru a fy:ParametreTuru ; rdfs:label "sayı"@tr .
+fy:MantiksalTuru a fy:ParametreTuru ; rdfs:label "mantıksal"@tr .
+fy:parametreTuru a owl:ObjectProperty ; rdfs:range fy:ParametreTuru .
+fy:sembol a owl:DatatypeProperty ; rdfs:range xsd:string .
+
+# Katman parametreleri (kurallarda geçersiz kılma olarak da kullanılır; "en koruyucu kazanır")
+fy:yeterSayi a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Yeter sayı"@tr ; fy:sembol "q" ; fy:parametreTuru fy:OranTuru .
+fy:esik a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Onay eşiği"@tr ; fy:sembol "τ" ; fy:parametreTuru fy:OranTuru .
+fy:esikKesin a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Eşik kesin mi (a > τ)"@tr ; fy:parametreTuru fy:MantiksalTuru .
+fy:kumeTabani a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Küme tabanı"@tr ; fy:sembol "φ" ; fy:parametreTuru fy:OranTuru .
+fy:yazarKumesiTabani a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Yazar kümesi tabanı"@tr ; fy:parametreTuru fy:OranTuru .
+fy:asmaEsigi a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Aşma eşiği"@tr ; fy:sembol "ω" ; fy:parametreTuru fy:OranTuru .
+fy:yenidenOyEsigi a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Yeniden oylama eşiği"@tr ; fy:sembol "ρ" ; fy:parametreTuru fy:OranTuru .
+fy:sureDestek a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Destekçi toplama süresi (saat)"@tr ; fy:parametreTuru fy:SaatTuru .
+fy:sureTartisma a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Tartışma süresi (saat)"@tr ; fy:parametreTuru fy:SaatTuru .
+fy:sureOylama a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Oylama süresi (saat)"@tr ; fy:parametreTuru fy:SaatTuru .
+fy:sureUzatma a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Uzatma süresi (saat)"@tr ; fy:parametreTuru fy:SaatTuru .
+fy:sureItiraz a owl:DatatypeProperty, fy:Parametre ; rdfs:label "İtiraz penceresi (saat)"@tr ; fy:parametreTuru fy:SaatTuru .
+fy:sureUzlasma a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Uzlaşma süresi (saat)"@tr ; fy:parametreTuru fy:SaatTuru .
+fy:bilirkisiGerekli a fy:Parametre ; fy:parametreTuru fy:MantiksalTuru .
+
+# Genel parametreler (yalnız fy:GenelParametreler taşır)
+fy:anlamliKumePayi a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Anlamlı küme payı"@tr ; fy:sembol "σ_share" ; fy:parametreTuru fy:OranTuru .
+fy:anlamliKumeAsgariUye a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Anlamlı küme asgari üye"@tr ; fy:sembol "σ_min" ; fy:parametreTuru fy:SayiTuru .
+fy:kumeBasinaAsgariOy a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Küme başına asgari oy"@tr ; fy:sembol "μ_votes" ; fy:parametreTuru fy:SayiTuru .
+fy:kopruIcinAsgariKumelenmis a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Köprü testi için asgari kümelenmiş üye"@tr ; fy:sembol "n_C,min" ; fy:parametreTuru fy:SayiTuru .
+fy:sogukBaslangicArtisi a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Soğuk başlangıç eşik artışı"@tr ; fy:sembol "δ_cold" ; fy:parametreTuru fy:OranTuru .
+fy:vekaletSiniriOrani a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Vekâlet sınırı oranı"@tr ; fy:parametreTuru fy:OranTuru .
+fy:vekaletAzamiAdim a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Vekâlet zinciri azami adım"@tr ; fy:sembol "H" ; fy:parametreTuru fy:SayiTuru .
+fy:bilirkisiSayisi a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Panel bilirkişi sayısı"@tr ; fy:parametreTuru fy:SayiTuru .
+
+# İçerik etiketi güven eşikleri (fy:KuralIcerikEtiketi taşır)
+fy:yuksekGuvenEsigi a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Yüksek güven eşiği (ihlal)"@tr ; fy:parametreTuru fy:OranTuru .
+fy:ortaGuvenEsigi a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Orta güven eşiği (uyarı)"@tr ; fy:parametreTuru fy:OranTuru .
+
+# Koruma sınırları (yalnız değiştirilemez maddelere dayanan taşıyıcılar taşır)
+fy:oyAgirligi a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Üye başına oy ağırlığı"@tr ; fy:parametreTuru fy:SayiTuru .
+fy:kumeTabaniAsgari a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Küme tabanı alt sınırı"@tr ; fy:parametreTuru fy:OranTuru .
+fy:yazarKumesiTabaniAsgari a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Yazar kümesi tabanı alt sınırı"@tr ; fy:parametreTuru fy:OranTuru .
+fy:asmaEsigiAsgari a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Aşma eşiği alt sınırı"@tr ; fy:parametreTuru fy:OranTuru .
+fy:sureItirazAsgari a owl:DatatypeProperty, fy:Parametre ; rdfs:label "İtiraz penceresi alt sınırı (saat, T0–T2)"@tr ; fy:parametreTuru fy:SaatTuru .
+fy:anlamliKumePayiAzami a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Anlamlı küme payı üst sınırı"@tr ; fy:parametreTuru fy:OranTuru .
+fy:anlamliKumeAsgariUyeAzami a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Anlamlı küme asgari üye üst sınırı"@tr ; fy:parametreTuru fy:SayiTuru .
+fy:kopruIcinAsgariKumelenmisAzami a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Köprü için asgari kümelenmiş üye üst sınırı"@tr ; fy:parametreTuru fy:SayiTuru .
+fy:yeterSayiAzami a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Yeter sayı üst sınırı"@tr ; fy:parametreTuru fy:OranTuru .
+fy:esikAzami a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Onay eşiği üst sınırı"@tr ; fy:parametreTuru fy:OranTuru .
+fy:asmaEsigiAzami a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Aşma eşiği üst sınırı"@tr ; fy:parametreTuru fy:OranTuru .
+fy:yenidenOyEsigiAzami a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Yeniden oylama eşiği üst sınırı"@tr ; fy:parametreTuru fy:OranTuru .
+fy:sureAzami a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Süre üst sınırı (saat)"@tr ; fy:parametreTuru fy:SaatTuru .
+fy:vekaletSiniriOraniAzami a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Vekâlet sınırı oranı üst sınırı"@tr ; fy:parametreTuru fy:OranTuru .
+fy:vekaletAzamiAdimAzami a owl:DatatypeProperty, fy:Parametre ; rdfs:label "Vekâlet zinciri üst sınırı"@tr ; fy:parametreTuru fy:SayiTuru .
+
+# ───────────────────────── Öneri alt grafı (denetim anında kurulur) ─────────────────────────
+
+fy:Oneri a owl:Class ; rdfs:label "Öneri"@tr .
+fy:KonuOnerisi a owl:Class ; rdfs:subClassOf fy:Oneri ; rdfs:label "Konu önerisi"@tr .
+fy:AltKonuOnerisi a owl:Class ; rdfs:subClassOf fy:Oneri ; rdfs:label "Alt konu önerisi"@tr .
+fy:DuzenlemeOnerisi a owl:Class ; rdfs:subClassOf fy:Oneri ; rdfs:label "Düzenleme teklifi"@tr .
+fy:SilmeOnerisi a owl:Class ; rdfs:subClassOf fy:Oneri ; rdfs:label "Silme (karartma) talebi"@tr .
+fy:YonetmelikOnerisi a owl:Class ; rdfs:subClassOf fy:Oneri ; rdfs:label "Yönetmelik değişikliği önerisi"@tr .
+
+# Çıkarımla oluşan öneri sınıfları
+fy:HakKisitlayanOneri a owl:Class ; rdfs:subClassOf fy:Oneri ; rdfs:label "Temel hak kısıtlayan öneri"@tr .
+fy:BilirkisiGerektirenOneri a owl:Class ; rdfs:subClassOf fy:Oneri ; rdfs:label "Bilirkişi gerektiren öneri"@tr .
+fy:NitelikliHukumDegisikligi a owl:Class ; rdfs:subClassOf fy:YonetmelikOnerisi ; rdfs:label "Nitelikli hüküm değişikliği"@tr .
+fy:AcilSilmeTalebi a owl:Class ; rdfs:subClassOf fy:SilmeOnerisi ; rdfs:label "Acil silme talebi"@tr .
+fy:MuhurluSilmeTalebi a owl:Class ; rdfs:subClassOf fy:SilmeOnerisi ; rdfs:label "Mühürlenecek silme talebi"@tr .
+
+fy:HakEtkisi a owl:Class ; rdfs:label "Hak etkisi"@tr .
+fy:EtkiYonu a owl:Class .
+fy:Kisitlama a fy:EtkiYonu ; rdfs:label "kısıtlama"@tr .
+fy:Genisletme a fy:EtkiYonu ; rdfs:label "genişletme"@tr .
+fy:Kaynak a owl:Class ; rdfs:label "Etiket kaynağı"@tr .
+fy:BaglayiciKaynak a owl:Class ; rdfs:subClassOf fy:Kaynak ; rdfs:label "Bağlayıcı kaynak (yazar beyanı, bilirkişi tespiti)"@tr .
+fy:DanismaKaynagi a owl:Class ; rdfs:subClassOf fy:Kaynak ; rdfs:label "Danışma kaynağı (yalnızca yükseltir)"@tr .
+fy:KaynakYazar a fy:BaglayiciKaynak ; rdfs:label "yazar"@tr .
+fy:KaynakBilirkisi a fy:BaglayiciKaynak ; rdfs:label "bilirkişi"@tr .
+fy:KaynakYZ a fy:DanismaKaynagi ; rdfs:label "yapay zekâ"@tr .
+fy:KaynakUye a fy:DanismaKaynagi ; rdfs:label "üye bayrağı"@tr .
+fy:KaynakKural a fy:DanismaKaynagi ; rdfs:label "kural tabanlı tespit"@tr .
+
+fy:IcerikEtiketiAtamasi a owl:Class .
+fy:GuvenDuzeyi a owl:Class .
+fy:YuksekGuven a fy:GuvenDuzeyi ; rdfs:label "yüksek güven"@tr .
+fy:OrtaGuven a fy:GuvenDuzeyi ; rdfs:label "orta güven"@tr .
+fy:DusukGuven a fy:GuvenDuzeyi ; rdfs:label "düşük güven"@tr .
+
+fy:KonuKaydi a owl:Class ; rdfs:label "Konu"@tr .
+fy:EtkinKonu a owl:Class ; rdfs:subClassOf fy:KonuKaydi ; rdfs:label "Etkin (yürürlükte) konu"@tr .
+fy:YamaIslemi a owl:Class ; rdfs:label "Yönetmelik yaması işlemi"@tr .
+
+fy:kategori a owl:ObjectProperty ; rdfs:domain fy:Oneri ; rdfs:label "kategori"@tr .
+fy:mirasKategori a owl:ObjectProperty ; rdfs:subPropertyOf fy:kategori ; rdfs:label "üst konudan miras kategori"@tr .
+fy:hakEtkisi a owl:ObjectProperty ; rdfs:domain fy:Oneri ; rdfs:range fy:HakEtkisi .
+fy:hak a owl:ObjectProperty ; rdfs:domain fy:HakEtkisi ; rdfs:range fy:TemelHak .
+fy:yon a owl:ObjectProperty ; rdfs:domain fy:HakEtkisi ; rdfs:range fy:EtkiYonu .
+fy:kaynak a owl:ObjectProperty ; rdfs:range fy:Kaynak .
+fy:icerikEtiketAtamasi a owl:ObjectProperty ; rdfs:domain fy:Oneri ; rdfs:range fy:IcerikEtiketiAtamasi .
+fy:etiket a owl:ObjectProperty ; rdfs:domain fy:IcerikEtiketiAtamasi ; rdfs:range fy:IcerikEtiketi .
+fy:guven a owl:DatatypeProperty ; rdfs:range xsd:decimal .
+fy:guvenDuzeyi a owl:ObjectProperty ; rdfs:range fy:GuvenDuzeyi .
+fy:ustKonu a owl:ObjectProperty ; rdfs:domain fy:AltKonuOnerisi ; rdfs:range fy:KonuKaydi .
+fy:hedefKonu a owl:ObjectProperty ; rdfs:domain fy:DuzenlemeOnerisi ; rdfs:range fy:KonuKaydi .
+fy:konuKategorisi a owl:ObjectProperty ; rdfs:domain fy:KonuKaydi .
+fy:durum a owl:DatatypeProperty ; rdfs:range xsd:string .
+fy:tabanSurum a owl:DatatypeProperty ; rdfs:range xsd:integer .
+fy:guncelSurum a owl:DatatypeProperty ; rdfs:range xsd:integer .
+fy:silmeGerekcesi a owl:ObjectProperty ; rdfs:domain fy:SilmeOnerisi .
+fy:hedefMesajSayisi a owl:DatatypeProperty ; rdfs:range xsd:integer .
+fy:bilirkisiTalebi a owl:DatatypeProperty ; rdfs:range xsd:boolean .
+fy:dogrulanmisUyeSayisi a owl:DatatypeProperty ; rdfs:range xsd:integer .
+fy:yamaIslemi a owl:ObjectProperty ; rdfs:domain fy:YonetmelikOnerisi ; rdfs:range fy:YamaIslemi .
+fy:islemTuru a owl:DatatypeProperty ; rdfs:domain fy:YamaIslemi .
+fy:hedef a owl:ObjectProperty ; rdfs:domain fy:YamaIslemi .
+fy:param a owl:ObjectProperty ; rdfs:domain fy:YamaIslemi .
+fy:yeniDeger a rdf:Property ; rdfs:domain fy:YamaIslemi .
+fy:yeniKoruma a owl:ObjectProperty ; rdfs:domain fy:YamaIslemi ; rdfs:range fy:KorumaDuzeyi .
+fy:ustSinif a owl:ObjectProperty ; rdfs:domain fy:YamaIslemi .
+
+# Çıkarım (N3 kuralları) ile oluşan özellikler — ihlal/uyarı bayrakları SHACL ile raporlanır
+fy:uygulananKural a owl:ObjectProperty ; rdfs:range fy:Kural ; rdfs:label "uygulanan kural"@tr .
+fy:kisitladigiHak a owl:ObjectProperty ; rdfs:range fy:TemelHak .
+fy:kisitlananCekirdekHak a owl:ObjectProperty ; rdfs:range fy:TemelHak ; rdfs:label "özü oylanamaz hakkın bağlayıcı kısıtlaması (ihlal)"@tr .
+fy:danismaCekirdekHakUyarisi a owl:ObjectProperty ; rdfs:range fy:TemelHak ; rdfs:label "özü oylanamaz hak için danışma bayrağı (uyarı)"@tr .
+fy:bilirkisiAlani a owl:ObjectProperty ; rdfs:label "bilirkişi gerektiren kategori"@tr .
+fy:yuksekGuvenliEtiket a owl:ObjectProperty ; rdfs:range fy:IcerikEtiketi .
+fy:ortaGuvenliEtiket a owl:ObjectProperty ; rdfs:range fy:IcerikEtiketi .
+fy:gecersizSilmeGerekcesi a owl:ObjectProperty ; rdfs:range fy:GecersizGerekce .
+fy:degistirilemezHedef a owl:ObjectProperty ; rdfs:label "değiştirilemez hüküm hedefi (ihlal)"@tr .
+fy:yeniDegistirilemez a owl:ObjectProperty ; rdfs:label "yeni değiştirilemez hüküm üretimi (ihlal)"@tr .
+fy:degistirilemezAtlatma a owl:ObjectProperty ; rdfs:label "değiştirilemez hükmün dolaylı atlatılması (ihlal)"@tr .
+
+# SHACL şekillerinin açıklama özellikleri
+fy:bulguKodu a owl:AnnotationProperty ; rdfs:label "bulgu kodu"@tr .
