@@ -86,7 +86,8 @@ async function main(): Promise<void> {
     // createApp dışarıdan verilen saati kalıcılaştırmaz: sunucunun kaldığı yerden sürmesi için meta.sim_clock yazılır.
     services.ctx.db.run(
       "INSERT INTO meta(key, value) VALUES ('sim_clock', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-      JSON.stringify(clock.snapshot()),
+      // Tohumun ilerletmesi "yönetici ileri aldı" sayılmaz: sunucu bu sıfırdan başlar.
+      JSON.stringify({ simNow: clock.snapshot().simNow, advancedTotal: 0 }),
     );
   } finally {
     await close();

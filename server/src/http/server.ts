@@ -25,7 +25,8 @@ function isDir(p: string): boolean {
 }
 
 export async function buildServer(services: AppServices, config: Config, opts: HttpOptions = {}): Promise<FastifyInstance> {
-  const app = Fastify({ logger: opts.logger ?? false, bodyLimit: BODY_LIMIT });
+  // Günlük: LOG_LEVEL (varsayılan "warn": yalnız uyarı ve hatalar; her isteği görmek için LOG_LEVEL=info).
+  const app = Fastify({ logger: opts.logger ? { level: process.env.LOG_LEVEL ?? "warn" } : false, bodyLimit: BODY_LIMIT });
 
   // Boş gövdeli JSON isteklerini kabul et (gövde yok sayılır); geri kalanı Fastify'ın güvenli ayrıştırıcısında.
   // API yalnız JSON kabul eder (text/plain → 415).
