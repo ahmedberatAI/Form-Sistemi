@@ -21,12 +21,10 @@ export function registerGraphRoutes(app: FastifyInstance, { services }: RouteDep
     const { types, limit } = parseQuery(graphQuery, req.query);
     const includePrivate = canSeePrivate(req.user);
     const includeEdgeTypes = types && !includePrivate ? types.filter((t) => !PRIVATE_EDGE_TYPES.includes(t)) : types;
-    // includePrivate sözleşme tipinde yok; graf modülü ek alan olarak okur (yoksa özel kenarlar hiç verilmez).
-    const opts: Parameters<typeof graph.visualization>[0] & { includePrivate: boolean } = { includeEdgeTypes, limit, includePrivate };
-    const { nodes, edges } = graph.visualization(opts);
-    // Siyasi görüş özel nitelikli veridir (KVKK md. 6): kişinin görüş kümesi, oy uzlaşısı topluluğu ve görüş
-    // koordinatları yalnız KENDİSİNE gösterilir; herkese açık grafta düğümler yalnız sosyal ilişkileri taşır.
+    // Görünürlük politikası GraphService.visualization içinde uygulanır (özel kenar yalnız includePrivate ile, siyasi görüş
+    // alanları yalnız viewerId'nin kendi düğümünde). Aşağıdaki süzgeçler yalnız savunma derinliği içindir.
     const viewerId = req.user?.id ?? null;
+    const { nodes, edges } = graph.visualization({ includeEdgeTypes, limit, includePrivate, viewerId });
     const safeNodes = nodes.map((n) => (n.id === viewerId ? n : { ...n, cluster: null, community: null, x: undefined, y: undefined }));
     return { nodes: safeNodes, edges: includePrivate ? edges : edges.filter((e) => !PRIVATE_EDGE_TYPES.includes(e.type)) };
   });

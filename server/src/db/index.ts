@@ -1,10 +1,11 @@
 // node:sqlite üzerinde ince bir sarmalayıcı (yerel derleme gerektirmez).
 import { DatabaseSync } from "node:sqlite";
-import { readFileSync, mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
+import { migrate } from "./migrations";
 
-const here = dirname(fileURLToPath(import.meta.url));
+// Şema sürümleme / göç çalıştırıcısı ./migrations.ts içindedir (migrate, MIGRATIONS, SCHEMA_VERSION, SchemaVersionError).
+export { migrate, MIGRATIONS, SCHEMA_VERSION, SchemaVersionError, type Migration } from "./migrations";
 
 export type SqlValue = string | number | bigint | null | Uint8Array;
 export type Row = Record<string, SqlValue>;
@@ -66,15 +67,19 @@ export class Db {
   }
 }
 
-export function migrate(db: Db): void {
-  const schema = readFileSync(join(here, "schema.sql"), "utf8");
-  db.exec(schema);
-  db.run("INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '1')");
-}
-
 export function openDb(path: string): Db {
   const db = new Db(path);
-  migrate(db);
+  try {
+    migrate(db);
+  } catch (e) {
+    // Şema kurulamadı/sürüm uyumsuz: tutamak sızdırılmaz (WAL dosyaları ve kilit serbest kalsın).
+    try {
+      db.close();
+    } catch {
+      /* asıl hata önemlidir */
+    }
+    throw e;
+  }
   return db;
 }
 

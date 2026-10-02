@@ -1,8 +1,10 @@
 // ProposalDetail birleştirme. Oylama sürerken sonuç SIZMAZ: results[] yalnız kesin (interim=0) turları içerir.
+import { LEDGER_TX_LABELS } from "@forum/shared";
 import type {
   BallotReceipt,
   DecisionResult,
   MinorityReport,
+  LedgerTxType,
   ObjectionInfo,
   PhaseEvent,
   ProposalDetail,
@@ -12,6 +14,7 @@ import type {
   Suggestion,
   VoteChoice,
 } from "@forum/shared";
+import type { CommittedTx, LedgerService } from "../core/contracts";
 import type { Viewer } from "../core/forum-contracts";
 import { notFound } from "../core/errors";
 import { json } from "../db";
@@ -33,6 +36,36 @@ export function receiptOf(b: BallotRow): BallotReceipt {
     txHash: b.ledger_tx,
     castAt: Number(b.updated_at),
   };
+}
+
+/** Ayrıntıda listelenen en yeni VOTE_COMMIT sayısı: oy taahhütleri seçmen sayısıyla büyür; diğer kayıtların HEPSİ listelenir. */
+export const DETAIL_VOTE_COMMIT_LIMIT = 1000;
+const NON_VOTE_TX_TYPES = (Object.keys(LEDGER_TX_LABELS) as LedgerTxType[]).filter((t) => t !== "VOTE_COMMIT");
+
+/**
+ * Önerinin defter kayıtları. Eski sürüm tüm kayıtlardan yalnız en yeni 1000'ini alıyordu; 1000'den fazla oy taahhüdü olunca
+ * en eski kayıtlar (PROPOSAL_CREATED, SPONSORED, evre değişiklikleri…) sessizce düşüyordu. Şimdi VOTE_COMMIT dışındaki
+ * kayıtların hepsi listelenir, yalnız VOTE_COMMIT girdileri en yeni DETAIL_VOTE_COMMIT_LIMIT ile sınırlanır; `counts` her
+ * türün TOPLAM sayısını (VOTE_COMMIT dahil) taşır. Tür tür sorgulamak, binlerce oy taahhüdünü kopyalamadan ayıklar.
+ */
+export function proposalLedgerTxs(ledger: LedgerService, proposalId: string): Pick<ProposalDetail, "ledgerTxs" | "ledgerTxCounts"> {
+  const mine = (t: CommittedTx) => t.payload.proposalId === proposalId;
+  const txs: CommittedTx[] = [];
+  const counts: Record<string, number> = {};
+  for (const type of NON_VOTE_TX_TYPES) {
+    const found = ledger.findTxs({ type, proposalId }).filter(mine);
+    if (found.length === 0) continue;
+    counts[type] = found.length;
+    for (const t of found) txs.push(t);
+  }
+  const votes = ledger.findTxs({ type: "VOTE_COMMIT", proposalId, limit: DETAIL_VOTE_COMMIT_LIMIT }).filter(mine);
+  if (votes.length > 0) {
+    // Sınıra ulaşıldıysa gerçek toplam için tam tarama gerekir; ulaşılmadıysa liste zaten tamdır.
+    counts.VOTE_COMMIT = votes.length >= DETAIL_VOTE_COMMIT_LIMIT ? ledger.findTxs({ type: "VOTE_COMMIT", proposalId }).filter(mine).length : votes.length;
+    for (const t of votes) txs.push(t);
+  }
+  txs.sort((a, b) => a.height - b.height || a.index - b.index);
+  return { ledgerTxs: txs.map((t) => ({ type: t.type, txHash: t.hash, at: Number(t.blockTime) })), ledgerTxCounts: counts };
 }
 
 /** Taslak yalnız yazarına görünür; diğerlerine 404. */
@@ -178,6 +211,7 @@ export function buildProposalDetail(core: ForumCore, clusters: ClusterServiceImp
     }
   }
 
+  const ledger = safe(() => proposalLedgerTxs(deps.ledger, p.id), { ledgerTxs: [], ledgerTxCounts: {} });
   const showEvaluation = p.status === "objection_window" || objectionRows.length > 0;
   const parentTopic = p.parent_topic_id
     ? (db.get<{ id: string; title: string }>("SELECT id, title FROM topics WHERE id = ?", p.parent_topic_id) ?? null)
@@ -229,14 +263,6 @@ export function buildProposalDetail(core: ForumCore, clusters: ClusterServiceImp
     integrityWarnings: safe(() => integrityWarnings(core, p.id, viewer), []),
     parentTopic: parentTopic ? { id: parentTopic.id, title: parentTopic.title } : null,
     enactedEntityId: p.enacted_entity_id,
-    ledgerTxs: safe(
-      () =>
-        deps.ledger
-          .findTxs({ proposalId: p.id, limit: 1000 })
-          .filter((t) => t.payload.proposalId === p.id)
-          .sort((a, b) => a.height - b.height || a.index - b.index)
-          .map((t) => ({ type: t.type, txHash: t.hash, at: Number(t.blockTime) })),
-      [],
-    ),
+    ...ledger,
   };
 }

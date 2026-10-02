@@ -5,6 +5,7 @@ import type { AuthUser, ModerationResult } from "../core/contracts";
 import { badRequest, conflict, forbidden, notFound, unprocessable } from "../core/errors";
 import type { MessageService, Viewer } from "../core/forum-contracts";
 import { newId, newSalt } from "../core/ids";
+import { memberToken } from "../core/notification-text";
 import {
   ACTIVE_SQL,
   checkLength,
@@ -152,7 +153,7 @@ export function createMessageService(core: ForumCore): MessageService {
           core.notify([parent.author_id], {
             kind: "message_reply",
             title: "Mesajınıza yanıt geldi",
-            body: `${actor.nickname}, ${t.ref} tartışmasında mesajınızı yanıtladı.`,
+            body: `${memberToken(actor.id)}, ${t.ref} tartışmasında mesajınızı yanıtladı.`,
             link: t.link,
           });
         }

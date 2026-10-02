@@ -441,7 +441,10 @@ export interface ProposalDetail extends ProposalSummary {
   integrityWarnings: IntegrityWarning[];
   parentTopic: { id: string; title: string } | null;
   enactedEntityId: string | null;
+  /** Önerinin defter kayıtları: VOTE_COMMIT dışındakilerin hepsi, VOTE_COMMIT'in yalnız en yeni girdileri (ledgerTxCounts toplamı verir). */
   ledgerTxs: { type: string; txHash: string; at: number }[];
+  /** Türe göre TOPLAM defter kaydı sayısı (ledgerTxs VOTE_COMMIT için kısaltılmış olabilir). */
+  ledgerTxCounts?: Record<string, number>;
 }
 
 export interface CreateProposalInput {

@@ -195,8 +195,18 @@ export function createAiService(ctx: CoreContext, opts: AiServiceOptions = {}): 
     },
 
     async summarize(input, o) {
-      const offline = offlineSummarize(input);
-      if (!input.messages.length) return { ...offline, ...OFF };
+      // Çevrimdışı özet YALNIZ gerektiğinde (Claude yok/başarısız, boş girdi ya da azınlık görüşü eksik) hesaplanır ve girdisi en
+      // yeni MAX_SUMMARY_MESSAGES mesajla sınırlıdır: sezgisel süreç mesaj sayısıyla doğrusal üstü büyür, tüm tartışmayı
+      // (sınırsız) işlemek senkron olarak sunucuyu saniyelerce kilitleyebilirdi. Kapsam yine TÜM mesajlara göre hesaplanır.
+      let offlineCache: ReturnType<typeof offlineSummarize> | undefined;
+      const offlineOf = () => {
+        if (!offlineCache) {
+          const s = offlineSummarize({ ...input, messages: input.messages.slice(-MAX_SUMMARY_MESSAGES) });
+          offlineCache = { ...s, coverage: computeCoverage(s, input.messages) };
+        }
+        return offlineCache;
+      };
+      if (!input.messages.length) return { ...offlineOf(), ...OFF };
       const subset = input.messages.slice(-MAX_SUMMARY_MESSAGES);
       const refToId = new Map<string, string>();
       const r = await ask(o, () => {
@@ -232,7 +242,7 @@ export function createAiService(ctx: CoreContext, opts: AiServiceOptions = {}): 
         };
         return summarizeRequest(sanitizeForModel(input.topicTitle, masker), lines, minority);
       });
-      if (!r) return { ...offline, ...OFF };
+      if (!r) return { ...offlineOf(), ...OFF };
       const mapPoints = (ps: { text: string; cites: string[] }[]) =>
         ps.map((p) => ({ text: p.text, cites: [...new Set(p.cites.map((c) => refToId.get(c)).filter((x): x is string => !!x))] }));
       const s = {
@@ -241,7 +251,7 @@ export function createAiService(ctx: CoreContext, opts: AiServiceOptions = {}): 
         minorityViews: mapPoints(r.data.minorityViews),
         openQuestions: mapPoints(r.data.openQuestions),
       };
-      if (!s.minorityViews.length) s.minorityViews = offline.minorityViews;
+      if (!s.minorityViews.length) s.minorityViews = offlineOf().minorityViews;
       return { ...s, coverage: computeCoverage(s, input.messages), offline: false, model: r.model };
     },
 

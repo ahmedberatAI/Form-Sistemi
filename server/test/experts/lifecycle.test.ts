@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AppError } from "../../src/core/errors";
+import { memberToken, renderMemberTokens } from "../../src/core/notification-text";
 import { CAT, catchErr, makeWorld } from "./fixtures";
 
 describe("bilirkişi başvurusu", () => {
@@ -28,7 +29,10 @@ describe("bilirkişi başvurusu", () => {
     expect(info.domains).toEqual([CAT.toplu]);
     const n = w.notifier.sent.filter((x) => x.kind === "expert_application");
     expect(n.map((x) => x.userId)).toEqual([w.admin]);
-    expect(n[0].body).toContain("Ayşe");
+    // Takma ad metne gömülmez; üye belirteci okunurken güncel adla çözülür.
+    expect(n[0].body).toContain(memberToken("u-1"));
+    expect(n[0].body).not.toContain("Ayşe");
+    expect(renderMemberTokens(n[0].body, new Map([["u-1", "Ayşe"]]))).toContain("Ayşe bilirkişi olmak için başvurdu");
     const log = w.db.get<{ actor_id: string; action: string; target: string }>("SELECT actor_id, action, target FROM audit_log WHERE action = 'expert.apply'");
     expect(log).toEqual({ actor_id: "u-1", action: "expert.apply", target: "user:u-1" });
     expect(catchErr(() => w.svc.apply("u-1", [CAT.toplu], "Ulaşım planlama uzmanı")).code).toBe("already_applied");

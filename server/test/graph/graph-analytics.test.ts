@@ -459,16 +459,23 @@ describe("graf analizi: istatistik ve görselleştirme", () => {
     const v = graph.visualization({});
     expect(v.nodes).toHaveLength(10);
     expect(v.nodes.some((n) => n.id === pending)).toBe(false);
+    // Varsayılan kapalı: viewerId yokken hiçbir düğüm siyasi görüş alanı (cluster, community, x, y) taşımaz.
+    for (const n of v.nodes) expect(n).toMatchObject({ cluster: null, community: null });
+    for (const n of v.nodes) expect(n).not.toHaveProperty("x");
     const byId = new Map(v.nodes.map((n) => [n.id, n]));
-    const a3 = byId.get(blocA[2])!;
+    // viewerId: görüş alanları yalnız görüntüleyenin KENDİ düğümünde.
+    const a3 = new Map(graph.visualization({ viewerId: blocA[2] }).nodes.map((n) => [n.id, n])).get(blocA[2])!;
     expect(a3).toMatchObject({ label: blocA[2].toUpperCase(), cluster: "g0", isExpert: true, x: 2, y: -2 });
     expect(typeof a3.pagerank).toBe("number");
     expect(typeof a3.sybilFlag).toBe("boolean");
     expect(byId.get(blocB[1])!.isExpert).toBe(false);
-    expect(byId.get(blocB[0])!.cluster).toBe("g1");
-    const ca = byId.get(blocA[0])!.community;
+    const viewA = graph.visualization({ viewerId: blocA[0] });
+    expect(viewA.nodes.filter((n) => n.cluster !== null || n.community !== null || n.x !== undefined).map((n) => n.id)).toEqual([blocA[0]]);
+    const b1 = graph.visualization({ viewerId: blocB[0] }).nodes.find((n) => n.id === blocB[0])!;
+    expect(b1.cluster).toBe("g1");
+    const ca = viewA.nodes.find((n) => n.id === blocA[0])!.community;
     expect(ca).not.toBeNull();
-    expect(byId.get(blocB[0])!.community).not.toBe(ca);
+    expect(b1.community).not.toBe(ca);
     // düğümler pagerank'e göre azalan sırada; bağlantı alan b1, yalıtılmış a5'ten önde
     for (let i = 1; i < v.nodes.length; i++) expect(v.nodes[i - 1].pagerank).toBeGreaterThanOrEqual(v.nodes[i].pagerank);
     expect(byId.get(blocB[0])!.pagerank).toBeGreaterThan(byId.get(blocA[4])!.pagerank);
@@ -481,10 +488,14 @@ describe("graf analizi: istatistik ve görselleştirme", () => {
     // İzin listesi: RELATED_TO yalnız includePrivate === true iken; AGREES hiçbir zaman
     expect(graph.visualization({ includeEdgeTypes: ["RELATED_TO"] }).edges).toEqual([]);
     expect(graph.visualization({ includeEdgeTypes: ["RELATED_TO", "FOLLOWS"] }).edges.some((e) => e.type === "RELATED_TO")).toBe(false);
-    const rel = graph.visualization({ includeEdgeTypes: ["RELATED_TO"], includePrivate: true } as Parameters<typeof graph.visualization>[0]);
+    // Özel kenar yalnız yetkili görüntüleyen için (includePrivate: true); false/verilmemiş hep boş.
+    expect(graph.visualization({ includeEdgeTypes: ["RELATED_TO"], includePrivate: false }).edges).toEqual([]);
+    const rel = graph.visualization({ includeEdgeTypes: ["RELATED_TO"], includePrivate: true });
     expect(rel.edges).toEqual([{ source: blocA[0], target: blocA[1], type: "RELATED_TO", weight: 1 }]);
+    // Varsayılan kenar kümesinde özel kenar, yetkili olsa bile açıkça istenmedikçe gelmez.
+    expect(graph.visualization({ includePrivate: true }).edges.some((e) => e.type === "RELATED_TO")).toBe(false);
     graph.addEdge({ src: blocA[0], dst: blocB[0], type: "AGREES", weight: 1 });
-    const agrees = graph.visualization({ includeEdgeTypes: ["AGREES"], includePrivate: true } as Parameters<typeof graph.visualization>[0]);
+    const agrees = graph.visualization({ includeEdgeTypes: ["AGREES"], includePrivate: true });
     expect(agrees.edges).toEqual([]);
 
     const top = graph.visualization({ limit: 2 });

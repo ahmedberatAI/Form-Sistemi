@@ -86,18 +86,15 @@ describe("forum: yaşam döngüsü motoru", () => {
     h.forum.lifecycle.stop();
   });
 
-  it("günlük bakım: kimlik bakım işleri simüle günde bir kez; bilirkişi gecikmeleri her tick", async () => {
-    const id = h.identity as unknown as { refreshAdulthood: () => number; purgeStalePending: () => number };
-    const adult = vi.spyOn(id, "refreshAdulthood");
-    const purge = vi.spyOn(id, "purgeStalePending");
+  it("bakım: yaşam döngüsü kimlik bakımını ÇALIŞTIRMAZ (tek zamanlayıcı app.ts); bilirkişi gecikmeleri her tick", async () => {
+    const adult = vi.spyOn(h.identity, "refreshAdulthood");
+    const purge = vi.spyOn(h.identity, "purgeStalePending");
     const overdue = vi.spyOn(h.experts, "markOverdue");
     await h.tick();
     await h.tick();
-    const n = adult.mock.calls.length;
-    expect(n).toBeLessThanOrEqual(1);
     await h.advance(25);
-    expect(adult.mock.calls.length).toBe(n + 1);
-    expect(purge.mock.calls.length).toBe(adult.mock.calls.length);
+    expect(adult).not.toHaveBeenCalled();
+    expect(purge).not.toHaveBeenCalled();
     expect(overdue.mock.calls.length).toBeGreaterThanOrEqual(3);
   });
 });

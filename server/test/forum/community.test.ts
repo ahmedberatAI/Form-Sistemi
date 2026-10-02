@@ -1,6 +1,8 @@
 // CommunityService: arama, herkese açık profil, takip, vekâletler, bildirimler, denetim günlüğü, sistem bilgisi, pano, görevler.
 import { beforeAll, describe, expect, it } from "vitest";
 import type { AuthUser } from "../../src/core/contracts";
+import { fy } from "@forum/shared";
+import { memberToken } from "../../src/core/notification-text";
 import { CAT, LONG_BODY, makeForum, toDeliberation, type ForumHarness } from "./harness";
 
 describe("forum: topluluk hizmeti", () => {
@@ -78,6 +80,18 @@ describe("forum: topluluk hizmeti", () => {
     expect(h.forum.community.notifications(a.id, { limit: 1 }).items).toHaveLength(1);
   });
 
+  it("bildirimler: üye belirteci okunurken güncel takma adla çözülür (kayıtlı metin değişmez)", () => {
+    const [a, b] = m;
+    h.notifier.notify(a.id, { kind: "message_reply", title: "Yanıt", body: `${memberToken(b.id)}, #K-1 tartışmasında yanıtladı. “${b.nickname}” başlıklı öneri.`, link: null });
+    const bodyOf = () => h.forum.community.notifications(a.id, { limit: 1 }).items[0].body;
+    expect(bodyOf()).toBe(`${b.nickname}, #K-1 tartışmasında yanıtladı. “${b.nickname}” başlıklı öneri.`);
+    // Takma ad değişir: belirteç yeni adı gösterir, tırnaklı başlık (başka alan) aynen kalır.
+    h.ctx.db.run("UPDATE users SET nickname = ? WHERE id = ?", "yeni_takma", b.id);
+    expect(bodyOf()).toBe(`yeni_takma, #K-1 tartışmasında yanıtladı. “${b.nickname}” başlıklı öneri.`);
+    expect(h.ctx.db.get<{ body: string }>("SELECT body FROM notifications WHERE user_id = ? ORDER BY rowid DESC LIMIT 1", a.id)?.body).toContain(memberToken(b.id));
+    h.ctx.db.run("UPDATE users SET nickname = ? WHERE id = ?", b.nickname, b.id);
+  });
+
   it("sistem bilgisi, pano ve görevler", async () => {
     const info = h.forum.community.systemInfo();
     expect(info).toMatchObject({ version: "1.0.0", now: h.ctx.clock.now(), clockOffsetMs: 0, timeScale: 1, aiMode: "offline", bylawVersion: 1 });
@@ -115,5 +129,40 @@ describe("forum: topluluk hizmeti", () => {
     expect(d.outgoing).toEqual([]);
     expect(d.incoming.map((x) => x.fromNickname)).toEqual(["uye02"]);
     expect(d.cap).toBe(2);
+  });
+});
+
+describe("forum: yönetici kullanıcı listesi (adminUsers)", () => {
+  it("tüm durumları listeler; Türkçe harf katlamalı arama; uzman/rol izdüşümü; LIKE özel karakterleri kaçışlı; kişisel veri yok", async () => {
+    const h = await makeForum();
+    try {
+      const c = h.user("Çiğdem", { roles: ["registrar"], isAdult: false });
+      h.user("Ahmet", { status: "pending", verifiedAt: null });
+      h.ctx.db.run("INSERT INTO experts(user_id, domains, credentials, status, created_at) VALUES (?, ?, 'x', 'active', 1)", c.id, JSON.stringify([fy("Ulasim")]));
+
+      expect(h.forum.community.adminUsers()).toHaveLength(2);
+      const found = h.forum.community.adminUsers("çiğ");
+      const row = h.ctx.db.get<{ created_at: number; verified_at: number }>("SELECT created_at, verified_at FROM users WHERE id = ?", c.id)!;
+      expect(found).toEqual([
+        {
+          id: c.id,
+          nickname: "Çiğdem",
+          status: "verified",
+          roles: ["member", "registrar"],
+          isExpert: true,
+          expertDomains: [fy("Ulasim")],
+          reputation: 0,
+          joinedAt: row.created_at, // yöneticiye gün yuvarlaması YOK: kesin katılım zamanı
+          verifiedAt: row.verified_at,
+          isAdult: false,
+          politicalConsent: true,
+        },
+      ]);
+      expect(h.forum.community.adminUsers(c.id).map((u) => u.id)).toEqual([c.id]); // kimlikle de bulunur
+      expect(h.forum.community.adminUsers("%")).toEqual([]);
+      expect(h.forum.community.adminUsers("", 1)).toHaveLength(1);
+    } finally {
+      await h.close();
+    }
   });
 });

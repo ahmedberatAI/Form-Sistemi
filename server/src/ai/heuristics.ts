@@ -390,7 +390,13 @@ export function offlineSummarize(input: SummaryInput): DiscussionSummary {
     authors: Set<string>;
   }
   const byStem = new Map<string, SMsg[]>();
-  for (const m of msgs) for (const s of m.stems) byStem.set(s, [...(byStem.get(s) ?? []), m]);
+  for (const m of msgs) {
+    for (const s of m.stems) {
+      const list = byStem.get(s);
+      if (list) list.push(m);
+      else byStem.set(s, [m]);
+    }
+  }
   let themes: Theme[] = [...byStem.entries()]
     .filter(([, ms]) => ms.length >= 2)
     .map(([s, ms]) => ({
@@ -402,16 +408,22 @@ export function offlineSummarize(input: SummaryInput): DiscussionSummary {
     .sort((a, b) => b.clusters.size - a.clusters.size || b.authors.size - a.authors.size || b.msgs.length - a.msgs.length || (a.stems[0] < b.stems[0] ? -1 : 1));
   // Aynı mesaj kümesini kapsayan temaları birleştir.
   const merged: Theme[] = [];
+  const mergedIds: Set<string>[] = []; // birleşik temaların kimlik kümeleri bir kez kurulur (her karşılaştırmada yeniden değil)
   for (const t of themes) {
     const ids = new Set(t.msgs.map((m) => m.id));
-    const same = merged.find((x) => {
-      const xi = new Set(x.msgs.map((m) => m.id));
-      const inter = [...ids].filter((i) => xi.has(i)).length;
-      return inter / (ids.size + xi.size - inter) >= 0.8;
-    });
+    let same: Theme | undefined;
+    for (let k = 0; k < merged.length && !same; k++) {
+      const xi = mergedIds[k];
+      let inter = 0;
+      for (const i of ids) if (xi.has(i)) inter++;
+      if (inter / (ids.size + xi.size - inter) >= 0.8) same = merged[k];
+    }
     if (same) {
       if (same.stems.length < 3) same.stems.push(...t.stems);
-    } else merged.push({ ...t, stems: [...t.stems] });
+    } else {
+      merged.push({ ...t, stems: [...t.stems] });
+      mergedIds.push(ids);
+    }
   }
   themes = merged;
   const themeWords = (t: Theme) =>

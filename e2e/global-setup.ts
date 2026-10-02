@@ -72,7 +72,8 @@ async function prepare(tmpRoot: string): Promise<void> {
   const template = join(tmpRoot, "template", "data");
   mkdirSync(template, { recursive: true });
   console.log(`[e2e] Demo verisi tohumlanıyor → ${template}`);
-  const env: NodeJS.ProcessEnv = { DATA_DIR: template, TIME_SCALE: "1", AI_ENABLED: "false" };
+  // DB_PATH ve ANTHROPIC_API_KEY ortamdan DEVRALINMAZ (undefined → alt sürece geçmez): tohum yalnız geçici şablon klasörüne yazar.
+  const env: NodeJS.ProcessEnv = { DATA_DIR: template, TIME_SCALE: "1", AI_ENABLED: "false", DB_PATH: undefined, ANTHROPIC_API_KEY: undefined };
   await runToCompletion(process.execPath, ["--import", tsxLoader(), join(SERVER_DIR, "src", "seed.ts"), "--reset"], {
     cwd: SERVER_DIR,
     env,

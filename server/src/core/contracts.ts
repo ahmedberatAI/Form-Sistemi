@@ -203,7 +203,22 @@ export interface GraphService {
   /** Kilit adım (lockstep) oy tespiti: bir öneride benzer zamanlarda aynı oyu veren yoğun gruplar. */
   lockstep(proposalId: string): { groups: string[][] };
   stats(): GraphStats;
-  visualization(opts: { includeEdgeTypes?: EdgeType[]; limit?: number }): { nodes: GraphVisNode[]; edges: GraphVisEdge[] };
+  /**
+   * Graf görselleştirme verisi. Görünürlük politikası hizmetin KENDİSİNDE uygulanır ve varsayılan olarak KAPALIDIR:
+   *  - AGREES (oy gizliliği) hiçbir koşulda verilmez;
+   *  - RELATED_TO (aile/iş/hane yakınlık beyanı) yalnız `includePrivate === true` iken verilir. Çağıran bunu YALNIZ yetkili
+   *    görüntüleyen (doğrulanmış denetçi/yönetici) için açar; verilmezse özel kenar istense bile dönmez;
+   *  - siyasi görüş alanları (cluster, community, x, y — KVKK md. 6) yalnız `viewerId` ile eşleşen KENDİ düğümünde bulunur
+   *    (cluster/community null, x/y yok); `viewerId` verilmezse hiçbir düğümde bulunmaz.
+   */
+  visualization(opts: {
+    includeEdgeTypes?: EdgeType[];
+    limit?: number;
+    /** Özel nitelikli (RELATED_TO) kenarları da ver; varsayılan false. */
+    includePrivate?: boolean;
+    /** Siyasi görüş alanlarının görünebileceği tek kullanıcı (görüntüleyenin kendisi); varsayılan yok. */
+    viewerId?: string | null;
+  }): { nodes: GraphVisNode[]; edges: GraphVisEdge[] };
 }
 
 // ═════════════════════════ Yönetişim matematiği (saf) ═════════════════════════

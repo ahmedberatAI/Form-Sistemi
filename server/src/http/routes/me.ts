@@ -64,8 +64,10 @@ export function registerMeRoutes(app: FastifyInstance, { services }: RouteDeps):
 
   app.get("/api/me/export", async (req, reply): Promise<Record<string, unknown>> => {
     const user = requireUser(req);
+    // Önce döküm hazırlanır; başlık yalnız başarıdan sonra eklenir (hata gövdesi "kvkk-verilerim.json" olarak inmesin).
+    const out = identity.exportOwnData(user.id);
     reply.header("content-disposition", 'attachment; filename="kvkk-verilerim.json"');
-    return identity.exportOwnData(user.id);
+    return out;
   });
 
   app.post("/api/me/erase", async (req): Promise<OkResponse> => {

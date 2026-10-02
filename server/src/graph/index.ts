@@ -56,6 +56,8 @@ const DEFAULT_AGREEMENT_SEED = "forum-graph:louvain";
 const LOCKSTEP_WINDOW_MS = 60_000;
 const LOCKSTEP_MIN_COMMON = 3;
 const LOCKSTEP_MIN_GROUP = 4;
+/** Güvenlik sınırı: bir taramada en çok bu kadar çift karşılaştırılır (aynı dakikada binlerce aynı seçim, kapanış işlemini kilitlemesin). */
+export const LOCKSTEP_MAX_PAIR_CHECKS = 2_000_000;
 
 const NODE_PREFIXES = ["user:", "cat:", "proposal:", "msg:", "topic:"];
 
@@ -842,31 +844,38 @@ export function createGraphService(ctx: CoreContext, deps: { ledger: LedgerServi
         proposalId,
         top.r,
       );
-      const candidates: [string, string][] = [];
+      // Seçime göre (zaman sıralı) listeler: push() ile, her oyda tüm listeyi kopyalamadan (eski: [...liste, oy] → O(n²)).
       const byChoice = new Map<string, { user_id: string; t: number }[]>();
-      for (const b of ballots) byChoice.set(b.choice, [...(byChoice.get(b.choice) ?? []), b]);
+      for (const b of ballots) {
+        const list = byChoice.get(b.choice);
+        if (list) list.push(b);
+        else byChoice.set(b.choice, [b]);
+      }
+      // Kayan pencere: yalnız penceredeki (bir komşusu 60 sn içinde olan) oylar çift adayıdır; tek başına duran oylar elenir.
+      const windowed = new Set<string>();
       for (const list of byChoice.values()) {
-        for (let i = 0; i < list.length; i++) {
-          for (let j = i + 1; j < list.length && Number(list[j].t) - Number(list[i].t) <= LOCKSTEP_WINDOW_MS; j++) {
-            candidates.push([list[i].user_id, list[j].user_id]);
+        for (let i = 0; i + 1 < list.length; i++) {
+          if (Number(list[i + 1].t) - Number(list[i].t) <= LOCKSTEP_WINDOW_MS) {
+            windowed.add(list[i].user_id);
+            windowed.add(list[i + 1].user_id);
           }
         }
       }
-      if (candidates.length < LOCKSTEP_MIN_GROUP) return { groups: [] };
-      const users = [...new Set(candidates.flat())];
+      if (windowed.size < LOCKSTEP_MIN_GROUP) return { groups: [] };
       const history = new Map<string, Map<string, string>>();
       for (const h of db.all<{ p: string; u: string; c: string }>(
         `SELECT b.proposal_id AS p, b.user_id AS u, b.choice AS c FROM ballots b
          JOIN (SELECT proposal_id, MAX(round) AS r FROM ballots GROUP BY proposal_id) lr ON lr.proposal_id = b.proposal_id AND lr.r = b.round
          WHERE b.proposal_id <> ? AND b.user_id IN (SELECT value FROM json_each(?))`,
         proposalId,
-        JSON.stringify(users),
+        JSON.stringify([...windowed]),
       )) {
         const m = history.get(h.u) ?? new Map<string, string>();
         m.set(h.p, h.c);
         history.set(h.u, m);
       }
-      const locked = candidates.filter(([x, y]) => {
+      // Başka ≥ LOCKSTEP_MIN_COMMON oyu olmayan kişi hiçbir çiftle "ortak ≥ eşik" sağlayamaz: baştan elenir.
+      const agrees = (x: string, y: string): boolean => {
         const hx = history.get(x);
         const hy = history.get(y);
         if (!hx || !hy) return false;
@@ -880,7 +889,19 @@ export function createGraphService(ctx: CoreContext, deps: { ledger: LedgerServi
           if (other === c) same++;
         }
         return common >= LOCKSTEP_MIN_COMMON && same * 10 >= common * 9;
-      });
+      };
+      // Çiftler üretilirken hemen değerlendirilir (hepsi bellekte tutulmaz); yalnız kilit adım kenarları saklanır.
+      const locked: [string, string][] = [];
+      let checks = 0;
+      scan: for (const all of byChoice.values()) {
+        const list = all.filter((b) => windowed.has(b.user_id) && (history.get(b.user_id)?.size ?? 0) >= LOCKSTEP_MIN_COMMON);
+        for (let i = 0; i < list.length; i++) {
+          for (let j = i + 1; j < list.length && Number(list[j].t) - Number(list[i].t) <= LOCKSTEP_WINDOW_MS; j++) {
+            if (++checks > LOCKSTEP_MAX_PAIR_CHECKS) break scan;
+            if (agrees(list[i].user_id, list[j].user_id)) locked.push([list[i].user_id, list[j].user_id]);
+          }
+        }
+      }
       return { groups: kCoreComponents(locked, LOCKSTEP_MIN_GROUP - 1, LOCKSTEP_MIN_GROUP) };
     },
 
@@ -909,8 +930,11 @@ export function createGraphService(ctx: CoreContext, deps: { ledger: LedgerServi
     },
 
     visualization(opts): { nodes: GraphVisNode[]; edges: GraphVisEdge[] } {
-      // İzin listesi: AGREES (oy gizliliği) hiç verilmez; RELATED_TO (aile/iş/hane) yalnız includePrivate === true iken.
-      const includePrivate = (opts as { includePrivate?: boolean }).includePrivate === true;
+      // Görünürlük politikası burada uygulanır (varsayılan kapalı; sözleşme: GraphService.visualization):
+      // AGREES (oy gizliliği) hiç verilmez; RELATED_TO (aile/iş/hane) yalnız includePrivate === true iken;
+      // siyasi görüş alanları (cluster, community, x, y — KVKK md. 6) yalnız viewerId'nin KENDİ düğümünde bulunur.
+      const includePrivate = opts.includePrivate === true;
+      const viewerId = opts.viewerId ?? null;
       const requested = opts.includeEdgeTypes?.length ? opts.includeEdgeTypes : DEFAULT_VIS_TYPES;
       const types = new Set<EdgeType>(requested.filter((t) => VIS_PUBLIC_TYPES.has(t) || (t === "RELATED_TO" && includePrivate)));
       const limit = Math.min(5000, Math.max(1, Math.floor(opts.limit ?? 500)));
@@ -928,17 +952,18 @@ export function createGraphService(ctx: CoreContext, deps: { ledger: LedgerServi
         .slice(0, limit);
       const included = new Set(chosen.map((u) => u.id));
       const nodes: GraphVisNode[] = chosen.map((u) => {
+        const own = viewerId !== null && u.id === viewerId;
         const node: GraphVisNode = {
           id: u.id,
           label: u.nickname,
-          cluster: assignments[u.id] ?? null,
-          community: comm[u.id] ?? null,
+          cluster: own ? (assignments[u.id] ?? null) : null,
+          community: own ? (comm[u.id] ?? null) : null,
           pagerank: pr[u.id] ?? 0,
           isExpert: experts.has(u.id),
           sybilFlag: sybil.has(u.id),
         };
         const xy = coords[u.id];
-        if (Array.isArray(xy) && xy.length >= 2) {
+        if (own && Array.isArray(xy) && xy.length >= 2) {
           node.x = Number(xy[0]);
           node.y = Number(xy[1]);
         }

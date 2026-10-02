@@ -3,8 +3,8 @@ import type { FastifyInstance } from "fastify";
 import { ScaledClock, type Clock } from "./core/clock";
 import { assertValidSecrets, type Config } from "./core/config";
 import { verifyKeyFingerprints } from "./core/keycheck";
-import type { CoreContext } from "./core/contracts";
-import { createAuditLogger } from "./core/audit";
+import type { CoreContext, IdentityService } from "./core/contracts";
+import { createAuditLogger, type AuditLogger } from "./core/audit";
 import { DbNotifier } from "./core/notifier";
 import { acquireDataDirLock, type DataDirLock } from "./core/lock";
 import { json, openDb, type Db } from "./db";
@@ -58,6 +58,39 @@ const LIFECYCLE_INTERVAL_MS = 1_000;
 const MAINTENANCE_INTERVAL_MS = 10 * 60_000;
 /** Kapanışta bekleyen deftere yazımların işlenmesi için azami bekleme (sonra defter yine de durdurulur). */
 const LEDGER_FLUSH_MS = 2_000;
+
+/** Kimlik bakımı bağımlılıkları: yalnızca sözleşmede tanımlı iki bakım işlevi + denetim günlüğü. */
+export interface IdentityMaintenanceDeps {
+  identity: Pick<IdentityService, "refreshAdulthood" | "purgeStalePending">;
+  audit: Pick<AuditLogger, "log">;
+}
+
+/**
+ * Kimlik bakımı (gerçek zamanlı, tek sahip): reşit olanların bayrağı (refreshAdulthood) ve süresi geçmiş bekleyen başvuruların
+ * kripto-imhası (purgeStalePending). Hemen bir kez, sonra her intervalMs'de bir çalışır; biri başarısız olsa da diğeri çalışır
+ * ve hata denetim günlüğüne yazılır. Dönen zamanlayıcı çağıranın kapanışta temizlemesi içindir (unref edilmiştir).
+ */
+export function startIdentityMaintenance(deps: IdentityMaintenanceDeps, intervalMs = MAINTENANCE_INTERVAL_MS): ReturnType<typeof setInterval> {
+  const guarded = (job: string, fn: () => unknown): void => {
+    try {
+      fn();
+    } catch (err) {
+      try {
+        deps.audit.log(null, "system.maintenance_error", null, { job, error: err instanceof Error ? err.message : String(err) });
+      } catch {
+        /* günlük de yazılamıyorsa (ör. kapanış) sessizce geçilir; sonraki turda yeniden denenir */
+      }
+    }
+  };
+  const run = (): void => {
+    guarded("refreshAdulthood", () => deps.identity.refreshAdulthood());
+    guarded("purgeStalePending", () => deps.identity.purgeStalePending());
+  };
+  run();
+  const t = setInterval(run, intervalMs);
+  t.unref();
+  return t;
+}
 
 interface ClockState {
   simNow: number;
@@ -184,19 +217,8 @@ export async function createApp(config: Config, opts: CreateAppOptions = {}): Pr
     if (opts.startTimers !== false) {
       forum.lifecycle.start(LIFECYCLE_INTERVAL_MS);
       lifecycle = forum.lifecycle;
-      // Kimlik bakımı (gerçek zamanlı): reşit olanların bayrağı, süresi geçmiş bekleyen başvuruların kripto-imhası.
-      const maintenance = () => {
-        try {
-          identity.refreshAdulthood();
-          identity.purgeStalePending();
-        } catch (err) {
-          audit.log(null, "system.maintenance_error", null, { error: err instanceof Error ? err.message : String(err) });
-        }
-      };
-      maintenance();
-      const t = setInterval(maintenance, MAINTENANCE_INTERVAL_MS);
-      t.unref();
-      timers.push(t);
+      // Kimlik bakımı: TEK zamanlayıcı burada (yaşam döngüsü motoru kimlik bakımı yapmaz).
+      timers.push(startIdentityMaintenance({ identity, audit }));
     }
 
     const app = await buildServer(services, config, { logger: opts.logger ?? false, rateLimit: opts.rateLimit, drainMs: opts.httpDrainMs });

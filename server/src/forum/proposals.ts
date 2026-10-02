@@ -37,6 +37,7 @@ import type { AuthUser, ClassificationResult, ModerationResult, ProposalAuditInp
 import { AppError, badRequest, conflict, forbidden, notFound, unprocessable } from "../core/errors";
 import type { LifecycleEngine, MessageService, ProposalService, Viewer } from "../core/forum-contracts";
 import { newId, newSalt } from "../core/ids";
+import { memberToken } from "../core/notification-text";
 import { json, type SqlValue } from "../db";
 import { type ClusterServiceImpl } from "./clusters";
 import { buildProposalDetail, receiptOf, visibleProposal } from "./detail";
@@ -822,7 +823,7 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
         core.notify([p.author_id], {
           kind: "proposal_suggestion",
           title: `${proposalRef(p)} için metin önerisi`,
-          body: `${actor.nickname} metne bir değişiklik önerdi. Kabul ederseniz yeni sürüm oluşur ve öneren anılır.`,
+          body: `${memberToken(actor.id)} metne bir değişiklik önerdi. Kabul ederseniz yeni sürüm oluşur ve öneren anılır.`,
           link: proposalLink(id),
         });
       });

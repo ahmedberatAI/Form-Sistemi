@@ -6,6 +6,7 @@ import type { AuditLogger } from "../core/audit";
 import type { CoreContext, IdentityService, LedgerService, Notifier } from "../core/contracts";
 import { AppError, badRequest, conflict, forbidden, notFound, unprocessable } from "../core/errors";
 import { newId } from "../core/ids";
+import { memberToken, renderNotificationRows } from "../core/notification-text";
 import { json, type SqlValue } from "../db";
 import { dummyVerify, hashPassword, INVALID_PASSWORD_HASH, verifyPassword } from "./password";
 import { createTokenSigner, SESSION_TTL_MS } from "./sessions";
@@ -23,7 +24,7 @@ import { normalizeNickname, parseNickname, parsePassword, parseRegistration, val
 import { createVault, CURRENT_KEY_VERSION, openField, sealField, VaultIntegrityError, type VaultField } from "./vault";
 import { createCorrectionHandlers } from "./corrections";
 import { DAY } from "../core/clock";
-import { assertNotSimilar, isConflictKey, migrateNicknameKeys, NICKNAME_CHANGE_INTERVAL_MS, rewriteNicknameInNotifications } from "./nickname";
+import { assertNotSimilar, isConflictKey, migrateNicknameKeys, NICKNAME_CHANGE_INTERVAL_MS } from "./nickname";
 
 export { isVoter, loadPublicUser, parseRoles, toAuthUser, toMe, toPublicUser, ALL_ROLES, type UserRow } from "./users";
 export { normalizeNickname, normalizePhone } from "./validation";
@@ -285,16 +286,14 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
   }
 
   /**
-   * Kripto-imha: DEK ve tüm şifreli alanlar, kör indeksler silinir; hesap takma adsızlaştırılır. Başkalarına giden kayıtlı
-   * bildirimlerdeki eski takma ad da (ör. kayıt memuruna "\"ali\" takma adlı yeni üye…") yeni adla değiştirilir.
+   * Kripto-imha: DEK ve tüm şifreli alanlar, kör indeksler silinir; hesap takma adsızlaştırılır. Başkalarına giden bildirimler
+   * takma adı metin olarak taşımaz ({{uye:<kimlik>}} belirteci), okunurken güncel (anonim) adla çözülür; metin yeniden yazılmaz.
    */
   function shred(userId: string, status: "erased" | "rejected"): void {
     const now = clock.now();
     const short = userId.replace(/-/g, "").slice(0, 6);
     const nickname = status === "erased" ? `Silinmiş üye #${short}` : `Reddedilen başvuru #${short}`;
-    const oldNickname = getRow(userId)?.nickname ?? "";
     db.tx(() => {
-      rewriteNicknameInNotifications(db, oldNickname, nickname);
       db.run(
         `UPDATE identity_vault SET wrapped_dek = NULL, enc_first_name = NULL, enc_last_name = NULL, enc_tckn = NULL,
            enc_birth_date = NULL, enc_email = NULL, enc_phone = NULL, enc_address = NULL,
@@ -415,7 +414,7 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
         deps.notifier.notify(rid, {
           kind: "registration_pending",
           title: "Yeni üye doğrulama bekliyor",
-          body: `"${row.nickname}" takma adlı yeni üyenin kimlik doğrulaması bekleniyor.`,
+          body: `"${memberToken(row.id)}" takma adlı yeni üyenin kimlik doğrulaması bekleniyor.`,
           link: "/kayit-memuru",
         });
       }
@@ -736,7 +735,10 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
             userId,
           ),
         },
-        notifications: exportRows("SELECT kind, title, body, link, read, created_at FROM notifications WHERE user_id = ? ORDER BY created_at", userId),
+        notifications: renderNotificationRows(
+          db,
+          exportRows("SELECT kind, title, body, link, read, created_at FROM notifications WHERE user_id = ? ORDER BY created_at", userId) as { title: string; body: string }[],
+        ),
       };
       deps.audit.log(userId, "identity.export", userId);
       return out;
@@ -810,8 +812,6 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
         db.tx(() => {
           assertFree();
           db.run("UPDATE users SET nickname = ?, nickname_norm = ? WHERE id = ?", nickname, norm, userId);
-          // Bildirimler metin olarak saklanır; başkalarının kutusundaki eski takma ad da güncel adla değişir.
-          rewriteNicknameInNotifications(db, row.nickname, nickname);
         });
       } catch (e) {
         throw mapUniqueError(e);

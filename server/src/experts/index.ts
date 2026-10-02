@@ -35,6 +35,7 @@ import type {
 } from "../core/contracts";
 import { badRequest, conflict, forbidden, notFound } from "../core/errors";
 import { newId } from "../core/ids";
+import { memberToken } from "../core/notification-text";
 import { json } from "../db";
 import {
   REPUTATION_START,
@@ -381,30 +382,52 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
    * Önerinin EXPERT_DRAW defter kayıtları (ilk kura, karşı panel, yedek kuralar), defter sırasıyla.
    * Yalnızca defterdeki kamusal alanlar okunur (aday referansları zaten öneriye özel takma değerlerdir).
    */
+  const toDrawRecord = (pl: Record<string, unknown>, txHash: string, at: number): ExpertDrawRecord => {
+    const sub = typeof pl.substitute === "number" && pl.substitute > 0 ? pl.substitute : null;
+    const reason = pl.reason === "recused" || pl.reason === "replaced" ? pl.reason : null;
+    return {
+      round: Number(pl.round) || 1,
+      kind: sub !== null ? "substitute" : pl.isCounter ? "counter" : "panel",
+      reason: sub !== null ? reason : null,
+      substitute: sub,
+      selected: Array.isArray(pl.selected) ? pl.selected.length : 0,
+      txHash,
+      at,
+    };
+  };
+
+  /**
+   * Bu hizmetin deftere GÖNDERDİĞİ ama henüz bloğa girmemiş EXPERT_DRAW kayıtları (txHash → kayıt). `ledger.submit` beklemez;
+   * yalnız işlenmiş kayıtları okumak, kuranın/yedek kuranın yanıtında kendi kaydını eksik gösterirdi (`ledgerTx` ona işaret
+   * ederken `draws` boş kalırdı). Blok işlenince defterdeki kayıt öncelikli olur ve bekleyen girdi silinir.
+   */
+  const pendingDraws = new Map<string, ExpertDrawRecord & { proposalId: string }>();
+  const submitDraw = (payload: Record<string, unknown>): string => {
+    const { txHash } = ledger.submit("EXPERT_DRAW", payload);
+    pendingDraws.set(txHash, { ...toDrawRecord(payload, txHash, clock.now()), proposalId: String(payload.proposalId) });
+    // Hiç işlenmeyen (reddedilen) kayıtlar sınırsız birikmesin: en eski girdiler atılır.
+    if (pendingDraws.size > 500) for (const k of pendingDraws.keys()) { pendingDraws.delete(k); if (pendingDraws.size <= 400) break; }
+    return txHash;
+  };
+
   const drawRecords = (proposalId: string): ExpertDrawRecord[] => {
     let txs: ReturnType<LedgerService["findTxs"]>;
     try {
       txs = ledger.findTxs({ type: "EXPERT_DRAW", proposalId, limit: 1000 });
     } catch {
-      return [];
+      txs = [];
     }
-    return txs
+    const committed = txs
       .filter((t) => t.type === "EXPERT_DRAW" && t.payload.proposalId === proposalId)
       .sort((a, b) => a.height - b.height || a.index - b.index)
-      .map((t): ExpertDrawRecord => {
-        const pl = t.payload;
-        const sub = typeof pl.substitute === "number" && pl.substitute > 0 ? pl.substitute : null;
-        const reason = pl.reason === "recused" || pl.reason === "replaced" ? pl.reason : null;
-        return {
-          round: Number(pl.round) || 1,
-          kind: sub !== null ? "substitute" : pl.isCounter ? "counter" : "panel",
-          reason: sub !== null ? reason : null,
-          substitute: sub,
-          selected: Array.isArray(pl.selected) ? pl.selected.length : 0,
-          txHash: t.hash,
-          at: Number(t.blockTime),
-        };
-      });
+      .map((t) => toDrawRecord(t.payload, t.hash, Number(t.blockTime)));
+    if (pendingDraws.size === 0) return committed;
+    const seen = new Set(committed.map((r) => r.txHash));
+    for (const [hash, rec] of pendingDraws) {
+      if (seen.has(hash)) pendingDraws.delete(hash); // blokta: defterdeki kayıt geçerli
+      else if (rec.proposalId === proposalId) committed.push({ round: rec.round, kind: rec.kind, reason: rec.reason, substitute: rec.substitute, selected: rec.selected, txHash: rec.txHash, at: rec.at });
+    }
+    return committed;
   };
 
   /** `detailed` yalnız personel ve iç çağrılar içindir; varsayılan görünümde çatışma gerekçesi genel ifadeye indirgenir. */
@@ -498,7 +521,7 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
       );
       notifyInvite(pick.id, p.proposal_id, vacated.due_at);
     }
-    ledger.submit("EXPERT_DRAW", {
+    submitDraw({
       proposalId: p.proposal_id,
       panelId: p.id,
       round: p.round,
@@ -607,7 +630,7 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
           notifier.notify(admin, {
             kind: "expert_application",
             title: "Yeni bilirkişi başvurusu",
-            body: `${u.nickname} bilirkişi olmak için başvurdu. Alanlar: ${doms.map(label).join(", ")}.`,
+            body: `${memberToken(userId)} bilirkişi olmak için başvurdu. Alanlar: ${doms.map(label).join(", ")}.`,
             link: "/bilirkisiler",
           });
         }
@@ -869,7 +892,7 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
             now,
           );
         }
-        const { txHash } = ledger.submit("EXPERT_DRAW", {
+        const txHash = submitDraw({
           proposalId,
           panelId,
           round,

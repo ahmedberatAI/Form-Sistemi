@@ -1,7 +1,7 @@
 // Demo tohum verisi: `npm run seed -w server [-- --reset [--force]]`
 // Bileşim kökünü (createApp) HTTP dinlemeden kurar; tüm veri servisler üzerinden, simüle saat 1 Eylül 2026'dan
 // "bugün"e ilerletilerek üretilir. Defter kayıtları gerçek BFT defterden geçer.
-import { existsSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { DatabaseSync } from "node:sqlite";
@@ -34,6 +34,27 @@ function hasData(dataDir: string, dbPath: string): boolean {
   } catch {
     return true; // okunamayan bir veritabanı: güvenli tarafta kal
   }
+}
+
+/**
+ * DB_PATH, DATA_DIR/forum.db dışında bir dosyaysa (ör. ortamda DB_PATH ayarlıysa) --reset onu da (+ -wal/-shm) silmelidir;
+ * yoksa eski veritabanı kalır, defter/anahtarlar sıfırlanır ve tohum tutarsız bir veritabanına yazılırdı (#342).
+ * ":memory:" ve DATA_DIR/forum.db zaten RESETTABLE kapsamındadır → boş döner.
+ */
+export function extraDbFiles(dataDir: string, dbPath: string): string[] {
+  if (dbPath === ":memory:" || dbPath === "") return [];
+  const main = resolve(dbPath);
+  if (main === join(resolve(dataDir), "forum.db")) return [];
+  return [main, main + "-wal", main + "-shm"];
+}
+
+/** Yapılandırılmış DB_PATH (DATA_DIR/forum.db değilse) dosyalarını siler; dizin ise reddeder. */
+function resetExtraDb(dataDir: string, dbPath: string): void {
+  const files = extraDbFiles(dataDir, dbPath);
+  if (files.length === 0) return;
+  if (existsSync(files[0]) && statSync(files[0]).isDirectory()) fail(`DB_PATH bir dosya olmalı, dizin bulundu: ${files[0]}`);
+  for (const f of files) if (existsSync(f)) rmSync(f, { force: true });
+  console.log(`Veritabanı sıfırlandı: ${files[0]} (DB_PATH)`);
 }
 
 /** Yalnız DATA_DIR içindeki tohum dosyalarını siler. Klasör "data" değilse ve başka dosyalar içeriyorsa --force gerekir. */
@@ -77,8 +98,10 @@ async function seedInto(dataDir: string, lock: DataDirLock): Promise<void> {
   const quiet = args.has("--quiet");
   const dbPath = process.env.DB_PATH ?? join(dataDir, "forum.db");
 
-  if (reset) resetDataDir(dataDir, force);
-  else if (hasData(dataDir, dbPath)) {
+  if (reset) {
+    resetDataDir(dataDir, force);
+    resetExtraDb(dataDir, dbPath);
+  } else if (hasData(dataDir, dbPath)) {
     fail(`Veritabanı boş değil (${dataDir}). Mevcut verinin üzerine tohum yazılmaz; sıfırlayıp yeniden üretmek için: npm run seed -w server -- --reset`);
   }
 

@@ -377,32 +377,18 @@ describe("yönetim uçları", () => {
     expect(tick).toHaveBeenCalledTimes(5);
   });
 
-  it("GET /api/admin/users kişisel veri içermez ve aranabilir", async () => {
-    const s = stubServices();
-    const { admin } = members(s);
-    const { insertUser } = await import("../helpers/fakes");
-    insertUser(s.ctx.db, { id: "u1", nickname: "Çiğdem", roles: ["member", "registrar"], isAdult: false });
-    insertUser(s.ctx.db, { id: "u2", nickname: "Ahmet", status: "pending", verifiedAt: null });
-    s.ctx.db.run("INSERT INTO experts(user_id, domains, credentials, status, created_at) VALUES ('u1', ?, 'x', 'active', 1)", JSON.stringify([fy("Ulasim")]));
+  it("GET /api/admin/users: yalnız yönetici; arama sorgusunu CommunityService.adminUsers'a devreder (rota SQL çalıştırmaz)", async () => {
+    const rows = [{ id: "u1", nickname: "Çiğdem" }];
+    const adminUsers = vi.fn(() => rows as never);
+    const s = stubServices({ forum: { community: { adminUsers } } });
+    const { admin, member } = members(s);
     const app = await server(s);
-    const all = await app.inject({ method: "GET", url: "/api/admin/users", headers: s.auth(admin) });
-    expect(all.json()).toHaveLength(2);
+    expect((await app.inject({ method: "GET", url: "/api/admin/users", headers: s.auth(member) })).statusCode).toBe(403);
+    expect(adminUsers).not.toHaveBeenCalled();
     const r = await app.inject({ method: "GET", url: `/api/admin/users?q=${encodeURIComponent("çiğ")}`, headers: s.auth(admin) });
-    expect(r.json()).toEqual([
-      {
-        id: "u1",
-        nickname: "Çiğdem",
-        status: "verified",
-        roles: ["member", "registrar"],
-        isExpert: true,
-        expertDomains: [fy("Ulasim")],
-        reputation: 0,
-        joinedAt: Date.UTC(2026, 0, 1),
-        verifiedAt: Date.UTC(2026, 0, 1),
-        isAdult: false,
-        politicalConsent: true,
-      },
-    ]);
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toEqual(rows);
+    expect(adminUsers).toHaveBeenCalledWith("çiğ");
   });
 });
 
@@ -431,11 +417,11 @@ describe("içerik türleri ve özel uçlar", () => {
     const app = await server(s);
     const anon = await app.inject({ method: "GET", url: "/api/graph?types=FOLLOWS,RELATED_TO&limit=50" });
     expect(anon.statusCode).toBe(200);
-    expect(visualization).toHaveBeenLastCalledWith({ includeEdgeTypes: ["FOLLOWS"], limit: 50, includePrivate: false });
+    expect(visualization).toHaveBeenLastCalledWith({ includeEdgeTypes: ["FOLLOWS"], limit: 50, includePrivate: false, viewerId: null });
     expect(anon.json().edges.map((e: { type: string }) => e.type)).toEqual(["FOLLOWS"]);
     expect(anon.json()).not.toHaveProperty("opts");
     const aud = await app.inject({ method: "GET", url: "/api/graph?types=FOLLOWS,RELATED_TO", headers: s.auth(auditor) });
-    expect(visualization).toHaveBeenLastCalledWith({ includeEdgeTypes: ["FOLLOWS", "RELATED_TO"], limit: undefined, includePrivate: true });
+    expect(visualization).toHaveBeenLastCalledWith({ includeEdgeTypes: ["FOLLOWS", "RELATED_TO"], limit: undefined, includePrivate: true, viewerId: auditor.id });
     expect(aud.json().edges).toHaveLength(2);
     const bad = await app.inject({ method: "GET", url: "/api/graph?types=FOLLOWS,YOK" });
     expect(bad.statusCode).toBe(400);

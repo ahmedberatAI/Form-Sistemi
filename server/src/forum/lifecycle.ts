@@ -7,7 +7,6 @@ import {
   type BylawVersionInfo,
   type ProposalStatus,
 } from "@forum/shared";
-import { DAY } from "../core/clock";
 import type { ProposalAuditInput } from "../core/contracts";
 import { AppError } from "../core/errors";
 import type { LifecycleEngine, MessageService, TopicService, Transition } from "../core/forum-contracts";
@@ -192,7 +191,6 @@ export function createLifecycle(core: ForumCore, parts: LifecycleParts): Lifecyc
   let chain: Promise<unknown> = Promise.resolve();
   let timer: ReturnType<typeof setInterval> | null = null;
   let timerBusy = false;
-  let lastDaily: number | null = null;
   /** Öneri başına ardışık adım başarısızlıkları (bellekte): sayaç + sonraki deneme zamanı (ctx.clock). */
   const stepFailures = new Map<string, { count: number; nextAt: number; code: string }>();
   /** Bilirkişi kurası hataları evreyi durdurmaz; yalnızca ilk hata ve seyrek tekrarlar kaydedilir. */
@@ -706,25 +704,15 @@ export function createLifecycle(core: ForumCore, parts: LifecycleParts): Lifecyc
     return out;
   }
 
+  /**
+   * Yaşam döngüsünün kendi bakımı: yalnız bilirkişi gecikme denetimi (her tick). Kimlik bakımı (reşitlik bayrağı, bekleyen başvuru
+   * imhası) burada DEĞİL, bileşim kökündeki (app.ts) tek zamanlayıcıdadır — iki yerden iki kez zamanlanmaz.
+   */
   function maintenance(now: number): void {
     try {
       deps.experts.markOverdue(now);
     } catch (e) {
       console.error("[forum] bilirkişi gecikme denetimi başarısız:", e);
-    }
-    if (lastDaily === null || now - lastDaily >= DAY) {
-      lastDaily = now;
-      const id = deps.identity as unknown as { refreshAdulthood?: () => number; purgeStalePending?: () => number };
-      try {
-        id.refreshAdulthood?.();
-      } catch (e) {
-        console.error("[forum] reşit olma güncellemesi başarısız:", e);
-      }
-      try {
-        id.purgeStalePending?.();
-      } catch (e) {
-        console.error("[forum] bekleyen başvuru temizliği başarısız:", e);
-      }
     }
   }
 

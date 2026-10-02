@@ -1,0 +1,34 @@
+# Kalite kapısı: tür denetimi + birim/entegrasyon testleri (sunucu + web) + web derlemesi.
+# E2E (Playwright) ve Android derlemesi bilerek dışarıda: yavaş/ortam bağımlı; yerelde `npm run e2e` ile çalıştırılır.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  kalite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Bağımlılıkları kur
+        run: npm ci
+      - name: Tür denetimi (shared, server, web)
+        run: npm run typecheck
+      - name: Testler (server + web)
+        run: npm test
+      - name: Web derlemesi
+        run: npm run build

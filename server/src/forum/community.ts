@@ -4,6 +4,7 @@ import {
   delegationCap,
   nicknameKey,
   SURUM,
+  type AdminUserRow,
   type AuditLogEntry,
   type Dashboard,
   type DashboardTask,
@@ -18,6 +19,7 @@ import {
 } from "@forum/shared";
 import type { AuthUser } from "../core/contracts";
 import { notFound } from "../core/errors";
+import { renderNotificationRows } from "../core/notification-text";
 import type { CommunityService, Viewer } from "../core/forum-contracts";
 import { json } from "../db";
 import { latestClusterOf } from "./clusters";
@@ -94,6 +96,31 @@ export function createCommunityService(core: ForumCore): CommunityService {
         lim,
       );
       return publicUsers(core, rows);
+    },
+
+    adminUsers(q?: string, limit = 500): AdminUserRow[] {
+      const term = nicknameKey(q ?? ""); // nickname_norm ile aynı anahtar (I/ı katlamalı)
+      const like = `%${term.replace(/[\\%_]/g, (c) => "\\" + c)}%`;
+      const lim = Math.min(500, Math.max(1, Math.floor(Number(limit) || 500)));
+      const rows = db.all<UserRow & { verified_at: number | null; is_adult: number; political_consent: number }>(
+        `SELECT id, nickname, status, roles, reputation, created_at, verified_at, is_adult, political_consent
+           FROM users
+          WHERE ? = '' OR nickname_norm LIKE ? ESCAPE '\\' OR id = ?
+          ORDER BY created_at DESC, id
+          LIMIT ?`,
+        term,
+        like,
+        term,
+        lim,
+      );
+      // Ortak kullanıcı izdüşümü (rol ayrıştırma + bilirkişi bilgisi); yönetici kesin katılım zamanını görür.
+      return publicUsers(core, rows).map((u, i) => ({
+        ...u,
+        joinedAt: Number(rows[i].created_at),
+        verifiedAt: rows[i].verified_at === null ? null : Number(rows[i].verified_at),
+        isAdult: rows[i].is_adult === 1,
+        politicalConsent: rows[i].political_consent === 1,
+      }));
     },
 
     publicProfile(userId: string, viewer: Viewer): PublicProfile {
@@ -178,7 +205,8 @@ export function createCommunityService(core: ForumCore): CommunityService {
       );
       const unread = Number(db.get<{ c: number }>("SELECT COUNT(*) AS c FROM notifications WHERE user_id = ? AND read = 0", userId)?.c ?? 0);
       return {
-        items: rows.map((r) => ({ id: r.id, kind: r.kind, title: r.title, body: r.body, link: r.link, read: r.read === 1, createdAt: Number(r.created_at) })),
+        // Üye belirteçleri ({{uye:<kimlik>}}) okunurken güncel takma adla çözülür (kayıtlı metin takma ad taşımaz).
+        items: renderNotificationRows(db, rows).map((r) => ({ id: r.id, kind: r.kind, title: r.title, body: r.body, link: r.link, read: r.read === 1, createdAt: Number(r.created_at) })),
         unread,
       };
     },

@@ -1,5 +1,5 @@
-// Takma ad yardımcıları: tekillik anahtarı göçü (I/ı katlaması), benzerlik (taklit) denetimi ve kayıtlı bildirim
-// metinlerindeki takma adın güncellenmesi (takma ad değişikliği ve kripto-imha).
+// Takma ad yardımcıları: tekillik anahtarı göçü (I/ı katlaması) ve benzerlik (taklit) denetimi. Bildirim metinleri takma ad
+// taşımaz ({{uye:<kimlik>}} belirteci, core/notification-text.ts); takma ad değişikliği/imha bildirimleri yeniden yazmaz.
 import { nicknameKey, nicknameSkeleton } from "@forum/shared";
 import type { AuditLogger } from "../core/audit";
 import type { Notifier } from "../core/contracts";
@@ -39,39 +39,6 @@ export function assertNotSimilar(db: Db, nickname: string, excludeUserId: string
     if (isClosedStatus(r.status)) continue;
     if (nicknameSkeleton(r.nickname) === skel) throw similarNickname();
   }
-}
-
-/** Gövdesi doğrudan takma adla başlayan bildirim türleri ("ali, #K-3 tartışmasında mesajınızı yanıtladı." gibi). */
-const LEADING_NICKNAME_KINDS = new Set(["message_reply", "proposal_suggestion", "expert_application"]);
-
-/**
- * Kayıtlı bildirim metinlerindeki takma adı günceller. Bildirimler metin olarak saklandığından, takma ad değişince ya da
- * hesap kripto-imha edilince ("Silinmiş üye #…") eski takma ad başkalarının bildirim kutusunda kalmasın diye çağrılır.
- * Yalnızca bildirim şablonlarının takma adı yazdığı biçimler değişir: tırnak içinde ("ali" / “ali”) ya da yukarıdaki
- * türlerde gövdenin başında (ardından boşluk ya da virgül). Böylece takma adla aynı yazılan sıradan sözcüklere dokunulmaz.
- * Değişen bildirim sayısını döndürür.
- */
-export function rewriteNicknameInNotifications(db: Db, oldNickname: string, newNickname: string): number {
-  if (!oldNickname || oldNickname === newNickname) return 0;
-  const rows = db.all<{ id: string; kind: string; title: string; body: string }>(
-    "SELECT id, kind, title, body FROM notifications WHERE instr(body, ?) > 0 OR instr(title, ?) > 0",
-    oldNickname,
-    oldNickname,
-  );
-  const quoted = (s: string) => s.split(`"${oldNickname}"`).join(`"${newNickname}"`).split(`“${oldNickname}”`).join(`“${newNickname}”`);
-  let n = 0;
-  for (const r of rows) {
-    const title = quoted(r.title);
-    let body = quoted(r.body);
-    if (LEADING_NICKNAME_KINDS.has(r.kind) && body.startsWith(oldNickname) && /^[\s,]/.test(body.slice(oldNickname.length))) {
-      body = newNickname + body.slice(oldNickname.length);
-    }
-    if (title !== r.title || body !== r.body) {
-      db.run("UPDATE notifications SET title = ?, body = ? WHERE id = ?", title, body, r.id);
-      n++;
-    }
-  }
-  return n;
 }
 
 /**

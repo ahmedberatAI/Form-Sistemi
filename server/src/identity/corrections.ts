@@ -8,6 +8,7 @@ import type { Clock } from "../core/clock";
 import type { Notifier } from "../core/contracts";
 import { badRequest, conflict, forbidden, notFound } from "../core/errors";
 import { newId } from "../core/ids";
+import { memberToken } from "../core/notification-text";
 import { json, type Db } from "../db";
 import type { UserRow } from "./users";
 import { CORRECTABLE_FIELDS, parseCorrection, type ValidCorrection } from "./validation";
@@ -248,7 +249,7 @@ export function createCorrectionHandlers(d: CorrectionDeps) {
         notifier.notify(rid, {
           kind: "identity_correction_pending",
           title: "Kimlik verisi düzeltme talebi",
-          body: `"${user.nickname}" takma adlı üye ${fields.map((f) => CORRECTABLE_FIELD_LABELS[f]).join(", ")} için düzeltme talep etti.`,
+          body: `"${memberToken(userId)}" takma adlı üye ${fields.map((f) => CORRECTABLE_FIELD_LABELS[f]).join(", ")} için düzeltme talep etti.`,
           link: "/kayit-memuru?sekme=duzeltmeler",
         });
       }

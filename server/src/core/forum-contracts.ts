@@ -2,6 +2,7 @@
 // Uygulama: server/src/forum/ — fabrika: createForumServices(deps: ForumDeps): ForumServices
 // HTTP katmanı (server/src/http/) yalnızca bu arayüzleri kullanır.
 import type {
+  AdminUserRow,
   AiAnalysisInfo,
   AuditLogEntry,
   BallotReceipt,
@@ -175,6 +176,8 @@ export interface ClusterService {
 
 export interface CommunityService {
   searchUsers(q: string, limit?: number): PublicUser[];
+  /** Yönetici kullanıcı listesi (yalnız takma ad/hesap durumu; kişisel veri yok). Yetkilendirme çağıranın işidir. */
+  adminUsers(q?: string, limit?: number): AdminUserRow[];
   publicProfile(userId: string, viewer: Viewer): PublicProfile;
   /** Me + kullanıcının kendi kümesi (son anlık görüntü) */
   me(userId: string): Me;

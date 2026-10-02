@@ -1,12 +1,12 @@
 // Takma ad: I/ı katlamalı tekillik, benzerlik (taklit) denetimi, anahtar göçü, güvenli takma ad değişikliği,
-// kayıtlı bildirimlerde takma adın güncellenmesi/anonimleştirilmesi ve herkese açık katılım tarihinin güne yuvarlanması.
+// bildirimlerde takma adın okunurken çözülmesi (yeniden yazma yok) ve herkese açık katılım tarihinin güne yuvarlanması.
 import { describe, expect, it } from "vitest";
 import { nicknameKey, nicknameSkeleton, publicJoinDay } from "@forum/shared";
 import { createAuditLogger } from "../../src/core/audit";
 import { DAY } from "../../src/core/clock";
+import { memberToken, renderNotificationRows } from "../../src/core/notification-text";
 import { DbNotifier } from "../../src/core/notifier";
 import { createIdentityService, toPublicUser, type UserRow } from "../../src/identity";
-import { rewriteNicknameInNotifications } from "../../src/identity/nickname";
 import { FakeLedger, insertUser, makeCtx } from "../helpers/fakes";
 import { expectAppError, regInput, setup } from "./fixtures";
 
@@ -166,77 +166,90 @@ describe("takma ad değişikliği", () => {
   });
 });
 
-describe("kayıtlı bildirimlerde takma ad", () => {
+describe("kayıtlı bildirimlerde takma ad (okunurken çözülen belirteç)", () => {
   function dbSetup() {
     const ctx = makeCtx();
     const notifier = new DbNotifier(ctx);
     const identity = createIdentityService(ctx, { ledger: new FakeLedger(ctx.clock), notifier, audit: createAuditLogger(ctx) });
     const registrarId = insertUser(ctx.db, { nickname: "memur", roles: ["member", "registrar"] });
     const otherId = insertUser(ctx.db, { nickname: "diger" });
-    const bodies = (userId: string) => ctx.db.all<{ kind: string; body: string }>("SELECT kind, body FROM notifications WHERE user_id = ? ORDER BY created_at, id", userId);
-    return { ctx, notifier, identity, registrarId, otherId, bodies };
+    const raw = (userId: string) => ctx.db.all<{ kind: string; title: string; body: string }>("SELECT kind, title, body FROM notifications WHERE user_id = ? ORDER BY created_at, id", userId);
+    /** Bildirim kutusunda görünen metin (okuma yolundaki çözümleme). */
+    const shown = (userId: string) => renderNotificationRows(ctx.db, raw(userId));
+    return { ctx, notifier, identity, registrarId, otherId, raw, shown };
   }
 
-  it("kripto-imhada kayıt memurunun bildirimlerindeki eski takma ad 'Silinmiş üye #…' olur", async () => {
+  it("bildirim kayıtlı metinde takma ad değil üye belirteci taşır", async () => {
+    const t = dbSetup();
+    const { user } = await t.identity.register(regInput({ nickname: "belirtec_uye" }));
+    const [n] = t.raw(t.registrarId);
+    expect(n.body).toBe(`"${memberToken(user.id)}" takma adlı yeni üyenin kimlik doğrulaması bekleniyor.`);
+    expect(n.body).not.toContain("belirtec_uye");
+    expect(t.shown(t.registrarId)[0].body).toBe('"belirtec_uye" takma adlı yeni üyenin kimlik doğrulaması bekleniyor.');
+  });
+
+  it("takma ad değişince bildirim güncel adı gösterir; kayıtlı satırlar yeniden yazılmaz", async () => {
+    const t = dbSetup();
+    const inp = regInput({ nickname: "ilk_ad" });
+    const { user } = await t.identity.register(inp);
+    const before = t.raw(t.registrarId);
+    await t.identity.changeNickname(user.id, "ikinci_ad", inp.password);
+    expect(t.raw(t.registrarId)).toEqual(before);
+    expect(t.shown(t.registrarId)[0].body).toBe('"ikinci_ad" takma adlı yeni üyenin kimlik doğrulaması bekleniyor.');
+  });
+
+  it("başka bir alanda (öneri başlığı) takma adla aynı yazılan tırnaklı metne dokunulmaz", async () => {
+    const t = dbSetup();
+    const inp = regInput({ nickname: "ulasim_plani" });
+    const { user } = await t.identity.register(inp);
+    // Bir önerinin başlığı eski takma adla aynı: geri çekilme bildirimi başlığı tırnak içinde yazar.
+    t.notifier.notify(t.otherId, { kind: "proposal_phase", title: "#T-1 geri çekildi", body: "“ulasim_plani” yazarı tarafından geri çekildi.", link: null });
+    await t.identity.changeNickname(user.id, "yeni_ad_alindi", inp.password);
+    await t.identity.eraseSelf(user.id);
+    expect(t.shown(t.otherId)[0].body).toBe("“ulasim_plani” yazarı tarafından geri çekildi.");
+  });
+
+  it("kripto-imhada belirteç 'Silinmiş üye #…' olarak çözülür; eski takma ad görünmez", async () => {
     const t = dbSetup();
     const inp = regInput({ nickname: "audit_self1" });
     const { user } = await t.identity.register(inp);
     t.ctx.clock.advance(1000);
     t.identity.requestCorrection(user.id, { changes: { lastName: "Kaya" }, reason: "Soyadım evlilik nedeniyle değişti." });
-    // Başka modüllerin şablonları: gövde takma adla başlar.
+    // Başka modüllerin şablonu: gövde belirteçle başlar.
     t.ctx.clock.advance(1000);
-    t.notifier.notify(t.otherId, { kind: "message_reply", title: "Mesajınıza yanıt geldi", body: "audit_self1, #K-3 tartışmasında mesajınızı yanıtladı.", link: null });
-    // Takma adla aynı yazılan sıradan bir sözcük (şablon dışı biçim) değişmez.
+    t.notifier.notify(t.otherId, { kind: "message_reply", title: "Mesajınıza yanıt geldi", body: `${memberToken(user.id)}, #K-3 tartışmasında mesajınızı yanıtladı.`, link: null });
+    // Takma adla aynı yazılan sıradan bir sözcük (belirteç olmayan metin) değişmez.
     t.ctx.clock.advance(1000);
     t.notifier.notify(t.otherId, { kind: "proposal_note", title: "Bilgi", body: "Konu: audit_self1 adlı dosya incelendi.", link: null });
-    expect(t.bodies(t.registrarId).every((n) => n.body.includes('"audit_self1"'))).toBe(true);
+    expect(t.shown(t.registrarId).every((n) => n.body.includes('"audit_self1"'))).toBe(true);
 
     await t.identity.eraseSelf(user.id);
     const anon = t.identity.me(user.id).nickname;
     expect(anon).toMatch(/^Silinmiş üye #/);
-    const all = t.ctx.db.all<{ body: string; title: string }>("SELECT body, title FROM notifications WHERE kind <> 'proposal_note'");
-    for (const n of all) expect(n.body + n.title).not.toContain("audit_self1");
-    expect(t.bodies(t.registrarId).map((n) => n.body)).toEqual([
+    expect(t.shown(t.registrarId).map((n) => n.body)).toEqual([
       `"${anon}" takma adlı yeni üyenin kimlik doğrulaması bekleniyor.`,
       expect.stringContaining(`"${anon}" takma adlı üye`),
     ]);
-    expect(t.bodies(t.otherId)).toEqual([
+    expect(t.shown(t.otherId).map((n) => ({ kind: n.kind, body: n.body }))).toEqual([
       { kind: "message_reply", body: `${anon}, #K-3 tartışmasında mesajınızı yanıtladı.` },
       { kind: "proposal_note", body: "Konu: audit_self1 adlı dosya incelendi." },
     ]);
+    // Kayıtlı (ham) metinlerde de eski takma ad hiç yoktur: belirteç taşınır.
+    expect(JSON.stringify([...t.raw(t.registrarId), ...t.raw(t.otherId).slice(0, 1)])).not.toContain("audit_self1");
   });
 
-  it("reddedilen başvuruda da bildirimdeki takma ad 'Reddedilen başvuru #…' olur", async () => {
+  it("reddedilen başvuruda belirteç 'Reddedilen başvuru #…' olarak çözülür", async () => {
     const t = dbSetup();
     const { user } = await t.identity.register(regInput({ nickname: "reddedilecek_aday" }));
     await t.identity.verify(t.registrarId, user.id, "reject");
-    const [n] = t.bodies(t.registrarId);
+    const [n] = t.shown(t.registrarId);
     expect(n.body).toMatch(/^"Reddedilen başvuru #[0-9a-f]{6}" takma adlı/);
   });
 
-  it("takma ad değişince başkalarının bildirimlerindeki ad da güncellenir (sonradan imhada eski ad kalmaz)", async () => {
+  it("bilinmeyen kimlikli belirteç 'Silinmiş üye' olur; belirteçsiz eski satırlar aynen kalır", () => {
     const t = dbSetup();
-    const inp = regInput({ nickname: "ilk_ad" });
-    const { user } = await t.identity.register(inp);
-    await t.identity.changeNickname(user.id, "ikinci_ad", inp.password);
-    expect(t.bodies(t.registrarId)[0].body).toBe('"ikinci_ad" takma adlı yeni üyenin kimlik doğrulaması bekleniyor.');
-    await t.identity.eraseSelf(user.id);
-    expect(JSON.stringify(t.ctx.db.all("SELECT body, title FROM notifications"))).not.toMatch(/ilk_ad|ikinci_ad/);
-  });
-
-  it("rewriteNicknameInNotifications yalnız şablon biçimlerini değiştirir", () => {
-    const t = dbSetup();
-    t.notifier.notify(t.otherId, { kind: "expert_application", title: "Yeni bilirkişi başvurusu", body: "ali bilirkişi olmak için başvurdu.", link: null });
-    t.ctx.clock.advance(1000);
-    t.notifier.notify(t.otherId, { kind: "expert_application", title: "x", body: "alican bilirkişi olmak için başvurdu.", link: null });
-    t.ctx.clock.advance(1000);
-    t.notifier.notify(t.otherId, { kind: "registration_pending", title: "x", body: "Kalite: “ali” takma adlı üye; ali baba.", link: null });
-    expect(rewriteNicknameInNotifications(t.ctx.db, "ali", "veli")).toBe(2);
-    expect(t.bodies(t.otherId).map((n) => n.body)).toEqual([
-      "veli bilirkişi olmak için başvurdu.",
-      "alican bilirkişi olmak için başvurdu.",
-      "Kalite: “veli” takma adlı üye; ali baba.",
-    ]);
+    t.notifier.notify(t.otherId, { kind: "x", title: "{{uye:yok-boyle-biri}} yazdı", body: "eski satır: ali yanıtladı", link: null });
+    expect(t.shown(t.otherId)[0]).toMatchObject({ title: "Silinmiş üye yazdı", body: "eski satır: ali yanıtladı" });
   });
 });
 
