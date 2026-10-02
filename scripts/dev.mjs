@@ -94,7 +94,9 @@ process.on("SIGTERM", () => shutdown("SIGTERM"));
 if (isWin) process.on("SIGBREAK", () => shutdown("Ctrl+Break"));
 
 console.log(paint("1", "Forum Sistemi — geliştirme modu"));
+// Vite vekilinin hedefi (web/vite.config.ts ile aynı kural): VITE_API_TARGET > http://localhost:${PORT || 4000}
+const apiTarget = (process.env.VITE_API_TARGET || `http://localhost:${process.env.PORT || 4000}`).replace(/\/+$/, "");
 console.log(`  API (tsx watch) : http://localhost:${process.env.PORT || 4000}   (PORT ile değiştirilebilir)`);
-console.log("  Web (Vite)      : http://localhost:5173   (/api → localhost:4000 vekili)");
+console.log(`  Web (Vite)      : http://localhost:5173   (/api → ${apiTarget} vekili)`);
 console.log("  Durdurmak için Ctrl+C.\n");
 for (const t of tasks) start(t);

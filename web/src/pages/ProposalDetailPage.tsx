@@ -227,7 +227,7 @@ export default function ProposalDetailPage() {
             />
           </Card>
           <Card title="Defter kayıtları" subtitle="Bu öneriyle ilgili dağıtık defter işlemleri (kişisel veri içermez).">
-            <LedgerList txs={p.ledgerTxs} />
+            <LedgerList txs={p.ledgerTxs} totals={p.ledgerTxCounts} />
           </Card>
         </aside>
       </div>
@@ -415,12 +415,13 @@ function DeliberationPanel({ proposal: p, onUpdated, onSuggestion }: { proposal:
   );
 }
 
-function LedgerList({ txs }: { txs: ProposalDetail["ledgerTxs"] }) {
+function LedgerList({ txs, totals }: { txs: ProposalDetail["ledgerTxs"]; totals?: ProposalDetail["ledgerTxCounts"] }) {
   const [all, setAll] = useState(false);
   if (!txs.length) return <p className="small muted">Henüz defter kaydı yok.</p>;
   const sorted = txs.slice().sort((a, b) => b.at - a.at);
-  const counts = new Map<string, number>();
-  for (const t of txs) counts.set(t.type, (counts.get(t.type) ?? 0) + 1);
+  // Sunucu oy taahhütlerini kısaltabilir (en yeni N); sayılar listenin değil defterin toplamıdır.
+  const counts = new Map<string, number>(totals ? Object.entries(totals) : []);
+  if (!totals) for (const t of txs) counts.set(t.type, (counts.get(t.type) ?? 0) + 1);
   const label = (t: string) => LEDGER_TX_LABELS[t as LedgerTxType] ?? t;
   const shown = all ? sorted : sorted.slice(0, 8);
   return (

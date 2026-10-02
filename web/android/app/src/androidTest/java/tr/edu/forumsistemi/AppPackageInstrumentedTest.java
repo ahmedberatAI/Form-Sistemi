@@ -1,4 +1,4 @@
-package com.getcapacitor.myapp;
+package tr.edu.forumsistemi;
 
 import static org.junit.Assert.*;
 
@@ -9,18 +9,16 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 /**
- * Instrumented test, which will execute on an Android device.
- *
- * @see <a href="http://d.android.com/tools/testing">Testing documentation</a>
+ * Duman testi: hedef uygulama, build.gradle'daki namespace/applicationId ile aynı paket adıyla yüklenmiş olmalı.
+ * (Capacitor şablonunun com.getcapacitor.app beklentisi bu projede geçerli değildir.)
  */
 @RunWith(AndroidJUnit4.class)
-public class ExampleInstrumentedTest {
+public class AppPackageInstrumentedTest {
 
     @Test
     public void useAppContext() throws Exception {
-        // Context of the app under test.
         Context appContext = InstrumentationRegistry.getInstrumentation().getTargetContext();
 
-        assertEquals("com.getcapacitor.app", appContext.getPackageName());
+        assertEquals("tr.edu.forumsistemi", appContext.getPackageName());
     }
 }

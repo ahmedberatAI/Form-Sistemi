@@ -1,6 +1,6 @@
 // Tek bir tartışma mesajı: yazar, tutum, zaman, sürüm geçmişi, katılıyorum/katılmıyorum, köprü skoru,
 // YZ moderasyon uyarısı (danışma), defter kaydı, gizlenmiş (mezar taşı + tek cevap) ve daraltılmış durumlar.
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { HiddenMessageResponse, MessageVersionView, MessageView } from "@forum/shared";
 import { endorseMessage, getHiddenMessage, getMessageVersions, postRebuttal } from "../../api/endpoints";
@@ -13,6 +13,7 @@ import { AiLabel, Alert, Badge, Button, cx, Details, DiffView, DropdownMenu, Err
 import { UserLink } from "../UserLink";
 import { Composer } from "./Composer";
 import { fmtDecimal, messageAnchorId, PlainText } from "./common";
+import { shouldLoadVersions } from "./messageVersions";
 
 export const BRIDGE_EXPLANATION =
   "Köprü skoru: farklı görüş gruplarından destek. Her anlamlı görüş grubunda (1 + katılan) / (2 + katılan + katılmayan) hesaplanır; en düşük grup değeri gösterilir. Yüksek skor, mesajın yalnızca bir kesimce değil farklı görüştekilerce de benimsendiğini gösterir.";
@@ -103,16 +104,27 @@ export function MessageItem({ message: m, parentNickname, focused, deletionSeq, 
   });
   const readHidden = useAction(() => getHiddenMessage(m.id), { onSuccess: setHidden });
 
-  const loadVersions = async () => {
-    setVersionsOpen((o) => !o);
-    if (versions || versionsOpen) return;
-    try {
-      setVersionsError(null);
-      setVersions(await getMessageVersions(m.id));
-    } catch (e) {
-      setVersionsError(e);
-    }
+  const toggleVersions = () => {
+    if (versionsOpen) setVersionsError(null); // kapatıp açınca hata sonrası yeniden denenir
+    setVersionsOpen(!versionsOpen);
   };
+
+  // Panel açıkken sürümler sıfırlanırsa (düzenleme sonrası) yeniden iste; yoksa gösterge sonsuza dek döner (bulgu #127).
+  useEffect(() => {
+    if (!shouldLoadVersions(versionsOpen, versions, versionsError)) return;
+    let cancelled = false;
+    getMessageVersions(m.id).then(
+      (v) => {
+        if (!cancelled) setVersions(v);
+      },
+      (e: unknown) => {
+        if (!cancelled) setVersionsError(e);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [versionsOpen, versions, versionsError, m.id, m.version]);
 
   const openDeletion = async () => {
     const ok = await confirm({ title: "Silme (karartma) talebi aç", message: DELETION_RULES, confirmLabel: "Talep formuna git" });
@@ -330,7 +342,7 @@ export function MessageItem({ message: m, parentNickname, focused, deletionSeq, 
               ariaLabel={`Mesaj #${m.seq} için diğer işlemler`}
               buttonClassName="btn btn-ghost btn-sm"
               items={[
-                m.version > 1 ? { label: versionsOpen ? "Sürüm geçmişini kapat" : `Sürüm geçmişi (${m.version})`, icon: "clock", onClick: () => void loadVersions() } : null,
+                m.version > 1 ? { label: versionsOpen ? "Sürüm geçmişini kapat" : `Sürüm geçmişi (${m.version})`, icon: "clock", onClick: toggleVersions } : null,
                 { label: "Silme talebi aç", icon: "warning", onClick: () => void openDeletion() },
                 m.ledgerTx ? { label: "Defter kaydını aç", icon: "ledger", to: routes.tx(m.ledgerTx) } : null,
               ]}

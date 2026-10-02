@@ -46,6 +46,16 @@ export function invalidateOntology(): void {
 }
 
 /**
+ * Sistem bilgisindeki yönetmelik sürümü önbellekteki ontolojininkinden farklıysa önbelleği geçersiz kılıp yeniden yükler
+ * (yeni bir yönetmelik yürürlüğe girdi). Önbellek boşsa (henüz yüklenmedi / yükleniyor) bir şey yapmaz; tazelendiyse true döner.
+ */
+export function syncOntologyWithBylawVersion(bylawVersion: number): boolean {
+  if (!cache || cache.version.version === bylawVersion) return false;
+  invalidateOntology();
+  return true;
+}
+
+/**
  * Sunucu ağacı iç içe (children) ya da düz (parent) gönderebilir; ikisini de tek biçime çevirir:
  * kök düğümler, her düğümün children'ı dolu, etikete göre sıralı.
  */

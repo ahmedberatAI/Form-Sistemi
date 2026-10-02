@@ -231,23 +231,27 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
     else opts.signal.addEventListener("abort", onOuterAbort, { once: true });
   }
 
+  // Zaman aşımı sayacı yanıt GÖVDESİ tamamen okunana kadar açık kalır: başlıklardan sonra bağlantı donarsa da istek bitmeli.
   let res: Response;
+  let text: string;
   try {
-    res = await fetch(url, { method: opts.method ?? "GET", headers, body, signal: ctrl.signal });
-  } catch (e) {
-    if (opts.signal?.aborted) throw e;
-    if (timedOut) throw new ApiError(0, "timeout", "Sunucu zamanında yanıt vermedi. Lütfen tekrar deneyin.");
-    throw new ApiError(0, "network", "Sunucuya ulaşılamıyor. İnternet bağlantınızı ve Ayarlar'daki sunucu adresini kontrol edin.");
+    try {
+      res = await fetch(url, { method: opts.method ?? "GET", headers, body, signal: ctrl.signal });
+    } catch (e) {
+      if (opts.signal?.aborted) throw e;
+      if (timedOut) throw new ApiError(0, "timeout", "Sunucu zamanında yanıt vermedi. Lütfen tekrar deneyin.");
+      throw new ApiError(0, "network", "Sunucuya ulaşılamıyor. İnternet bağlantınızı ve Ayarlar'daki sunucu adresini kontrol edin.");
+    }
+    try {
+      text = await res.text();
+    } catch (e) {
+      if (opts.signal?.aborted) throw e;
+      if (timedOut) throw new ApiError(0, "timeout", "Sunucu zamanında yanıt vermedi. Lütfen tekrar deneyin.");
+      throw new ApiError(0, "network", "Sunucu yanıtı okunamadı (bağlantı kesildi).");
+    }
   } finally {
     clearTimeout(timer);
     opts.signal?.removeEventListener("abort", onOuterAbort);
-  }
-
-  let text: string;
-  try {
-    text = await res.text();
-  } catch {
-    throw new ApiError(0, "network", "Sunucu yanıtı okunamadı (bağlantı kesildi).");
   }
 
   if (!res.ok) {

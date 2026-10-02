@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { LoginRequest, Me, RegistrationInput, Role, SystemInfo } from "@forum/shared";
 import { ApiError, isSessionRejected, onUnauthorized, setAuthToken, toConnectionError } from "../api/client";
 import * as api from "../api/endpoints";
+import { syncOntologyWithBylawVersion } from "../lib/categories";
 import { getPref, PREF_KEYS, removePref, setPref } from "../lib/prefs";
 import { setReceiptOwner } from "../lib/receipts";
 
@@ -83,6 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const t1 = Date.now();
       clockRef.current = { simAnchor: s.now, realAnchor: Math.round((t0 + t1) / 2), scale: s.timeScale > 0 ? s.timeScale : 1 };
       setSystem(s);
+      syncOntologyWithBylawVersion(s.bylawVersion); // yönetmelik sürümü değiştiyse ontoloji önbelleği bayatlamasın (bulgu #145)
       return s;
     } catch {
       return null;
