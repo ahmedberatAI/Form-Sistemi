@@ -504,8 +504,17 @@ export function createGraphService(ctx: CoreContext, deps: { ledger: LedgerServi
     return { pairs: agreementPairs(votes, AGREEMENT_PARAMS.minCommon).filter((p) => p.same * 2 > p.common) };
   }
 
+  /**
+   * Önbellek anahtarı yalnızca agreementInput()'un okuduğu veriye bağlıdır: kesin sayımı olan turların ve
+   * yürürlüğe girmiş/reddedilmiş önerilerin oyları. Oylama süren bir öneriye atılan oy anahtarı değiştirmez
+   * (aksi halde her oy sonraki panel isteğinde O(P·V²) yeniden hesaplamayı tetikler).
+   */
   function agreementDataKey(): string {
-    const b = db.get<{ c: number; m: number }>("SELECT COUNT(*) AS c, COALESCE(MAX(updated_at), 0) AS m FROM ballots");
+    const b = db.get<{ c: number; m: number }>(
+      `SELECT COUNT(*) AS c, COALESCE(MAX(b.updated_at), 0) AS m FROM ballots b
+       WHERE EXISTS (SELECT 1 FROM tallies t WHERE t.proposal_id = b.proposal_id AND t.round = b.round AND COALESCE(json_extract(t.result, '$.outcome'), '') <> 'needs_more_votes')
+          OR b.proposal_id IN (SELECT id FROM proposals WHERE status IN ('enacted', 'rejected'))`,
+    );
     const t = db.get<{ c: number; m: number }>("SELECT COUNT(*) AS c, COALESCE(MAX(created_at), 0) AS m FROM tallies");
     const p = db.get<{ c: number; m: number }>(
       "SELECT COUNT(*) AS c, COALESCE(MAX(updated_at), 0) AS m FROM proposals WHERE status IN ('enacted', 'rejected')",

@@ -32,7 +32,7 @@ import {
   type VoterListResponse,
 } from "@forum/shared";
 import { z } from "zod";
-import { DAY } from "../core/clock";
+import { DAY, HOUR } from "../core/clock";
 import type { AuthUser, ClassificationResult, ModerationResult, ProposalAuditInput, SummaryInputMessage } from "../core/contracts";
 import { AppError, badRequest, conflict, forbidden, notFound, unprocessable } from "../core/errors";
 import type { LifecycleEngine, MessageService, ProposalService, Viewer } from "../core/forum-contracts";
@@ -113,8 +113,42 @@ function flattenCategories(nodes: CategoryNode[], out: CategoryNode[] = []): Cat
   return out;
 }
 
+/** Kullanıcı başına saatte en fazla bu kadar YENİ yapay zekâ analizi (özet + köprü taslağı birlikte); aynı girdi yeniden kullanılır, sayılmaz. */
+export const AI_ANALYSES_PER_HOUR = 10;
+
 export function createProposalService(core: ForumCore, parts: ProposalParts): ProposalService {
   const { db, deps } = core;
+
+  // Kullanıcı başına yapay zekâ isteği zamanları (kayan pencere; bellek içi — yeniden başlatma pencereyi sıfırlar).
+  const aiRequests = new Map<string, number[]>();
+
+  /**
+   * #224: aynı görev/hedef/girdi için kayıtlı analiz varsa onu döndürür (yeni defter işlemi, Claude çağrısı ya da maliyet yok).
+   * Claude kipinde ama kayıt çevrimdışı yedekse (Claude o sırada başarısız olmuş olabilir) yeniden üretime izin verilir.
+   */
+  function reusableAnalysis(task: "summarize" | "bridging_drafts", proposalId: string, inputHash: string, claudeNow: boolean): AiAnalysisInfo | null {
+    const hit = deps.aiSink.findByInput(task, "proposal", proposalId, inputHash);
+    return hit && !(claudeNow && hit.offline) ? hit : null;
+  }
+
+  /** #224: yeni analiz üretmeden önce kullanıcı başına saatlik sınırı uygular (429) ve isteği denetim kaydına yazar. */
+  function takeAiQuota(actor: AuthUser, proposalId: string, task: string): void {
+    const now = core.now();
+    const recent = (aiRequests.get(actor.id) ?? []).filter((t) => now - t < HOUR);
+    if (recent.length >= AI_ANALYSES_PER_HOUR) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((recent[0] + HOUR - now) / 1000));
+      aiRequests.set(actor.id, recent);
+      throw new AppError(
+        429,
+        "rate_limited",
+        `Saatlik yapay zekâ analizi sınırına (${AI_ANALYSES_PER_HOUR}) ulaştınız. Yaklaşık ${Math.ceil(retryAfterSeconds / 60)} dakika sonra tekrar deneyin.`,
+        { retryAfterSeconds },
+      );
+    }
+    recent.push(now);
+    aiRequests.set(actor.id, recent);
+    core.audit.log(actor.id, "ai.analysis_requested", proposalId, { task });
+  }
   const { clusters, messages } = parts;
 
   // ───────────── Ontoloji / YZ bağlamı ─────────────
@@ -1147,6 +1181,10 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
         ...(failedClusters.length ? { failedClusters } : {}),
         ...(minorityReports.length ? { minorityReports } : {}),
       };
+      const inputHash = hashCanonical(summaryInput);
+      const reused = reusableAnalysis("summarize", id, inputHash, claude);
+      if (reused) return reused;
+      takeAiQuota(actor, id, "summarize");
       const out = await deps.ai.summarize(summaryInput);
       const notes: string[] = [];
       if (skipped > 0) notes.push(`${skipped} mesaj, yazarları yapay zekâ analizine rıza vermediği için özete dahil edilmedi.`);
@@ -1154,7 +1192,6 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
       const collapsed = Number(db.get<{ c: number }>("SELECT COUNT(*) AS c FROM messages WHERE thread_type = 'proposal' AND thread_id = ? AND visibility <> 'visible'", id)?.c ?? 0);
       if (collapsed > 0) notes.push(`${collapsed} gizlenmiş ya da incelemedeki mesaj özete dahil edilmedi.`);
       const output = { ...out, messageCount: input.length, minorityReportCount: minorityReports.length, excludedMessages: skipped + collapsed, note: notes.join(" ") || null };
-      const inputHash = hashCanonical(summaryInput);
       return deps.aiSink.record({
         task: "summarize",
         targetType: "proposal",
@@ -1196,6 +1233,10 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
         else skipped++;
       }
       const input = { title: p.title, body: p.body, majorityPoints, minorityPoints };
+      const inputHash = hashCanonical(input);
+      const reused = reusableAnalysis("bridging_drafts", id, inputHash, !offlineOnly);
+      if (reused) return reused;
+      takeAiQuota(actor, id, "bridging_drafts");
       const out = await deps.ai.bridgingDrafts(input, { forceOffline: offlineOnly });
       const output = { ...out, baseVersion: p.version, excludedItems: skipped, note: skipped > 0 ? `${skipped} katkı, yazarları yapay zekâ analizine rıza vermediği için kullanılmadı.` : null };
       return deps.aiSink.record({
@@ -1206,7 +1247,7 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
         offline: out.offline,
         output,
         approvedBy: null,
-        inputHash: hashCanonical(input),
+        inputHash,
         outputHash: hashCanonical(output),
       });
     },

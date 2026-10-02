@@ -65,7 +65,7 @@ export interface LedgerService {
    * İşlemi uygulama anahtarıyla imzalar ve havuza (mempool) ekler. Hemen döner (bloğa girmesini beklemez).
    * Aynı (type, payload, nonce) iki kez gönderilirse aynı hash döner (tekilleştirme).
    */
-  submit(type: LedgerTxType, payload: Record<string, unknown>): { txHash: string };
+  submit(type: LedgerTxType, payload: Record<string, unknown>, nonce?: string): { txHash: string };
   /** Gönderir ve ≥2f+1 doğrulayıcı tarafından işlenene (commit) kadar bekler. */
   submitAndWait(type: LedgerTxType, payload: Record<string, unknown>, timeoutMs?: number): Promise<CommittedTx>;
   /** Havuzdaki her şey işlenene kadar bekler (testler ve tohumlama için). */
@@ -330,6 +330,8 @@ export interface AiRecordSink {
   get(id: string): AiAnalysisInfo | null;
   /** Hedefin (ör. "proposal", id) tüm analizleri, en yeniden eskiye. */
   list(targetType: string, targetId: string): AiAnalysisInfo[];
+  /** Aynı görev + hedef + girdi özetiyle üretilmiş en son analiz (yoksa null): aynı istek yeniden üretilmek yerine yeniden kullanılır. */
+  findByInput(task: AiTask, targetType: string, targetId: string, inputHash: string): AiAnalysisInfo | null;
   /** İnsan onayı (yetki denetimi çağıranındır). İlk onay kalıcıdır; tekrar çağrı mevcut kaydı döndürür. Yoksa 404. */
   approve(id: string, userId: string): AiAnalysisInfo;
 }
@@ -395,9 +397,21 @@ export interface AiCallOptions {
   domains?: string[];
 }
 
+/** Claude çağrılarının sağlığı (içerik ya da kişisel veri içermez; yalnızca sayaç ve hata sınıfı). */
+export interface AiHealth {
+  /** Ardışık başarısızlık sayısı eşiği aştıysa (çağrılar sessizce çevrimdışı yedeğe düşüyor) true. */
+  degraded: boolean;
+  failures: number;
+  lastError: string | null;
+  lastErrorAt: number | null;
+  lastOkAt: number | null;
+}
+
 export interface AiService {
   mode(): "claude" | "offline";
   model(): string;
+  /** Claude kipinde çağrı sağlığı (çevrimdışı kipte tanımsız). */
+  health?(): AiHealth;
   detectPii(text: string): PiiFinding[];
   // `opts.forceOffline`: içerik sahibi YZ rızası vermemişse (yurt dışına aktarım yok) çevrimdışı sezgisel kullanılır.
   classifyProposal(input: { title: string; body: string }, ctx: { categories: { iri: string; label: string; keywords: string[] }[]; rights: { iri: string; label: string }[]; contentLabels: { iri: string; label: string }[] }, opts?: AiCallOptions): Promise<ClassificationResult>;
@@ -471,6 +485,8 @@ export interface ExpertService {
 
 export interface Notifier {
   notify(userId: string, n: { kind: string; title: string; body: string; link?: string | null }): void;
+  /** Aynı bildirimi birçok kişiye TEK işlemde gönderir (yinelenenler atlanır); uygulamayan notifier'lar için notify() döngüsü kullanılır. */
+  notifyMany?(userIds: Iterable<string>, n: { kind: string; title: string; body: string; link?: string | null }): void;
 }
 
 export interface CoreContext {

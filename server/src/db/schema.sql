@@ -484,3 +484,32 @@ CREATE TABLE IF NOT EXISTS audit_log (
   meta TEXT,
   at INTEGER NOT NULL
 );
+
+-- ───────────── Sorgu indeksleri (sıcak WHERE/JOIN sütunları; mevcut veritabanları bir sonraki açılışta alır) ─────────────
+-- Denetim günlüğü: öneri özetleri (action + target IN …), yönetici görünümü (ORDER BY at DESC), dışa aktarım (target), takma ad bekleme süresi.
+CREATE INDEX IF NOT EXISTS idx_audit_action_target ON audit_log(action, target);
+CREATE INDEX IF NOT EXISTS idx_audit_target_at ON audit_log(target, at);
+CREATE INDEX IF NOT EXISTS idx_audit_at ON audit_log(at);
+
+-- Bilirkişi: markOverdue her saniye (status IN … AND due_at < ?), uzman/panel/öneri bazlı okumalar, rapor ve soru sayımları.
+CREATE INDEX IF NOT EXISTS idx_expert_assign_status_due ON expert_assignments(status, due_at);
+CREATE INDEX IF NOT EXISTS idx_expert_assign_expert ON expert_assignments(expert_id, status);
+CREATE INDEX IF NOT EXISTS idx_expert_assign_proposal ON expert_assignments(proposal_id);
+CREATE INDEX IF NOT EXISTS idx_expert_assign_panel ON expert_assignments(panel_id);
+CREATE INDEX IF NOT EXISTS idx_expert_reports_proposal ON expert_reports(proposal_id);
+CREATE INDEX IF NOT EXISTS idx_expert_reports_expert ON expert_reports(expert_id);
+CREATE INDEX IF NOT EXISTS idx_expert_questions_proposal ON expert_questions(proposal_id);
+CREATE INDEX IF NOT EXISTS idx_expert_panels_proposal ON expert_panels(proposal_id, round);
+
+-- Öneri alt kayıtları ve üye bazlı okumalar.
+CREATE INDEX IF NOT EXISTS idx_minority_reports_proposal ON minority_reports(proposal_id);
+CREATE INDEX IF NOT EXISTS idx_suggestions_proposal ON proposal_suggestions(proposal_id, status);
+CREATE INDEX IF NOT EXISTS idx_messages_author ON messages(author_id);
+CREATE INDEX IF NOT EXISTS idx_proposals_author ON proposals(author_id);
+CREATE INDEX IF NOT EXISTS idx_ballots_user ON ballots(user_id);
+CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+
+-- Vekâlet grafiği (graph.delegations: type = 'DELEGATES_TO' AND revoked_at IS NULL) ve bildirim listesi (user_id, created_at).
+CREATE INDEX IF NOT EXISTS idx_edges_type_revoked ON graph_edges(type, revoked_at);
+CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(user_id, created_at);

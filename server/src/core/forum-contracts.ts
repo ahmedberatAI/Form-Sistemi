@@ -201,7 +201,8 @@ export interface Transition {
 export interface LifecycleEngine {
   /** Gerçek zamanlı zamanlayıcıyı başlatır (ör. 1 sn'de bir tick). */
   start(intervalMs?: number): void;
-  stop(): void;
+  /** Zamanlayıcıyı durdurur; uçuştaki tick/poke tamamlanınca çözülür. */
+  stop(): Promise<void>;
   /**
    * Süresi dolan evreleri ilerletir (ALGORITMA.md §3). Tek otorite: faz geçişleri YALNIZCA burada olur
    * (istisna: yazarın submit/withdraw eylemleri). Eşzamanlı çağrılar sıraya alınır (yeniden giriş yok).

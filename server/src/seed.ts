@@ -8,6 +8,7 @@ import { DatabaseSync } from "node:sqlite";
 import { createApp } from "./app";
 import { DAY, HOUR, ScaledClock } from "./core/clock";
 import { loadConfig, SERVER_ROOT } from "./core/config";
+import { acquireDataDirLock, type DataDirLock } from "./core/lock";
 import { runSeed } from "./seed/index";
 
 const SIM_START = Date.UTC(2026, 8, 1, 9, 0);
@@ -54,11 +55,26 @@ function resetDataDir(dataDir: string, force: boolean): void {
 }
 
 async function main(): Promise<void> {
+  const dataDir = resolve(process.env.DATA_DIR ?? join(SERVER_ROOT, "data"));
+  // Sunucu (ya da başka bir betik) aynı klasörü kullanırken tohumlama/sıfırlama defter kayıtlarını bozar: tek-örnek kilidi.
+  let lock: DataDirLock;
+  try {
+    lock = acquireDataDirLock(dataDir);
+  } catch (e) {
+    fail(e instanceof Error ? e.message : String(e));
+  }
+  try {
+    await seedInto(dataDir, lock);
+  } finally {
+    lock.release();
+  }
+}
+
+async function seedInto(dataDir: string, lock: DataDirLock): Promise<void> {
   const args = new Set(process.argv.slice(2));
   const reset = args.has("--reset");
   const force = args.has("--force");
   const quiet = args.has("--quiet");
-  const dataDir = resolve(process.env.DATA_DIR ?? join(SERVER_ROOT, "data"));
   const dbPath = process.env.DB_PATH ?? join(dataDir, "forum.db");
 
   if (reset) resetDataDir(dataDir, force);
@@ -80,7 +96,7 @@ async function main(): Promise<void> {
 
   console.log(`Tohum verisi üretiliyor → ${dataDir}`);
   console.log(`Simüle zaman: ${new Date(SIM_START).toISOString()} → ${new Date(end).toISOString()} (TIME_SCALE=${config.timeScale})`);
-  const { services, close } = await createApp(config, { startTimers: false, aiClient: null, clock, logger: false, rateLimit: false });
+  const { services, close } = await createApp(config, { startTimers: false, aiClient: null, clock, logger: false, rateLimit: false, dataLock: lock });
   let ok = false;
   try {
     const result = await runSeed(services, clock, { start: SIM_START, end, log: quiet ? undefined : (m) => console.log(m) });

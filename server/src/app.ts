@@ -6,6 +6,7 @@ import { verifyKeyFingerprints } from "./core/keycheck";
 import type { CoreContext } from "./core/contracts";
 import { createAuditLogger } from "./core/audit";
 import { DbNotifier } from "./core/notifier";
+import { acquireDataDirLock, type DataDirLock } from "./core/lock";
 import { json, openDb, type Db } from "./db";
 import { createLedgerService } from "./ledger";
 import { anchorFoundingBylaw, createOntologyService } from "./ontology";
@@ -36,6 +37,13 @@ export interface CreateAppOptions {
   logger?: boolean;
   /** Hız sınırı (istek/dk/IP); false: kapalı. Varsayılan: genel 300, /api/auth/* 20. */
   rateLimit?: RateLimitOptions;
+  /**
+   * Veri klasörü kilidi (DATA_DIR/.lock) çağıran tarafından zaten alındıysa (ör. tohum betiği) verilir: createApp yeniden almaz
+   * ve kapanışta bırakmaz (sahibi çağırandır). Verilmezse createApp kilidi kendisi alır ve close()'ta bırakır.
+   */
+  dataLock?: DataDirLock;
+  /** Kapanışta uçuştaki HTTP isteklerine tanınan süre (ms); varsayılan 3000. */
+  httpDrainMs?: number;
 }
 
 export interface App {
@@ -48,6 +56,8 @@ const CLOCK_META_KEY = "sim_clock";
 const CLOCK_PERSIST_MS = 5_000;
 const LIFECYCLE_INTERVAL_MS = 1_000;
 const MAINTENANCE_INTERVAL_MS = 10 * 60_000;
+/** Kapanışta bekleyen deftere yazımların işlenmesi için azami bekleme (sonra defter yine de durdurulur). */
+const LEDGER_FLUSH_MS = 2_000;
 
 interface ClockState {
   simNow: number;
@@ -74,11 +84,25 @@ export async function createApp(config: Config, opts: CreateAppOptions = {}): Pr
   // Gizli anahtarlar geçerli biçimde olmalı (boş/kısa VOTE_KEY vb. reddedilir) ve bu veritabanını oluşturan anahtarlarla eşleşmeli.
   const secrets = { master: config.masterKey, token: config.tokenKey, vote: config.voteKey };
   assertValidSecrets(secrets);
-  const db = openDb(config.dbPath);
+  // Aynı veri klasörünü iki süreç paylaşırsa defter kayıtları sessizce kaybolur: tek-örnek kilidi (":memory:" için kilit yok).
+  const ownLock = opts.dataLock ? null : acquireDataDirLock(config.dataDir);
+  const releaseLock = () => ownLock?.release();
+  let opened: Db;
+  try {
+    opened = openDb(config.dbPath);
+  } catch (err) {
+    releaseLock();
+    throw err;
+  }
+  const db = opened;
   try {
     verifyKeyFingerprints(db, secrets);
   } catch (err) {
-    db.close();
+    try {
+      db.close();
+    } finally {
+      releaseLock();
+    }
     throw err;
   }
   const timers: ReturnType<typeof setInterval>[] = [];
@@ -124,7 +148,6 @@ export async function createApp(config: Config, opts: CreateAppOptions = {}): Pr
 
   const ctx: CoreContext = { config, db, clock };
   let ledger: AppServices["ledger"] | null = null;
-  let ledgerStarted = false;
   let lifecycle: AppServices["forum"]["lifecycle"] | null = null;
 
   try {
@@ -157,7 +180,6 @@ export async function createApp(config: Config, opts: CreateAppOptions = {}): Pr
     const services: AppServices = { ctx, clock, ledger: led, ontology, graph, math, identity, ai, aiSink, experts, notifier, audit, forum };
 
     await led.start();
-    ledgerStarted = true;
 
     if (opts.startTimers !== false) {
       forum.lifecycle.start(LIFECYCLE_INTERVAL_MS);
@@ -177,36 +199,48 @@ export async function createApp(config: Config, opts: CreateAppOptions = {}): Pr
       timers.push(t);
     }
 
-    const app = await buildServer(services, config, { logger: opts.logger ?? false, rateLimit: opts.rateLimit });
+    const app = await buildServer(services, config, { logger: opts.logger ?? false, rateLimit: opts.rateLimit, drainMs: opts.httpDrainMs });
 
     let closing: Promise<void> | null = null;
     const close = (): Promise<void> => {
       closing ??= (async () => {
-        forum.lifecycle.stop();
-        for (const t of timers) clearInterval(t);
-        try {
-          await led.stop();
-        } finally {
-          persistClock();
+        // Sıra önemlidir: önce HTTP (yeni bağlantı yok, uçuştaki istekler biter — bunlar hâlâ deftere yazar), sonra yaşam döngüsü
+        // (uçuştaki tick biter), sonra defter, saat, veritabanı, kilit. Bir adımın hatası sonrakileri engellemez; ilk hata fırlatılır.
+        const errors: unknown[] = [];
+        const step = async (fn: () => unknown): Promise<void> => {
           try {
-            await app.close();
-          } finally {
-            dbOpen = false;
-            db.close();
+            await fn();
+          } catch (e) {
+            errors.push(e);
           }
-        }
+        };
+        for (const t of timers) clearInterval(t);
+        await step(() => app.close());
+        await step(() => forum.lifecycle.stop());
+        await step(() => led.flush(LEDGER_FLUSH_MS).catch(() => undefined));
+        await step(() => led.stop());
+        persistClock();
+        dbOpen = false;
+        await step(() => db.close());
+        releaseLock();
+        if (errors.length > 0) throw errors[0];
       })();
       return closing;
     };
 
     return { app, services, close };
   } catch (err) {
-    lifecycle?.stop();
+    // Kurulum yarıda kaldı: açılmış her şey kapatılır (defter hiç başlamamış olsa bile depoları açıktır).
     for (const t of timers) clearInterval(t);
-    if (ledger && ledgerStarted) await ledger.stop().catch(() => undefined);
+    await lifecycle?.stop().catch(() => undefined);
+    if (ledger) await ledger.stop().catch(() => undefined);
     persistClock();
     dbOpen = false;
-    db.close();
+    try {
+      db.close();
+    } finally {
+      releaseLock();
+    }
     throw err;
   }
 }

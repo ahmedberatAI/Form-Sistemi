@@ -12,6 +12,7 @@ import {
   utf8ToBytes,
   type LedgerTxType,
 } from "@forum/shared";
+import { AppError, unprocessable } from "../core/errors";
 import { MAX_TX_BYTES, type EvidencePayload, type SignedTx, type VoteMsg } from "./types";
 
 export const LEDGER_TX_TYPES = Object.keys(LEDGER_TX_LABELS) as LedgerTxType[];
@@ -80,6 +81,35 @@ export function txNonce(type: string, payload: Record<string, unknown>): string 
 /** submittedAt ve sig özete GİRMEZ → aynı (type, payload, nonce) her zaman aynı özet. */
 export function computeTxHash(type: string, payload: Record<string, unknown>, nonce: string): string {
   return hashCanonical({ type, payload, nonce });
+}
+
+/** Gönderime hazır işlem: normalleştirilmiş yük + kurala uygun nonce + özet. */
+export interface PreparedTx {
+  payload: Record<string, unknown>;
+  nonce: string;
+  hash: string;
+}
+
+/**
+ * Bir (tür, yük) çiftini doğrular ve özetini hesaplar. Özet (type, payload, nonce) üzerinden DETERMİNİSTİKTİR (nonce kuraldan
+ * türer; submittedAt ve sig girmez). ledger.submit ve ForumCore.submit (DB işlemi içinde özeti önceden hesaplayıp gerçek
+ * gönderimi COMMIT sonrasına erteler) AYNI işlevi kullanır; böylece geri alınan işlemden deftere hayalet kayıt sızmaz.
+ */
+export function prepareTx(type: unknown, payload: unknown): PreparedTx {
+  if (!isTxType(type)) throw unprocessable("ledger_bad_type", `Geçersiz defter işlem türü: ${String(type)}`);
+  if (!isPlainObject(payload)) throw unprocessable("ledger_bad_payload", "Defter yükü bir nesne olmalı.");
+  let canon: string;
+  try {
+    canon = canonicalJson(payload);
+  } catch {
+    throw unprocessable("ledger_bad_payload", "Defter yükü kanonik JSON'a çevrilemiyor (sonlu olmayan sayı ya da desteklenmeyen tip).");
+  }
+  if (canon.length > MAX_TX_BYTES) throw unprocessable("ledger_too_large", "Defter kaydı çok büyük.");
+  const normalized = JSON.parse(canon) as Record<string, unknown>;
+  const pii = findPiiKey(normalized);
+  if (pii) throw new AppError(422, "ledger_pii", `Defter kaydı kişisel veri içeremez (yasak alan: ${pii}).`, { key: pii });
+  const nonce = txNonce(type, normalized);
+  return { payload: normalized, nonce, hash: computeTxHash(type, normalized, nonce) };
 }
 
 /** Uygulama imzası, işlem özetinin 32 baytı üzerindedir. */

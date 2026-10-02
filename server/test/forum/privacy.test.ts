@@ -7,6 +7,11 @@ import { CAT, endPhase, insertTopic, LONG_BODY, makeForum, toDeliberation, toVot
 
 const FORBIDDEN_KEYS = ["firstName", "lastName", "tckn", "birthDate", "address", "email", "phone", "body", "text", "password", "nickname", "userId", "authorId", "user_id"];
 
+// #234: rastgele kimlik/özet değerleri (UUID, SHA-256 hex) ham metin sayılmaz; "0532" gibi kısa dizgiler içlerinde rastgele
+// (~%0,1) geçebildiği için kararsız (flaky) kalıyordu. Kalan değerlerde de sayısal desenler yalnızca tam sözcük olarak aranır.
+const OPAQUE_ID = /^(?=.*[a-f])[0-9a-f-]{8,}$/i;
+const RAW_TEXT = /(ali\.veli@|(?<![0-9a-z-])0532(?![0-9a-z-])|(?<![0-9a-z-])10000000146(?![0-9a-z-])|bisiklet yolu)/i;
+
 function walk(v: unknown, visit: (key: string | null, value: unknown) => void, key: string | null = null): void {
   visit(key, v);
   if (Array.isArray(v)) v.forEach((x) => walk(x, visit, null));
@@ -109,7 +114,7 @@ describe("forum: kişisel veri ve defter gizliliği", () => {
       walk(tx.payload, (key, value) => {
         if (key && FORBIDDEN_KEYS.includes(key)) problems.push(`${tx.type}: yasak anahtar ${key}`);
         if (typeof value === "string" && nicknames.has(value)) problems.push(`${tx.type}: takma ad`);
-        if (typeof value === "string" && /(ali\.veli@|0532|10000000146|bisiklet yolu)/i.test(value)) problems.push(`${tx.type}: ham metin`);
+        if (typeof value === "string" && !OPAQUE_ID.test(value) && RAW_TEXT.test(value)) problems.push(`${tx.type}: ham metin`);
       });
     }
     expect([...new Set(problems)]).toEqual([]);

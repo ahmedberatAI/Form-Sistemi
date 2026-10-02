@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 11 ve öncesi (fullBackupContent): uygulama verisi OS yedeğine/adb backup'a GİRMEZ.
+  Oturum belirteci (forum.token) ve oy makbuzları (seçim + tuz, forum.receipts) SharedPreferences'ta tutulur;
+  yedekten başka cihaza taşınabilmeleri oy gizliliğini ve oturum güvenliğini bozar. Bkz. bulgular #184, #228.
+-->
+<full-backup-content>
+    <exclude domain="root" path="." />
+    <exclude domain="file" path="." />
+    <exclude domain="database" path="." />
+    <exclude domain="sharedpref" path="." />
+    <exclude domain="external" path="." />
+</full-backup-content>

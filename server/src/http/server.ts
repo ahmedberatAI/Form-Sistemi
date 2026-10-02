@@ -13,6 +13,15 @@ import { registerRoutes } from "./routes";
 import type { AppServices, HttpOptions, RateLimitOptions, RouteDeps } from "./types";
 
 export const BODY_LIMIT = 1024 * 1024;
+/** Kapanışta uçuştaki isteklerin bitmesi için beklenen azami süre; sonra kalan bağlantılar zorla kapatılır. */
+export const HTTP_DRAIN_MS = 3_000;
+/** Kapanış sırasında boşa düşen keep-alive bağlantılarının kapatılma yoklaması. */
+const IDLE_SWEEP_MS = 100;
+
+export interface BuildServerOptions extends HttpOptions {
+  /** Kapanışta uçuştaki isteklere tanınan süre (ms); varsayılan HTTP_DRAIN_MS. */
+  drainMs?: number;
+}
 export const DEFAULT_RATE_LIMIT = { global: 300, auth: 20 } as const;
 const MINUTE = 60_000;
 
@@ -41,9 +50,25 @@ function isDir(p: string): boolean {
   }
 }
 
-export async function buildServer(services: AppServices, config: Config, opts: HttpOptions = {}): Promise<FastifyInstance> {
+export async function buildServer(services: AppServices, config: Config, opts: BuildServerOptions = {}): Promise<FastifyInstance> {
   // Günlük: LOG_LEVEL (varsayılan "warn": yalnız uyarı ve hatalar; her isteği görmek için LOG_LEVEL=info).
   const app = Fastify({ logger: opts.logger ? { level: process.env.LOG_LEVEL ?? "warn" } : false, bodyLimit: BODY_LIMIT });
+
+  // Kapanış: yeni bağlantı kabul edilmez, uçuştaki istekler bitene kadar beklenir. İstek bitince bağlantı keep-alive'a düşer ve
+  // Fastify'ın varsayılan 72 sn'lik keepAliveTimeout'u close()'u ~70 sn tutardı; bu yüzden boşa düşenleri yoklayıp kapatırız,
+  // süre dolunca (drainMs) kalanları zorla koparırız.
+  let sweeper: ReturnType<typeof setInterval> | null = null;
+  let hardStop: ReturnType<typeof setTimeout> | null = null;
+  app.addHook("preClose", async () => {
+    sweeper = setInterval(() => app.server.closeIdleConnections(), IDLE_SWEEP_MS);
+    sweeper.unref();
+    hardStop = setTimeout(() => app.server.closeAllConnections(), opts.drainMs ?? HTTP_DRAIN_MS);
+    hardStop.unref();
+  });
+  app.addHook("onClose", async () => {
+    if (sweeper) clearInterval(sweeper);
+    if (hardStop) clearTimeout(hardStop);
+  });
 
   // Boş gövdeli JSON isteklerini kabul et (gövde yok sayılır); geri kalanı Fastify'ın güvenli ayrıştırıcısında.
   // API yalnız JSON kabul eder (text/plain → 415).

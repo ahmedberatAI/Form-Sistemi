@@ -17,7 +17,7 @@ import {
 } from "@forum/shared";
 import { ManualClock } from "../../src/core/clock";
 import { testConfig, type Config } from "../../src/core/config";
-import type { AiRecordSink, CommittedTx, CoreContext, LedgerService } from "../../src/core/contracts";
+import type { AiRecordSink, AiTask, CommittedTx, CoreContext, LedgerService } from "../../src/core/contracts";
 import { notFound } from "../../src/core/errors";
 import { openMemoryDb, type Db } from "../../src/db";
 import { newId } from "../../src/core/ids";
@@ -78,8 +78,8 @@ export class FakeLedger implements LedgerService {
   async start(): Promise<void> {}
   async stop(): Promise<void> {}
 
-  submit(type: LedgerTxType, payload: Record<string, unknown>): { txHash: string } {
-    const nonce = hashCanonical({ type, payload }).slice(0, 32);
+  submit(type: LedgerTxType, payload: Record<string, unknown>, callerNonce?: string): { txHash: string } {
+    const nonce = callerNonce ?? hashCanonical({ type, payload }).slice(0, 32);
     const hash = hashCanonical({ type, payload, nonce });
     if (this.byHash.has(hash)) return { txHash: hash };
     const height = this.txs.length + 1;
@@ -200,6 +200,11 @@ export class FakeAiSink implements AiRecordSink {
       .filter((x) => x.targetType === targetType && x.targetId === targetId)
       .sort((a, b) => b.createdAt - a.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
       .map((r) => this.view(r));
+  }
+  findByInput(task: AiTask, targetType: string, targetId: string, inputHash: string): AiAnalysisInfo | null {
+    const hits = this.items.filter((x) => x.task === task && x.targetType === targetType && x.targetId === targetId && x.inputHash === inputHash);
+    const r = hits.sort((a, b) => b.createdAt - a.createdAt || (a.id < b.id ? 1 : -1))[0];
+    return r ? this.view(r) : null;
   }
   approve(id: string, userId: string): AiAnalysisInfo {
     const r = this.items.find((x) => x.id === id);

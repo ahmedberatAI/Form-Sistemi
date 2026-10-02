@@ -20,9 +20,10 @@ import type { AuditLogger } from "../core/audit";
 import { HOUR } from "../core/clock";
 import type { Config } from "../core/config";
 import type { AuthUser } from "../core/contracts";
-import { badRequest, forbidden, notFound, type AppError } from "../core/errors";
+import { AppError, badRequest, forbidden, notFound } from "../core/errors";
 import type { ForumDeps } from "../core/forum-contracts";
 import { json, type Db, type SqlValue } from "../db";
+import { prepareTx } from "../ledger/tx";
 
 // ───────────── Durumlar ─────────────
 
@@ -444,17 +445,21 @@ export class ForumCore {
   }
 
   /**
-   * Tek bir SQLite işlemi. İç içe çağrılabilir. `after` ile kuyruğa alınan yan etkiler (bildirimler, graf kenarları)
-   * yalnızca EN DIŞTAKİ işlem başarıyla bittiğinde çalışır; geri alınırsa atılır.
+   * Tek bir SQLite işlemi. İç içe çağrılabilir (SAVEPOINT). `after` ile kuyruğa alınan yan etkiler (bildirimler, ertelenmiş defter
+   * gönderimleri) yalnızca EN DIŞTAKİ işlem başarıyla bittiğinde (COMMIT sonrası) çalışır. Kuyruk savepoint'e göre kapsamlıdır:
+   * iç işlem geri alınırsa o düzeyde kuyruğa alınanlar atılır (dış işlem iç hatayı yakalayıp devam etse bile); başarılıysa üst
+   * düzeyin kuyruğuna katılır. Dış işlem geri alınırsa kuyruğun tamamı atılır.
    */
   tx<T>(fn: () => T): T {
     const outer = this.pending === null;
     if (outer) this.pending = [];
+    const mark = this.pending!.length;
     let out: T;
     try {
       out = this.db.tx(fn);
     } catch (e) {
       if (outer) this.pending = null;
+      else this.pending!.length = mark; // iç savepoint geri alındı: bu düzeyin yan etkileri de geri alınır
       throw e;
     }
     if (outer) {
@@ -487,13 +492,38 @@ export class ForumCore {
     const ids = [...new Set(userIds)];
     if (ids.length === 0) return;
     this.after(() => {
-      for (const u of ids) this.deps.notifier.notify(u, { kind: n.kind, title: n.title, body: n.body, link: n.link ?? null });
+      const notice = { kind: n.kind, title: n.title, body: n.body, link: n.link ?? null };
+      const notifier = this.deps.notifier;
+      // Toplu gönderim tek işlemde (alıcı başına otomatik işlem = fsync, yaşam döngüsü tick'ini bloklar).
+      if (notifier.notifyMany) notifier.notifyMany(ids, notice);
+      else for (const u of ids) notifier.notify(u, notice);
     });
   }
 
-  /** Deftere yazar (hemen döner). Yük kişisel veri ve kullanıcı kimliği içermemelidir. */
+  /**
+   * Deftere yazar ve işlem özetini döndürür. Yük kişisel veri ve kullanıcı kimliği içermemelidir.
+   * Bir DB işleminin (tx) İÇİNDEYSE özet önceden hesaplanır ve gerçek gönderim EN DIŞTAKİ işlem COMMIT olduktan sonraya ertelenir:
+   * defter kaydı geri alınamaz, bu yüzden geri alınan işlem deftere "hayalet" kayıt bırakmamalıdır. Yük doğrulaması (tür, kişisel
+   * veri, boyut) yine hemen yapılır; hatası işlemi geri alır. İşlem dışındaysa hemen gönderilir.
+   */
   submit(type: LedgerTxType, payload: Record<string, unknown>): string {
-    return this.deps.ledger.submit(type, payload).txHash;
+    if (this.pending === null) return this.deps.ledger.submit(type, payload).txHash;
+    const tx = prepareTx(type, payload);
+    this.after(() => {
+      try {
+        const sent = this.deps.ledger.submit(type, tx.payload, tx.nonce).txHash;
+        if (sent !== tx.hash) throw new Error("defter özeti önceden hesaplanan özetle eşleşmiyor");
+      } catch (e) {
+        // COMMIT sonrası: DB işlemi geri alınamaz; kayıt eksik kalır, durum denetim günlüğüne ve loga düşer (yük yazılmaz).
+        console.error(`[forum] ${type} defter kaydı COMMIT sonrası gönderilemedi (${tx.hash}):`, e);
+        try {
+          this.audit.log(null, "system.ledger_submit_failed", null, { type, txHash: tx.hash, code: e instanceof AppError ? e.code : "internal" });
+        } catch {
+          /* denetim yazılamıyorsa log yeterli */
+        }
+      }
+    });
+    return tx.hash;
   }
 
   /** ballotId = HMAC-SHA256(voteKey, userId|proposalId|round) — öneriye ve tura özel; defterden kişiye bağlanamaz. */

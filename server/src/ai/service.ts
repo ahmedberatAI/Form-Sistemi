@@ -1,8 +1,8 @@
 // AiService: Claude (anahtar varsa) + çevrimdışı sezgisel yedek. Asla hata fırlatmaz; YZ yalnızca danışmandır.
 import Anthropic from "@anthropic-ai/sdk";
 import { clusterLabel, OFFLINE_MODEL } from "@forum/shared";
-import type { AiCallOptions, AiService, ClassificationResult, CoreContext, ModerationResult } from "../core/contracts";
-import { bridgingRequest, callClaude, classifyRequest, DEFAULT_TIMEOUT_MS, lintRequest, moderateRequest, summarizeRequest, type AnthropicLike, type ClaudeRequest } from "./claude";
+import type { AiCallOptions, AiHealth, AiService, ClassificationResult, CoreContext, ModerationResult } from "../core/contracts";
+import { bridgingRequest, callClaude, classifyClaudeError, classifyRequest, DEFAULT_TIMEOUT_MS, lintRequest, moderateRequest, summarizeRequest, type AnthropicLike, type ClaudeRequest } from "./claude";
 import {
   analyzeContent,
   computeCoverage,
@@ -41,7 +41,16 @@ export interface AiServiceOptions {
   /** undefined: ortamdan (AI_ENABLED + ANTHROPIC_API_KEY); null: zorla çevrimdışı. */
   client?: AnthropicLike | null;
   timeoutMs?: number;
+  /** Operatör uyarıları (yalnızca neden sınıfı ve sayaç; istem/yanıt içeriği, anahtar ya da kişisel veri asla). Varsayılan: stderr. */
+  warn?: (message: string, meta: Record<string, unknown>) => void;
 }
+
+/** Bu kadar ardışık başarısızlıktan sonra durum "degraded" (düşük hizmet) sayılır. */
+export const DEGRADED_AFTER_FAILURES = 3;
+
+const defaultWarn = (message: string, meta: Record<string, unknown>): void => {
+  console.warn(`[yapay-zeka] ${message} ${JSON.stringify(meta)}`);
+};
 
 function defaultClient(ctx: CoreContext): AnthropicLike | null {
   if (!ctx.config.aiEnabled || !process.env.ANTHROPIC_API_KEY) return null;
@@ -59,18 +68,55 @@ export function createAiService(ctx: CoreContext, opts: AiServiceOptions = {}): 
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const model = ctx.config.aiModel;
 
+  const warn = opts.warn ?? defaultWarn;
+  const health: Omit<AiHealth, "degraded"> = { failures: 0, lastError: null, lastErrorAt: null, lastOkAt: null };
+
+  function noteFailure(reason: string): void {
+    health.failures++;
+    health.lastError = reason;
+    health.lastErrorAt = ctx.clock.now();
+    // Her başarısızlıkta değil, seri başında ve "degraded"e geçişte bir kez uyarılır (log şişmesini önler).
+    if (health.failures === 1 || health.failures === DEGRADED_AFTER_FAILURES) {
+      try {
+        warn("Claude çağrısı başarısız; çevrimdışı sezgisele düşüldü.", { reason, consecutiveFailures: health.failures, model });
+      } catch {
+        /* log hatası çağrıyı etkilemez */
+      }
+    }
+  }
+
+  function noteSuccess(): void {
+    if (health.failures > 0) {
+      try {
+        warn("Claude çağrıları yeniden başarılı.", { previousFailures: health.failures });
+      } catch {
+        /* yok say */
+      }
+    }
+    health.failures = 0;
+    health.lastOkAt = ctx.clock.now();
+  }
+
   async function ask<T>(o: AiCallOptions | undefined, build: () => ClaudeRequest<T>): Promise<{ data: T; model: string } | null> {
     if (!client || o?.forceOffline) return null;
+    let reason = "error";
+    let result: { data: T; model: string } | null = null;
     try {
-      return await callClaude(client, model, build(), timeoutMs);
-    } catch {
-      return null;
+      result = await callClaude(client, model, build(), timeoutMs, (r) => {
+        reason = r;
+      });
+    } catch (e) {
+      reason = classifyClaudeError(e);
     }
+    if (result) noteSuccess();
+    else noteFailure(reason);
+    return result;
   }
 
   return {
     mode: () => (client ? "claude" : "offline"),
     model: () => (client ? model : OFFLINE_MODEL),
+    health: (): AiHealth => ({ ...health, degraded: health.failures >= DEGRADED_AFTER_FAILURES }),
     detectPii,
 
     async classifyProposal(input, cctx, o): Promise<ClassificationResult> {

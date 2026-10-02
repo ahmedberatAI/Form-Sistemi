@@ -20,13 +20,48 @@ export interface ClaudeRequest<T> {
   effort: "low" | "medium";
 }
 
-export async function callClaude<T>(client: AnthropicLike, model: string, req: ClaudeRequest<T>, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<{ data: T; model: string } | null> {
+/** Zaman aşımı hatasının ayırt edici türü (sınıflandırma için). */
+class ClaudeTimeoutError extends Error {}
+
+/**
+ * Hatanın GÜVENLİ sınıfı: yalnızca durum kodu ya da hata türü adı. İleti/gövde (istem içeriği, anahtar, kişisel veri
+ * barındırabilir) asla döndürülmez ve loglanmaz.
+ */
+export function classifyClaudeError(e: unknown): string {
+  if (e instanceof ClaudeTimeoutError) return "timeout";
+  const status = (e as { status?: unknown } | null)?.status;
+  if (typeof status === "number" && Number.isInteger(status) && status >= 100 && status <= 599) return `http_${status}`;
+  const name = typeof (e as { name?: unknown } | null)?.name === "string" ? (e as { name: string }).name : "";
+  if (/timeout/i.test(name)) return "timeout";
+  if (/connection|network|abort/i.test(name)) return "network";
+  return /^[A-Za-z][A-Za-z0-9]{0,40}$/.test(name) ? `error_${name}` : "error";
+}
+
+/**
+ * Her başarısızlıkta `onFailure(neden)` çağrılır (neden: "timeout", "http_401", "refusal", "max_tokens", "empty",
+ * "invalid_json", "schema", "bad_response", "error_<Ad>"…); sonuç yine `null`'dır ve çağıran çevrimdışı yedeğe düşer.
+ */
+export async function callClaude<T>(
+  client: AnthropicLike,
+  model: string,
+  req: ClaudeRequest<T>,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  onFailure?: (reason: string) => void,
+): Promise<{ data: T; model: string } | null> {
+  const fail = (reason: string): null => {
+    try {
+      onFailure?.(reason);
+    } catch {
+      /* gözlem hatası çağrıyı etkilemez */
+    }
+    return null;
+  };
   const ac = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
       ac.abort();
-      reject(new Error("Yapay zekâ isteği zaman aşımına uğradı."));
+      reject(new ClaudeTimeoutError("Yapay zekâ isteği zaman aşımına uğradı."));
     }, timeoutMs);
     (timer as { unref?: () => void }).unref?.();
   });
@@ -42,26 +77,26 @@ export async function callClaude<T>(client: AnthropicLike, model: string, req: C
       messages: [{ role: "user", content: req.user }],
     };
     const res = await Promise.race([client.beta.messages.create(params, { timeout: timeoutMs, signal: ac.signal }), deadline]);
-    if (!res || typeof res !== "object") return null;
+    if (!res || typeof res !== "object") return fail("bad_response");
     // İçeriği okumadan önce ret kontrolü (sunucu tarafı yedek de reddettiyse).
-    if (res.stop_reason === "refusal" || res.stop_reason === "max_tokens") return null;
+    if (res.stop_reason === "refusal" || res.stop_reason === "max_tokens") return fail(res.stop_reason);
     const blocks: unknown[] = Array.isArray(res.content) ? res.content : [];
     const text = blocks
       .filter((b): b is { type: "text"; text: string } => !!b && (b as { type?: unknown }).type === "text" && typeof (b as { text?: unknown }).text === "string")
       .map((b) => b.text)
       .join("");
-    if (!text.trim()) return null;
+    if (!text.trim()) return fail("empty");
     let json: unknown;
     try {
       json = JSON.parse(text);
     } catch {
-      return null;
+      return fail("invalid_json");
     }
     const parsed = req.validator.safeParse(json);
-    if (!parsed.success) return null;
+    if (!parsed.success) return fail("schema");
     return { data: parsed.data, model: typeof res.model === "string" && res.model ? res.model : model };
-  } catch {
-    return null;
+  } catch (e) {
+    return fail(classifyClaudeError(e));
   } finally {
     clearTimeout(timer);
   }

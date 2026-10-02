@@ -17,12 +17,10 @@ export function installAuth(app: FastifyInstance, identity: IdentityService): vo
     const m = BEARER.exec(header);
     if (!m) return;
     req.authToken = m[1];
-    try {
-      req.user = identity.authenticate(m[1]);
-    } catch (err) {
-      req.log.warn({ err }, "Belirteç doğrulanamadı");
-      req.user = null;
-    }
+    // authenticate() geçersiz, süresi dolmuş ya da iptal edilmiş belirteç için null döner (→ anonim). Fırlattığı her şey
+    // altyapı hatasıdır (SQLITE_BUSY, G/Ç…); bunu "anonim" saymak istemciyi oturumdan atıp belirteci sildirirdi.
+    // Bu yüzden yayılır ve hata işleyicisinde 5xx olur.
+    req.user = identity.authenticate(m[1]);
   });
 }
 

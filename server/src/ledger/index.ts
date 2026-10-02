@@ -4,7 +4,6 @@
 import { join } from "node:path";
 import {
   CHAIN_ID,
-  canonicalJson,
   ed25519PublicKey,
   merkleLeaf,
   merkleProof,
@@ -21,9 +20,9 @@ import { loadLedgerKeys } from "./keys";
 import { ValidatorNode } from "./node";
 import { MemoryBlockStore, SqliteBlockStore, type BlockStore } from "./store";
 import { MemoryTransport, type LinkConditions } from "./transport";
-import { checkEvidence, computeTxHash, findPiiKey, isPlainObject, isTxType, signTxHash, txNonce } from "./tx";
+import { checkEvidence, prepareTx, signTxHash } from "./tx";
 import { faultToleranceOf, quorumOf, type ChainParams } from "./verify";
-import { MAX_TXS_PER_BLOCK, MAX_TX_BYTES, OPERATOR_NOTICE, type EvidencePayload, type Fault, type SignedTx, type StoredBlock } from "./types";
+import { MAX_TXS_PER_BLOCK, OPERATOR_NOTICE, type EvidencePayload, type Fault, type SignedTx, type StoredBlock } from "./types";
 
 export { MemoryTransport, type LinkConditions, type Transport } from "./transport";
 export { LEDGER_TX_TYPES, PII_KEYS } from "./tx";
@@ -183,28 +182,22 @@ export class InProcessLedger implements LedgerService {
 
   // ───────────── İşlem gönderme ─────────────
 
-  submit(type: LedgerTxType, payload: Record<string, unknown>): { txHash: string } {
+  /**
+   * `nonce` isteğe bağlıdır: verilirse kurala (txNonce) uymak ZORUNDADIR — ForumCore, işlem içinde önceden hesapladığı özetle
+   * gerçek gönderimin aynı işlemi üreteceğini böyle doğrular. Verilmezse nonce kuraldan türetilir.
+   */
+  submit(type: LedgerTxType, payload: Record<string, unknown>, nonce?: string): { txHash: string } {
     if (this.stopped) throw stoppedError();
-    if (!isTxType(type)) throw unprocessable("ledger_bad_type", `Geçersiz defter işlem türü: ${String(type)}`);
-    if (!isPlainObject(payload)) throw unprocessable("ledger_bad_payload", "Defter yükü bir nesne olmalı.");
-    let canon: string;
-    try {
-      canon = canonicalJson(payload);
-    } catch {
-      throw unprocessable("ledger_bad_payload", "Defter yükü kanonik JSON'a çevrilemiyor (sonlu olmayan sayı ya da desteklenmeyen tip).");
-    }
-    if (canon.length > MAX_TX_BYTES) throw unprocessable("ledger_too_large", "Defter kaydı çok büyük.");
-    const normalized = JSON.parse(canon) as Record<string, unknown>;
-    const pii = findPiiKey(normalized);
-    if (pii) throw new AppError(422, "ledger_pii", `Defter kaydı kişisel veri içeremez (yasak alan: ${pii}).`, { key: pii });
+    const prepared = prepareTx(type, payload);
+    const normalized = prepared.payload;
+    if (nonce !== undefined && nonce !== prepared.nonce) throw unprocessable("ledger_bad_nonce", "Nonce kurala uymuyor.");
     if (type === "EVIDENCE") {
       const e = checkEvidence(normalized, this.params.validators);
       if (e) throw unprocessable("ledger_bad_evidence", e);
     }
-    const nonce = txNonce(type, normalized);
-    const hash = computeTxHash(type, normalized, nonce);
+    const hash = prepared.hash;
     if (this.pending.has(hash) || this.canonical().hasTx(hash)) return { txHash: hash };
-    const tx: SignedTx = { type, payload: normalized, nonce, submittedAt: this.ctx.clock.now(), sig: signTxHash(hash, this.appSecretKey), hash };
+    const tx: SignedTx = { type, payload: normalized, nonce: prepared.nonce, submittedAt: this.ctx.clock.now(), sig: signTxHash(hash, this.appSecretKey), hash };
     this.pending.set(hash, { tx, age: 0 });
     if (this.running) this.deliver(tx);
     return { txHash: hash };

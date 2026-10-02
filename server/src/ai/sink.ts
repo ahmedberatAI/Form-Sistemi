@@ -48,6 +48,16 @@ export function createAiRecordSink(ctx: CoreContext, deps: { ledger: LedgerServi
   return {
     get: (id) => getAnalysis(ctx, id),
     list: (targetType, targetId) => listAnalyses(ctx, targetType, targetId),
+    findByInput(task, targetType, targetId, inputHash) {
+      const r = ctx.db.get<AiRow>(
+        "SELECT * FROM ai_analyses WHERE task = ? AND target_type = ? AND target_id = ? AND input_hash = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+        task,
+        targetType,
+        targetId,
+        inputHash,
+      );
+      return r ? toInfo(r) : null;
+    },
     approve: (id, userId) => approveAnalysis(ctx, id, userId),
     record(input) {
       const a = { ...input, promptVersion: input.promptVersion || PROMPT_VERSION };

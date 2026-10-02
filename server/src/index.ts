@@ -1,6 +1,8 @@
 // Giriş noktası: yapılandırmayı yükler, uygulamayı kurar ve dinlemeye başlar.
 import { loadConfig } from "./core/config";
 import { createApp } from "./app";
+import { DataDirLockedError } from "./core/lock";
+import { createShutdown } from "./core/shutdown";
 import { rateLimitFromEnv } from "./http";
 
 async function main(): Promise<void> {
@@ -9,23 +11,19 @@ async function main(): Promise<void> {
   const rateLimit = rateLimitFromEnv();
   const { app, services, close } = await createApp(cfg, { logger: true, rateLimit });
 
-  let stopping = false;
-  const shutdown = (signal: string) => {
-    if (stopping) return;
-    stopping = true;
-    console.log(`\n${signal} alındı; sunucu kapatılıyor…`);
-    close()
-      .then(() => {
-        console.log("Sunucu düzgünce kapatıldı.");
-        process.exit(0);
-      })
-      .catch((err) => {
-        console.error("Kapatma sırasında hata:", err);
-        process.exit(1);
-      });
-  };
+  // Kapanış: HTTP boşaltılır → yaşam döngüsü → defter → saat → veritabanı; toplam süre sınırlıdır (varsayılan 8 sn, Docker SIGKILL'inden önce).
+  const shutdown = createShutdown({ close });
   process.once("SIGINT", () => shutdown("SIGINT"));
   process.once("SIGTERM", () => shutdown("SIGTERM"));
+  // Beklenmeyen hata: kaydedip düzgünce kapatmayı dene (kapanış takılırsa zaman sınırı süreci sonlandırır); çıkış kodu 1.
+  process.on("uncaughtException", (err) => {
+    console.error("Yakalanmamış hata:", err);
+    shutdown("uncaughtException", 1);
+  });
+  process.on("unhandledRejection", (reason) => {
+    console.error("İşlenmemiş söz reddi:", reason);
+    shutdown("unhandledRejection", 1);
+  });
 
   try {
     await app.listen({ port: cfg.port, host: cfg.host });
@@ -61,6 +59,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error("Sunucu başlatılamadı:", err);
+  console.error("Sunucu başlatılamadı:", err instanceof DataDirLockedError ? err.message : err);
   process.exit(1);
 });

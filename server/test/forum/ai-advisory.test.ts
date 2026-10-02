@@ -106,6 +106,7 @@ describe("forum: YZ özeti azınlık bölümü (#K-28 benzeri tartışmalı öne
     // 3) "Hayır" tarafının mesajları alıntılanır
     expect(out.minorityViews.flatMap((p) => p.cites)).toEqual([c1.id, c2.id]);
     // Özet çıktısında takma ad yok
-    expect(JSON.stringify(a.output)).not.toContain(b.C[0].nickname);
+    // Takma ad yalnızca TAM sözcük olarak aranır: "c01" gibi hex takma adlar çıktıdaki rastgele UUID/hex dizgilerinde (cites) geçebilir.
+    expect(JSON.stringify(a.output)).not.toMatch(new RegExp(`(?<![0-9A-Za-z_-])${b.C[0].nickname}(?![0-9A-Za-z_-])`, "i"));
   });
 });

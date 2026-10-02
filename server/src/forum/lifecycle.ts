@@ -158,6 +158,34 @@ interface EnactPrep {
   error?: string;
 }
 
+/** Ardışık başarısız adım denemeleri arasındaki üstel geri çekilme: 2 sn · 2^(n-1), en çok 10 dk. */
+export const STEP_BACKOFF_BASE_MS = 2_000;
+export const STEP_BACKOFF_CAP_MS = 10 * 60_000;
+/** Denetim günlüğüne ilk başarısızlıkta ve sonra her N. ardışık başarısızlıkta yazılır. */
+export const STEP_FAILURE_AUDIT_EVERY = 5;
+
+export const stepBackoffMs = (failures: number): number => Math.min(STEP_BACKOFF_CAP_MS, STEP_BACKOFF_BASE_MS * 2 ** Math.max(0, failures - 1));
+
+/** tick() sonucu: dizi + (numaralanamaz özellik) `failed` — bu turda ilerletilemeyen (geri çekilmede bekleyenler dâhil) öneri kimlikleri. */
+export function failedProposalIds(ts: readonly Transition[]): string[] {
+  return ((ts as { failed?: string[] }).failed ?? []).slice();
+}
+
+function withFailed(out: Transition[], failed: string[]): Transition[] {
+  // Numaralanamaz: mevcut tüketiciler (toEqual, spread, JSON) diziyi eskisi gibi görür.
+  Object.defineProperty(out, "failed", { value: failed, enumerable: false });
+  return out;
+}
+
+/** Kalıcı ve herkese açık metne yalnızca güvenli neden yazılır: AppError iletisi kullanıcıya yöneliktir; gerisi genel iletiye iner. */
+function safeReason(e: unknown): { code: string; why: string } {
+  if (e instanceof AppError) return { code: e.code, why: e.message };
+  return { code: "internal_error", why: "Beklenmeyen bir iç hata nedeniyle uygulanamadı." };
+}
+
+/** Ham istisna iletisi yalnızca sunucu logunda ve denetim günlüğünde tutulur (kısaltılmış). */
+const rawMessage = (e: unknown): string => (e instanceof Error ? e.message : String(e)).slice(0, 500);
+
 export function createLifecycle(core: ForumCore, parts: LifecycleParts): LifecycleEngine {
   const { db, deps } = core;
   const { clusters, topics, messages } = parts;
@@ -165,6 +193,10 @@ export function createLifecycle(core: ForumCore, parts: LifecycleParts): Lifecyc
   let timer: ReturnType<typeof setInterval> | null = null;
   let timerBusy = false;
   let lastDaily: number | null = null;
+  /** Öneri başına ardışık adım başarısızlıkları (bellekte): sayaç + sonraki deneme zamanı (ctx.clock). */
+  const stepFailures = new Map<string, { count: number; nextAt: number; code: string }>();
+  /** Bilirkişi kurası hataları evreyi durdurmaz; yalnızca ilk hata ve seyrek tekrarlar kaydedilir. */
+  const drawFailures = new Map<string, number>();
 
   function enqueue<T>(fn: () => Promise<T>): Promise<T> {
     const run = chain.then(fn, fn);
@@ -286,7 +318,10 @@ export function createLifecycle(core: ForumCore, parts: LifecycleParts): Lifecyc
     try {
       return { bylaw: await deps.ontology.applyPatch(patch, p.id) };
     } catch (e) {
-      return { error: e instanceof Error ? e.message : String(e) };
+      const { code, why } = safeReason(e);
+      console.error(`[forum] ${proposalRef(p)} yönetmelik yaması uygulanamadı:`, e);
+      core.audit.log(null, "system.enactment_failed", p.id, { step: "prepare", code, error: rawMessage(e) });
+      return { error: `${why} (hata kodu: ${code})` };
     }
   }
 
@@ -298,13 +333,16 @@ export function createLifecycle(core: ForumCore, parts: LifecycleParts): Lifecyc
     const parsed = parseProposal(p);
     const enacted = (entity: string | null) =>
       applyTransition(core, p, "enacted", reason, { now, endsAt: null, set: { enacted_entity_id: entity, final_reason: reason } });
+    // Ham istisna iletisi saklanan/yayımlanan nedene GİRMEZ (kalıcı, silinemez defter): yalnızca güvenli neden + hata kodu.
     const effect = <T>(fn: () => T): { ok: true; value: T } | { ok: false; why: string } => {
       try {
         return { ok: true, value: core.tx(fn) };
       } catch (e) {
         if (e instanceof StaleState) throw e;
+        const { code, why } = safeReason(e);
         console.error(`[forum] ${proposalRef(p)} yürürlük etkisi uygulanamadı:`, e);
-        return { ok: false, why: e instanceof Error ? e.message : String(e) };
+        core.audit.log(null, "system.enactment_failed", p.id, { step: "effect", kind: p.kind, code, error: rawMessage(e) });
+        return { ok: false, why: `${why} (hata kodu: ${code})` };
       }
     };
     switch (p.kind) {
@@ -404,8 +442,15 @@ export function createLifecycle(core: ForumCore, parts: LifecycleParts): Lifecyc
   async function drawSafely(p: ProposalRow, now: number): Promise<void> {
     try {
       await maybeDrawPanel(p, now);
+      drawFailures.delete(p.id);
     } catch (e) {
-      console.error(`[forum] ${proposalRef(p)} bilirkişi kurası yapılamadı:`, e);
+      const n = (drawFailures.get(p.id) ?? 0) + 1;
+      drawFailures.set(p.id, n);
+      // Her saniye yeniden denenir: günlük/denetim yalnızca ilk hatada ve her 60. tekrarda yazılır.
+      if (n === 1 || n % 60 === 0) {
+        console.error(`[forum] ${proposalRef(p)} bilirkişi kurası yapılamadı (deneme ${n}):`, e);
+        core.audit.log(null, "system.lifecycle_draw_error", p.id, { attempts: n, code: e instanceof AppError ? e.code : "internal_error", error: rawMessage(e) });
+      }
     }
   }
 
@@ -683,18 +728,46 @@ export function createLifecycle(core: ForumCore, parts: LifecycleParts): Lifecyc
     }
   }
 
+  /** Bir adımın başarısızlığını kaydeder: sayaç + üstel geri çekilme; ilk hatada ve her N. hatada denetim günlüğüne yazar. */
+  function recordFailure(id: string, e: unknown): void {
+    const count = (stepFailures.get(id)?.count ?? 0) + 1;
+    const code = e instanceof AppError ? e.code : "internal_error";
+    const nextAt = core.now() + stepBackoffMs(count);
+    stepFailures.set(id, { count, nextAt, code });
+    console.error(`[forum] öneri ${id} ilerletilemedi (ardışık hata ${count}; sonraki deneme ${new Date(nextAt).toISOString()}):`, e);
+    if (count === 1 || count % STEP_FAILURE_AUDIT_EVERY === 0) {
+      try {
+        core.audit.log(null, "system.lifecycle_error", id, { attempts: count, code, error: rawMessage(e), nextRetryAt: nextAt });
+      } catch (auditErr) {
+        console.error("[forum] yaşam döngüsü hatası denetim günlüğüne yazılamadı:", auditErr);
+      }
+    }
+  }
+
   async function runTick(): Promise<Transition[]> {
     maintenance(core.now());
     const ids = db.all<{ id: string }>(`SELECT id FROM proposals WHERE status IN ${ACTIVE_SQL} ORDER BY seq ASC`).map((r) => r.id);
     const out: Transition[] = [];
+    const failed: string[] = [];
     for (const id of ids) {
+      const f = stepFailures.get(id);
+      if (f && core.now() < f.nextAt) {
+        failed.push(id); // geri çekilme penceresinde: yeniden denenmez, ama hâlâ başarısız sayılır
+        continue;
+      }
       try {
         out.push(...(await step(id)));
+        stepFailures.delete(id);
       } catch (e) {
-        console.error(`[forum] öneri ${id} ilerletilemedi:`, e);
+        recordFailure(id, e);
+        failed.push(id);
       }
     }
-    return out;
+    // Artık etkin olmayan (kapanmış) öneriler için kayıtları temizle.
+    const active = new Set(ids);
+    for (const id of [...stepFailures.keys()]) if (!active.has(id)) stepFailures.delete(id);
+    for (const id of [...drawFailures.keys()]) if (!active.has(id)) drawFailures.delete(id);
+    return withFailed(out, failed);
   }
 
   const engine: LifecycleEngine = {
@@ -712,9 +785,11 @@ export function createLifecycle(core: ForumCore, parts: LifecycleParts): Lifecyc
       }, Math.max(50, intervalMs));
       timer.unref?.();
     },
-    stop(): void {
+    stop(): Promise<void> {
       if (timer) clearInterval(timer);
       timer = null;
+      // Uçuştaki tick/poke bitene kadar beklenir (zincir hiçbir zaman reddedilmez): kapanışta defter/DB bunlardan önce kapanmasın.
+      return chain.then(() => undefined);
     },
     tick(): Promise<Transition[]> {
       return enqueue(runTick);
@@ -722,10 +797,12 @@ export function createLifecycle(core: ForumCore, parts: LifecycleParts): Lifecyc
     poke(proposalId: string): Promise<Transition[]> {
       return enqueue(async () => {
         try {
-          return await step(proposalId);
+          const ts = await step(proposalId);
+          stepFailures.delete(proposalId);
+          return withFailed(ts, []);
         } catch (e) {
-          console.error(`[forum] öneri ${proposalId} ilerletilemedi:`, e);
-          return [];
+          recordFailure(proposalId, e);
+          return withFailed([], [proposalId]);
         }
       });
     },

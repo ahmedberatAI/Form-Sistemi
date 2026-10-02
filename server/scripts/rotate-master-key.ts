@@ -16,6 +16,7 @@ import { randomBytes } from "node:crypto";
 import { copyFileSync, existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { SERVER_ROOT } from "../src/core/config";
+import { acquireDataDirLock, type DataDirLock } from "../src/core/lock";
 import { json, openDb } from "../src/db";
 import { rotateMasterKey, verifyVaultDecryptable, type RotationReport } from "../src/identity/rotate";
 
@@ -23,6 +24,8 @@ function fail(msg: string): never {
   console.error(`\n✘ ${msg}\n`);
   process.exit(1);
 }
+
+const held: { lock: DataDirLock | null } = { lock: null };
 
 function main(): void {
   const args = new Set(process.argv.slice(2));
@@ -39,6 +42,12 @@ function main(): void {
   const keyFile = join(dataDir, "keys", "master.key");
   const pendingFile = join(dataDir, "keys", "master.key.yeni");
 
+  // Sunucu çalışırken dönüşüm, sunucunun bellekteki eski anahtarla yazmaya devam etmesine yol açar: veri klasörü kilidi.
+  try {
+    held.lock = acquireDataDirLock(dataDir);
+  } catch (e) {
+    fail(e instanceof Error ? e.message : String(e));
+  }
   if (!existsSync(dbPath)) fail(`Veritabanı bulunamadı: ${dbPath}`);
   const envMode = typeof process.env.MASTER_KEY === "string" && process.env.MASTER_KEY.length > 0;
   if (!envMode && existsSync(pendingFile)) {
@@ -117,4 +126,8 @@ function main(): void {
   console.log("  Not: defterdeki memberRef takma referansları da ana anahtardan türetilir; bundan sonraki kayıtlar yeni referansla yazılır.");
 }
 
-main();
+try {
+  main();
+} finally {
+  held.lock?.release();
+}

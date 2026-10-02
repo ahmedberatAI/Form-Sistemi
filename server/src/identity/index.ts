@@ -346,6 +346,10 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
     deps.audit.log(actorId, "identity.pii_access", userId, { purpose, ...meta });
   }
 
+  /**
+   * KVKK dökümü için satır okuma. SQL hatası SESSİZCE boş bölüm döndürmez (eksik döküm "tam" görünüp denetim kaydına
+   * "identity.export" diye yazılırdı): hata kaydedilir ve yayılır (500); döküm üretilmez.
+   */
   function exportRows(sql: string, ...params: SqlValue[]): Record<string, unknown>[] {
     try {
       return db.all(sql, ...params).map((r) => {
@@ -353,9 +357,31 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
         for (const [k, val] of Object.entries(r)) o[camel(k)] = EXPORT_JSON_COLS.has(k) ? json<unknown>(val, val) : val;
         return o;
       });
-    } catch {
-      return [];
+    } catch (cause) {
+      const table = /\bFROM\s+([A-Za-z_]+)/i.exec(sql)?.[1] ?? "?";
+      try {
+        deps.audit.log(null, "identity.export_failed", null, { table });
+      } catch {
+        /* denetim kaydı da yazılamıyorsa asıl hata yine de yayılır */
+      }
+      throw new Error(`KVKK dökümü oluşturulamadı: "${table}" bölümü okunamadı.`, { cause });
     }
+  }
+
+  /**
+   * Üyenin KENDİ görüş kümesi (siyasi görüş çıkarımı — özel nitelikli veri; docs/KVKK.md §4) ve haritadaki konumu.
+   * Yalnızca verilen üyenin girdisi okunur; başka üyelerin ataması dökümde yer almaz.
+   */
+  function exportOpinionCluster(userId: string): Record<string, unknown> | null {
+    const path = `$."${userId.replace(/["\\]/g, "")}"`;
+    const r = db.get<{ id: string; created_at: number; cluster_id: string | null; position: string | null }>(
+      `SELECT id, created_at, json_extract(assignments, ?) AS cluster_id, json_extract(coords, ?) AS position
+       FROM cluster_snapshots ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+      path,
+      path,
+    );
+    if (!r) return null;
+    return { snapshotId: r.id, snapshotAt: Number(r.created_at), clusterId: r.cluster_id ?? null, position: r.position === null ? null : json<unknown>(r.position, null) };
   }
 
   const corrections = createCorrectionHandlers({
@@ -660,6 +686,8 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
         ),
         proposalSuggestions: exportRows("SELECT id, proposal_id, body, status, created_at, decided_at FROM proposal_suggestions WHERE author_id = ? ORDER BY created_at", userId),
         sponsorships: exportRows("SELECT proposal_id, at, ledger_tx FROM proposal_sponsors WHERE user_id = ? ORDER BY at", userId),
+        opinionCluster: exportOpinionCluster(userId),
+        eligibleVoterRolls: exportRows("SELECT proposal_id FROM eligible_voters WHERE user_id = ? ORDER BY proposal_id", userId).map((r) => r.proposalId),
         messages: exportRows(
           `SELECT id, seq, thread_type, thread_id, parent_id, stance, body, version, visibility, created_at, updated_at
            FROM messages WHERE author_id = ? ORDER BY created_at`,

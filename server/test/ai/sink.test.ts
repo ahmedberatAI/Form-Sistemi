@@ -148,6 +148,28 @@ describe("AiRecordSink arayüzü: record/get/list/approve (gerçek ve sahte ayn�
     });
   }
 
+  for (const impl of impls) {
+    it(`${impl.name}: findByInput aynı görev + hedef + girdi özeti için en son kaydı bulur (#224)`, () => {
+      const { sink, advance } = impl.make();
+      const rec = (task: "summarize" | "bridging_drafts", targetId: string, inputHash: string) =>
+        sink.record({ task, targetType: "proposal", targetId, model: OFFLINE_MODEL, offline: true, output: null, approvedBy: null, inputHash, outputHash: "1".repeat(64) });
+      const h1 = "a".repeat(64);
+      const h2 = "b".repeat(64);
+      const first = rec("summarize", "p-1", h1);
+      advance(60_000);
+      const newest = rec("summarize", "p-1", h1);
+      rec("summarize", "p-1", h2);
+      rec("bridging_drafts", "p-1", h1);
+      rec("summarize", "p-2", h1);
+      expect(sink.findByInput("summarize", "proposal", "p-1", h1)?.id).toBe(newest.id);
+      expect(sink.findByInput("summarize", "proposal", "p-1", h1)?.id).not.toBe(first.id);
+      expect(sink.findByInput("bridging_drafts", "proposal", "p-1", h1)?.task).toBe("bridging_drafts");
+      expect(sink.findByInput("summarize", "proposal", "p-1", "c".repeat(64))).toBeNull();
+      expect(sink.findByInput("summarize", "proposal", "yok", h1)).toBeNull();
+      expect(sink.findByInput("summarize", "message", "p-1", h1)).toBeNull();
+    });
+  }
+
   it("gerçek depo: promptVersion verilmezse güncel istem sürümü yazılır (defter kaydı dahil)", () => {
     const ctx = makeCtx();
     const ledger = new FakeLedger(ctx.clock);

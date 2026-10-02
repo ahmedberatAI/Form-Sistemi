@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { HOUR } from "../../core/clock";
 import { nicknameKey, type AdminUserRow, type AuditLogEntry, type ClusterSnapshotView, type Me, type Role, type TickResponse, type UserStatus } from "@forum/shared";
 import type { Transition } from "../../core/forum-contracts";
+import { failedProposalIds } from "../../forum/lifecycle";
 import { json, type Db } from "../../db";
 import { requireRole } from "../auth";
 import { adminUsersQuery, auditLogQuery, clockAdvanceBody, idParams, ROLES, setRolesBody } from "../schemas";
@@ -12,16 +13,20 @@ import { parseBody, parseParams, parseQuery } from "../validation";
 /** Yaşam döngüsü bir turda yeni geçişlere yol açabilir (ör. uzlaşma süresi 0 olan DEL); en çok 5 tur ilerletilir. */
 export const MAX_TICK_ROUNDS = 5;
 
-export async function tickUntilSettled(services: AppServices): Promise<TickResponse> {
+/** `failed`: yaşam döngüsünün ilerletemediği (hata/geri çekilme) öneri kimlikleri — yalnızca varsa döner. */
+export async function tickUntilSettled(services: AppServices): Promise<TickResponse & { failed?: string[] }> {
   const all: Transition[] = [];
+  const failed = new Set<string>();
   for (let i = 0; i < MAX_TICK_ROUNDS; i++) {
     const t = await services.forum.lifecycle.tick();
     all.push(...t);
+    for (const id of failedProposalIds(t)) failed.add(id);
     if (t.length === 0) break;
   }
   return {
     transitions: all.map(({ proposalId, seq, from, to, reason }) => ({ proposalId, seq, from, to, reason })),
     now: services.clock.now(),
+    ...(failed.size > 0 ? { failed: [...failed] } : {}),
   };
 }
 
@@ -95,7 +100,7 @@ export function registerAdminRoutes(app: FastifyInstance, { services }: RouteDep
   app.post("/api/admin/tick", async (req): Promise<TickResponse> => {
     const actor = requireRole(req, "admin");
     const res = await tickUntilSettled(services);
-    audit.log(actor.id, "admin.tick", null, { transitions: res.transitions.length });
+    audit.log(actor.id, "admin.tick", null, { transitions: res.transitions.length, ...(res.failed ? { failed: res.failed } : {}) });
     return res;
   });
 
