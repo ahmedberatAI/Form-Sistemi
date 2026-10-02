@@ -70,7 +70,7 @@ function bfs(adj: Map<string, Set<string>>, a: string, b: string, max: number): 
   return null;
 }
 
-/** Sahte graf: RELATED_TO (aile/iş/hane) ≤ 3 adım → kesin; hane eşitliği → kesin; FOLLOWS mesafe 1/2 → yumuşak 1/0,5. */
+/** Sahte graf: RELATED_TO (aile/iş/hane) doğrudan kenar → kesin; 2-3 adım → yumuşak 0,5; hane eşitliği → kesin; FOLLOWS mesafe 1/2 → yumuşak 1/0,5. */
 export class FakeGraph {
   readonly edges: (GraphEdgeView & { revoked: boolean })[] = [];
   private related = new Map<string, Set<string>>();
@@ -106,7 +106,7 @@ export class FakeGraph {
   conflictOfInterest(expert: string, author: string, opts?: { householdOf?: (u: string) => string | null }): ConflictCheck {
     const reasons: string[] = [];
     const d = bfs(this.related, expert, author, 3);
-    let hard = d !== null;
+    let hard = d === 1;
     if (d !== null) reasons.push(`yazarla ${d} adımlık yakınlık bağı`);
     const h1 = opts?.householdOf?.(expert) ?? null;
     const h2 = opts?.householdOf?.(author) ?? null;
@@ -115,7 +115,8 @@ export class FakeGraph {
       reasons.push("aynı hane");
     }
     const fd = bfs(this.follows, expert, author, 2);
-    return { hard, soft: fd === 1 ? 1 : fd === 2 ? 0.5 : 0, distance: d ?? fd, reasons };
+    const chainSoft = d !== null && d > 1 ? 0.5 : 0;
+    return { hard, soft: Math.max(fd === 1 ? 1 : fd === 2 ? 0.5 : 0, chainSoft), distance: d ?? fd, reasons };
   }
 }
 

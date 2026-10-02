@@ -142,6 +142,15 @@ export class ValidatorNode {
   private readonly byType = new Map<string, string[]>();
   private verifiedUpTo = 0;
   private corruptAt: number | null = null;
+  /**
+   * verifyFull() önbelleği: kimliği doğrulanmamış (herkese açık) uçtan tüm zincirin her istekte yeniden doğrulanması
+   * hizmet reddine yol açardı. Sonuç (yükseklik, uç blok özeti, kurcalama/onarım nesli) anahtarıyla saklanır; zincir
+   * yalnız büyüdüyse (nesil aynı) yalnız yeni bloklar doğrulanır. tamper()/repairFrom() nesli artırır.
+   */
+  private verifyGeneration = 0;
+  private verifyCache: { generation: number; height: number; tipHash: string; errors: { height: number; error: string }[] } | null = null;
+  /** Bu düğümde bugüne dek tam doğrulanan blok sayısı (önbelleğin işe yaradığını izlemek için tanı sayacı). */
+  blockVerifications = 0;
 
   private h: number;
   private round = 0;
@@ -361,12 +370,26 @@ export class ValidatorNode {
 
   /** Tam doğrulama: bağlantı, blok özeti, Merkle kökü, işlem özetleri ve imzaları, ≥ 2f+1 precommit imzası. */
   verifyFull(): ChainVerification {
-    const errors: { height: number; error: string }[] = [];
     const n = this.store.height();
-    for (let hh = 1; hh <= n; hh++) {
+    const tipHash = n > 0 ? this.store.get(n)!.header.hash : "";
+    const c = this.verifyCache;
+    let errors: { height: number; error: string }[] = [];
+    let from = 1;
+    if (c && c.generation === this.verifyGeneration) {
+      if (c.height === n && c.tipHash === tipHash) {
+        errors = c.errors; // zincir değişmedi: O(1)
+        from = n + 1;
+      } else if (c.height < n && (c.height === 0 || this.store.get(c.height)?.header.hash === c.tipHash)) {
+        errors = c.errors.slice(); // yalnız büyüdü: eski bloklar değişmedi, yeni blokları doğrula
+        from = c.height + 1;
+      }
+    }
+    for (let hh = from; hh <= n; hh++) {
+      this.blockVerifications++;
       for (const error of blockErrors(this.store.get(hh)!, hh, this.prevInfo(hh), this.params)) errors.push({ height: hh, error });
     }
-    return { nodeId: this.id, ok: errors.length === 0, checkedBlocks: n, errors };
+    this.verifyCache = { generation: this.verifyGeneration, height: n, tipHash, errors };
+    return { nodeId: this.id, ok: errors.length === 0, checkedBlocks: n, errors: errors.map((e) => ({ ...e })) };
   }
 
   // ───────────── Demo: kurcalama ve onarım ─────────────
@@ -408,6 +431,7 @@ export class ValidatorNode {
   private markDirty(height: number): void {
     this.verifiedUpTo = Math.min(this.verifiedUpTo, height - 1);
     this.corruptAt = null;
+    this.verifyGeneration++; // mevcut bir bloğun üzerine yazıldı: önbellekteki doğrulama sonuçları geçersiz
   }
 
   private rebuildIndexes(): void {

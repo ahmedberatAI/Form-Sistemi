@@ -261,13 +261,18 @@ describe("graf: çıkar çatışması (§8 adım 3–4)", () => {
     expect(r.distance).toBe(0);
   });
 
-  it("aile yakınlığı 2 adımda kesin çatışma", () => {
+  it("üçüncü kişi aracılı 2 adımlık yakınlık zinciri kesin değil, yumuşak çatışmadır (#221)", () => {
     graph.relate(expert, mid, "family");
     graph.relate(author, mid, "business");
     const r = graph.conflictOfInterest(expert, author);
-    expect(r.hard).toBe(true);
-    expect(r.soft).toBe(0);
+    expect(r.hard).toBe(false);
+    expect(r.soft).toBe(0.5);
     expect(r.reasons.join(" ")).toMatch(/2 adımlık/);
+  });
+
+  it("yazarın beyan ettiği doğrudan yakınlık kesin çatışmadır (#221)", () => {
+    graph.relate(author, expert, "family");
+    expect(graph.conflictOfInterest(expert, author)).toMatchObject({ hard: true, soft: 0 });
   });
 
   it("doğrudan yakınlık türü gerekçede yazılır; 4 adım kesin değildir", () => {
@@ -277,8 +282,9 @@ describe("graf: çıkar çatışması (§8 adım 3–4)", () => {
     const g2 = createGraphService(ctx2, { ledger: null });
     const ids = ["E", "X1", "X2", "X3", "A"].map((n) => insertUser(ctx2.db, { nickname: n }));
     for (let i = 0; i < 4; i++) g2.relate(ids[i], ids[i + 1], "family");
-    expect(g2.conflictOfInterest(ids[0], ids[4]).hard).toBe(false);
-    expect(g2.conflictOfInterest(ids[0], ids[3]).hard).toBe(true);
+    expect(g2.conflictOfInterest(ids[0], ids[4])).toMatchObject({ hard: false, soft: 0 });
+    // 3 adımlık zincir de yalnız yumuşak çatışmadır (kesin dışlama yalnız doğrudan kenar ya da aynı hane)
+    expect(g2.conflictOfInterest(ids[0], ids[3])).toMatchObject({ hard: false, soft: 0.5 });
   });
 
   it("aynı hane (householdOf) kesin çatışma; null hane eşleşmez", () => {

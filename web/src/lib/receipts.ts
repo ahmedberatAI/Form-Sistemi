@@ -24,6 +24,16 @@ async function readAll(): Promise<StoredReceipt[]> {
   return Array.isArray(list) ? list : [];
 }
 
+/**
+ * Makbuz geçerli oturum sahibine görünür mü? Oturum yoksa (misafir) yalnızca sahipsiz makbuzlar görünür; böylece
+ * ortak cihazda çıkış yapılınca önceki üyenin oy seçimi ve tuzu bir sonraki ziyaretçiye açılmaz.
+ * Oturum varsa sahibin kendi makbuzları ile sahipsiz (eski/elle aktarılmış) makbuzlar görünür.
+ */
+function visibleToOwner(r: StoredReceipt): boolean {
+  const ownerId = r.ownerId ?? null;
+  return ownerId === null || ownerId === owner;
+}
+
 function sameReceipt(a: BallotReceipt, b: BallotReceipt): boolean {
   return a.proposalId === b.proposalId && a.round === b.round && a.ballotId === b.ballotId && a.commitment === b.commitment && a.castAt === b.castAt;
 }
@@ -32,8 +42,9 @@ function sameReceipt(a: BallotReceipt, b: BallotReceipt): boolean {
 export async function saveReceipt(r: BallotReceipt, meta?: { proposalTitle?: string; proposalSeq?: number }): Promise<StoredReceipt> {
   const all = await readAll();
   const stored: StoredReceipt = { ...r, savedAt: Date.now(), ownerId: owner, ...meta };
-  const i = all.findIndex((x) => sameReceipt(x, r));
-  if (i >= 0) all[i] = { ...all[i], ...stored, savedAt: all[i].savedAt };
+  // Yalnızca geçerli sahibe görünen kayıt güncellenir: misafirin aynı makbuzu aktarması başkasının kaydını sahipsiz yapmasın.
+  const i = all.findIndex((x) => visibleToOwner(x) && sameReceipt(x, r));
+  if (i >= 0) all[i] = { ...all[i], ...stored, ownerId: all[i].ownerId ?? owner, savedAt: all[i].savedAt };
   else all.push(stored);
   await setJsonPref(PREF_KEYS.receipts, all);
   return stored;
@@ -44,7 +55,7 @@ export async function listReceipts(proposalId?: string): Promise<StoredReceipt[]
   const all = await readAll();
   return all
     .filter((r) => (proposalId ? r.proposalId === proposalId : true))
-    .filter((r) => r.ownerId == null || owner == null || r.ownerId === owner)
+    .filter(visibleToOwner)
     .sort((a, b) => b.castAt - a.castAt || b.savedAt - a.savedAt);
 }
 
@@ -80,11 +91,11 @@ export async function importReceipts(json: string): Promise<number> {
   return n;
 }
 
-/** Oturumdaki kullanıcının makbuzlarını cihazdan siler. */
+/** Geçerli sahibin makbuzlarını cihazdan siler (oturum yoksa yalnızca sahipsizleri); başkalarının makbuzlarına dokunmaz. */
 export async function clearReceipts(): Promise<void> {
   const all = await readAll();
   await setJsonPref(
     PREF_KEYS.receipts,
-    all.filter((r) => !(r.ownerId == null || owner == null || r.ownerId === owner)),
+    all.filter((r) => (r.ownerId ?? null) !== owner),
   );
 }

@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
     "android:sync": "vite build && cap sync android",
     "android:open": "cap open android"
   },

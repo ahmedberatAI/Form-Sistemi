@@ -50,16 +50,14 @@ describe("aday havuzu (§8 adım 2)", () => {
 });
 
 describe("kesin dışlamalar (§8 adım 3)", () => {
-  it("yazar, 2 adımlık aile bağı, aynı hane: listede görünür, ağırlık 0, seçilmez", async () => {
+  it("yazar, doğrudan aile bağı, aynı hane: listede görünür, ağırlık 0, seçilmez", async () => {
     const w = makeWorld();
     w.expert("author", [CAT.toplu]);
     w.expert("e-aile", [CAT.toplu]);
     w.expert("e-hane", [CAT.toplu]);
     w.expert("e-ok1", [CAT.toplu]);
     w.expert("e-ok2", [CAT.toplu]);
-    w.user("x-kuzen");
-    w.graph.relate("e-aile", "x-kuzen");
-    w.graph.relate("x-kuzen", "author");
+    w.graph.relate("e-aile", "author");
     w.households.set("e-hane", "hane-7");
     w.households.set("author", "hane-7");
     w.proposal("p-1", "author", [CAT.toplu]);
@@ -68,7 +66,7 @@ describe("kesin dışlamalar (§8 adım 3)", () => {
     const byId = Object.fromEntries(panel.candidates.map((c) => [c.userId, c]));
     expect(byId["author"]).toMatchObject({ weight: 0, excludedReason: "Önerinin yazarı" });
     expect(byId["e-aile"].weight).toBe(0);
-    expect(byId["e-aile"].excludedReason).toMatch(/kesin çıkar çatışması.*2 adım/);
+    expect(byId["e-aile"].excludedReason).toMatch(/kesin çıkar çatışması.*1 adım/);
     expect(byId["e-hane"].weight).toBe(0);
     expect(byId["e-hane"].excludedReason).toMatch(/aynı hane/);
     expect(byId["e-ok1"].excludedReason).toBeUndefined();

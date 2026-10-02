@@ -771,18 +771,21 @@ export function createGraphService(ctx: CoreContext, deps: { ledger: LedgerServi
       if (e === a) {
         return { hard: true, soft: 1, distance: 0, reasons: ["Bilirkişi adayı, önerinin yazarıdır."] };
       }
+      // Kesin çatışma yalnız bilirkişi ile yazar ARASINDAKİ doğrudan RELATED_TO kenarıdır (kenarı ikisinden biri beyan eder).
+      // Üçüncü kişilerin tek taraflı beyanlarıyla kurulan 2-3 adımlık zincirler rıza dışı dışlamaya yol açmasın diye yalnız
+      // yumuşak çatışmadır (ağırlığı yarıya indirir); hedef bunları geri alamaz.
       const related = bfs(e, a, new Set<EdgeType>(["RELATED_TO"]), 3, false);
-      if (related !== null) {
+      let chainSoft = 0;
+      if (related === 1) {
         hard = true;
-        if (related === 1) {
-          const kinds = new Set<string>();
-          g.forEachEdge(e, (_key, attr, s, t) => {
-            if (attr.type === "RELATED_TO" && (s === a || t === a)) kinds.add(RELATION_LABELS[String(attr.meta?.kind)] ?? "yakınlık");
-          });
-          reasons.push(`Yazarla doğrudan beyan edilmiş yakınlık var (${[...kinds].sort().join(", ")}).`);
-        } else {
-          reasons.push(`Yazarla ${related} adımlık aile/iş/hane yakınlığı zinciri var.`);
-        }
+        const kinds = new Set<string>();
+        g.forEachEdge(e, (_key, attr, s, t) => {
+          if (attr.type === "RELATED_TO" && (s === a || t === a)) kinds.add(RELATION_LABELS[String(attr.meta?.kind)] ?? "yakınlık");
+        });
+        reasons.push(`Yazarla doğrudan beyan edilmiş yakınlık var (${[...kinds].sort().join(", ")}).`);
+      } else if (related !== null) {
+        chainSoft = 0.5;
+        reasons.push(`Yazarla ${related} adımlık aile/iş/hane yakınlığı zinciri var (üçüncü kişi beyanlarına dayanabilir; yumuşak çatışma).`);
       }
       const household = opts?.householdOf;
       if (household) {
@@ -802,7 +805,7 @@ export function createGraphService(ctx: CoreContext, deps: { ledger: LedgerServi
         soft = 0.5;
         reasons.push("Yazarla iki adımlık dolaylı bağlantısı var.");
       }
-      return { hard, soft, distance, reasons };
+      return { hard, soft: Math.max(soft, chainSoft), distance, reasons };
     },
 
     agreementCommunities,

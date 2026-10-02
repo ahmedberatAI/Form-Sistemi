@@ -4,6 +4,7 @@
 // yapılır; işlem bitmeden her satır yeni anahtarla yeniden çözülerek doğrulanır, herhangi bir hata tüm değişikliği geri alır.
 // Kripto-imha edilmiş satırlar (wrapped_dek NULL) atlanır: onların DEK'i zaten yoktur.
 import { createAuditLogger } from "../core/audit";
+import { setKeyFingerprint } from "../core/keycheck";
 import type { Db } from "../db";
 import { createVault, openField, parseMasterKey, VAULT_FIELDS, VaultIntegrityError, type Vault, type VaultField } from "./vault";
 import type { AddressInput } from "@forum/shared";
@@ -128,6 +129,8 @@ export function rotateMasterKey(db: Db, oldMasterHex: string, newMasterHex: stri
       }
 
       if (dryRun) throw new DryRunRollback();
+      // Açılışta anahtar denetimi (core/keycheck) yeni anahtarı kabul etsin: parmak izi aynı işlemde güncellenir.
+      setKeyFingerprint(db, "master", newMasterHex);
       // Denetim kaydı: kişisel veri ve anahtar içermez.
       createAuditLogger({ db, clock: { now: () => opts.now, advance: () => undefined, offset: () => 0 } }).log(null, "identity.master_key_rotated", null, {
         rewrapped: report.rewrapped,

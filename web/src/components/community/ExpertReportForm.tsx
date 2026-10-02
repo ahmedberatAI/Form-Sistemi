@@ -1,7 +1,7 @@
 // Bilirkişi rapor formu: değerlendirme, güven, riskler, sorulara yanıtlar, gövde, karşı görüş.
 // Yazarken hukuki nitelendirme denetimi (YZ ya da çevrimdışı sezgisel) canlı çalışır — yalnızca danışmadır.
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ASSESSMENT_LABELS, type ExpertAssessment, type ExpertReportView, type LintResponse, type MyAssignment } from "@forum/shared";
+import { ASSESSMENT_LABELS, TEXT_LIMITS, type ExpertAssessment, type ExpertReportView, type LintResponse, type MyAssignment } from "@forum/shared";
 import { ApiError, errorMessage } from "../../api/client";
 import { lintExpertText, submitExpertReport } from "../../api/endpoints";
 import { useDebounced } from "../../lib/hooks";
@@ -12,7 +12,7 @@ import "./community.css";
 
 const LINT_MIN = 20;
 const LINT_MAX = 50_000;
-const BODY_MIN = 50;
+const BODY_MIN = TEXT_LIMITS.expertReportBody.min;
 /** Azınlık güvenceli soruya asgari yanıt uzunluğu (sunucu da aynı kuralı uygular: 400 minority_question_unanswered). */
 const GUARANTEED_MIN = 10;
 const answerKey = (questionId: string) => `answer:${questionId}`;
@@ -222,7 +222,7 @@ export function ExpertReportForm({ assignment, onSubmitted, onCancel }: { assign
               <Input
                 label={`Risk ${i + 1}`}
                 value={r}
-                maxLength={2000}
+                maxLength={TEXT_LIMITS.expertReportRisk.max}
                 onChange={(e) => setRisks((xs) => xs.map((x, j) => (j === i ? e.target.value : x)))}
                 placeholder="ör. Uygulama maliyeti öngörülenin üzerinde olabilir"
               />
@@ -260,7 +260,7 @@ export function ExpertReportForm({ assignment, onSubmitted, onCancel }: { assign
               <Textarea
                 label={`Soru ${i + 1} yanıtınız${q.minorityGuaranteed ? " (zorunlu)" : ""}`}
                 value={answers[q.id] ?? ""}
-                maxLength={10_000}
+                maxLength={TEXT_LIMITS.expertReportAnswer.max}
                 rows={3}
                 required={q.minorityGuaranteed}
                 hint={q.minorityGuaranteed ? `Azınlık güvenceli soru: yanıtlanmadan rapor gönderilemez (en az ${GUARANTEED_MIN} karakter).` : undefined}
@@ -286,9 +286,9 @@ export function ExpertReportForm({ assignment, onSubmitted, onCancel }: { assign
         required
         rows={10}
         value={body}
-        maxLength={50_000}
+        maxLength={TEXT_LIMITS.expertReportBody.max}
         showCount
-        hint={`En az ${BODY_MIN} karakter. Gerekçeli teknik değerlendirmenizi yazın.`}
+        hint={`En az ${BODY_MIN}, en çok ${TEXT_LIMITS.expertReportBody.max} karakter. Gerekçeli teknik değerlendirmenizi yazın.`}
         error={errors.body}
         onChange={(e) => setBody(e.target.value)}
       />
@@ -297,7 +297,7 @@ export function ExpertReportForm({ assignment, onSubmitted, onCancel }: { assign
         label="Karşı görüş (isteğe bağlı)"
         rows={4}
         value={dissent}
-        maxLength={20_000}
+        maxLength={TEXT_LIMITS.expertReportDissent.max}
         hint="Paneldeki diğer bilirkişilerden ayrıştığınız noktalar ya da çekinceleriniz."
         onChange={(e) => setDissent(e.target.value)}
       />

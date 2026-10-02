@@ -120,11 +120,16 @@ class OntologyServiceImpl implements OntologyService {
     return this.ctx.db.get<VersionRow>("SELECT * FROM bylaw_versions ORDER BY version DESC LIMIT 1");
   }
 
-  private load(row: VersionRow): void {
+  /** Sürümü ayrıştırıp modelini kurar; durumu değiştirmez (hata verirse hiçbir şey etkilenmez). */
+  private prepare(row: Pick<VersionRow, "version" | "ttl" | "hash">): LoadedVersion {
     const abox = parseTurtle(row.ttl);
     const model = new BylawModel(this.tbox, abox);
     const baseQuads = this.engine.run([...this.tbox, ...abox]).getQuads(null, null, null, null);
-    this.loaded = { version: row.version, hash: row.hash, model, baseQuads };
+    return { version: row.version, hash: row.hash, model, baseQuads };
+  }
+
+  private load(row: VersionRow): void {
+    this.loaded = this.prepare(row);
   }
 
   private get state(): LoadedVersion {
@@ -348,8 +353,20 @@ class OntologyServiceImpl implements OntologyService {
     const quads = patchedAbox(s.model, patch);
     const version = s.version + 1;
     const header = `# Forum Yönetmeliği — A-kutusu, sürüm ${version} (öneri ${proposalId}). Önceki sürüm: ${s.version} (${s.hash}).`;
-    const ttl = writeTurtle(quads, header);
-    const hash = hashQuads(quads);
+    // Kaydetmeden önce yazılan metin geri okunur: ayrıştırılamıyorsa ya da üçlü kümesi yamadan çıkan kümeyle birebir
+    // aynı değilse (enjekte edilmiş üçlü) sürüm eklenmez; böylece bozuk bir sürüm veritabanında kalıp yönetmeliği
+    // dondurmaz. Yüklenecek model de kayıttan ÖNCE kurulur.
+    let ttl: string;
+    let hash: string;
+    let next: LoadedVersion;
+    try {
+      ttl = writeTurtle(quads, header);
+      hash = hashQuads(quads);
+      if (hashQuads(parseTurtle(ttl)) !== hash) throw new Error("Üçlü kümesi yamadan çıkan kümeyle aynı değil.");
+      next = this.prepare({ version, ttl, hash });
+    } catch (e) {
+      throw unprocessable("bylaw_patch_invalid", `Yönetmelik yaması uygulanamaz: yazılan sürüm doğrulanamadı. ${(e as Error).message}`.trim());
+    }
     const now = this.ctx.clock.now();
     this.ctx.db.tx(() => {
       const latest = this.ctx.db.get<{ v: number | null }>("SELECT MAX(version) AS v FROM bylaw_versions");
@@ -363,7 +380,7 @@ class OntologyServiceImpl implements OntologyService {
         now,
       );
     });
-    this.load({ version, ttl, hash, via_proposal_id: proposalId, ledger_tx: null, created_at: now });
+    this.loaded = next;
     return { version, hash, createdAt: now, viaProposalId: proposalId, ledgerTx: null };
   }
 }

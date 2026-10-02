@@ -17,6 +17,7 @@ import { notFound } from "../core/errors";
 import { json } from "../db";
 import type { ClusterServiceImpl } from "./clusters";
 import { integrityWarnings } from "./integrity";
+import { objectionBudgetOf } from "./objection-budget";
 import { evaluateObjections, finalTallies, firstRoundChoice } from "./tally";
 import { isVotingStatus, parseProposal, safe, type BallotRow, type ForumCore, type ProposalRow } from "./util";
 import { proposalSummaries, summaryRowOf } from "./views";
@@ -161,7 +162,12 @@ export function buildProposalDetail(core: ForumCore, clusters: ClusterServiceImp
       const t1 = tallies.find((t) => Number(t.round) === 1);
       const bid = core.ballotId(viewer.id, p.id, 1);
       const first = json<RevealEntry[]>(t1?.reveal_payload ?? null, []).find((r) => r.ballotId === bid);
-      canObject = first?.choice === "no" && !objectionRows.some((o) => o.user_id === viewer.id) && me?.political_consent === 1;
+      // ProposalService.object() ile aynı kural: 30 günlük itiraz imza bütçesi de dahil (tek kaynak: objection-budget.ts).
+      canObject =
+        first?.choice === "no" &&
+        !objectionRows.some((o) => o.user_id === viewer.id) &&
+        me?.political_consent === 1 &&
+        !objectionBudgetOf(db, viewer.id, now).exhausted;
     }
     // ProposalService.minorityReport ile aynı koşullar: evre, güncel seçmen koşulları, tur-1 ETKİN oyu "red" (vekâletle dahil), tek rapor.
     if ((p.status === "reconciliation" || p.status === "objection_window") && eligible && active && me?.political_consent === 1) {
@@ -212,7 +218,7 @@ export function buildProposalDetail(core: ForumCore, clusters: ClusterServiceImp
         minorityGuaranteed: q.minority_guaranteed === 1,
         createdAt: Number(q.created_at),
       })),
-    expertPanel: safe(() => deps.experts.panel(p.id), null),
+    expertPanel: safe(() => deps.experts.panel(p.id, viewer?.status === "verified" ? viewer : null), null),
     aiAnalyses: safe(() => deps.aiSink.list("proposal", p.id), []),
     myBallot,
     myEffectiveVia,

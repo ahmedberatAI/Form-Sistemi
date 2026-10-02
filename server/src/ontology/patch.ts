@@ -3,6 +3,7 @@
 import { FY_NS, expandIri, type Finding, type RegulationPatch } from "@forum/shared";
 import { BylawModel, DURATION_PARAMS, TIER_PARAMS, type HolderInfo, type ParamDef, type ParamKind } from "./model";
 import { art, fmtNum, makeFinding } from "./findings";
+import { isNewTermIri, isSafeIri } from "./iri";
 import {
   RDF_TYPE,
   RDFS_LABEL,
@@ -25,6 +26,8 @@ import type { ShaclChecker } from "./shacl";
 
 const FY_KATEGORI = FY_NS + "Kategori";
 const VOTABLE_TIER_CODES = new Set(["T0", "T1", "T2"]);
+const PROTECTION_LEVELS = ["Degistirilemez", "Nitelikli", "Olagan"];
+const IRI_INVALID = "geçerli bir http(s) IRI'si değil (boşluk ile < > \" { } | ^ ` \\ karakterleri içeremez).";
 
 export interface PatchApplication {
   aboxQuads: Quad[];
@@ -76,6 +79,7 @@ export function applyPatchOps(model: BylawModel, patch: RegulationPatch, proposa
         const holderIri = expandIri(String(op.rule ?? "").trim());
         const def = resolveParam(model, String(op.param ?? ""));
         if (!holderIri) return bad("patch_invalid_target", "parametresi değiştirilecek kural belirtilmedi.");
+        if (!isSafeIri(holderIri)) return bad("patch_iri_invalid", `"${op.rule}" ${IRI_INVALID}`);
         const target = namedNode(holderIri);
         opQuads.push(quad(node, fyN("hedef"), target));
         if (!def) return bad("patch_unknown_param", `bilinmeyen parametre "${op.param}".`);
@@ -88,6 +92,8 @@ export function applyPatchOps(model: BylawModel, patch: RegulationPatch, proposa
         else if (isArticle(holderIri)) kind = "article";
         else if (exists(holderIri)) return bad("patch_invalid_target", `${localName(holderIri)} parametre taşıyan bir kural değil.`);
         else kind = "new";
+        if (kind === "new" && !isNewTermIri(holderIri))
+          return bad("patch_iri_invalid", `yeni kuralın IRI'si yönetmelik ad alanında (fy:) ve yalnız harf, rakam, "_" ya da "-" içeren bir adla olmalıdır.`);
 
         const allowed =
           kind === "article"
@@ -123,6 +129,7 @@ export function applyPatchOps(model: BylawModel, patch: RegulationPatch, proposa
             if (typeof v !== "string") return bad("patch_value_type", `"${def.label}" için bir IRI gerekir.`);
             const iri = expandIri(v.trim());
             if (iri) {
+              if (!isSafeIri(iri)) return bad("patch_iri_invalid", `"${v}" ${IRI_INVALID}`);
               value = namedNode(iri);
               if (def.local === "uygulanirSinif" && !model.classes.has(iri) && !createdCategories.has(iri))
                 return bad("patch_invalid_class", `"${v}" tanımlı bir öneri sınıfı ya da kategori değil.`, art("Madde_11_2"));
@@ -155,9 +162,12 @@ export function applyPatchOps(model: BylawModel, patch: RegulationPatch, proposa
       case "addCategory": {
         const iri = expandIri(String(op.iri ?? "").trim());
         const parent = expandIri(String(op.parent ?? "").trim());
-        if (iri) opQuads.push(quad(node, fyN("hedef"), namedNode(iri)));
-        if (parent) opQuads.push(quad(node, fyN("ustSinif"), namedNode(parent)));
+        if (isSafeIri(iri)) opQuads.push(quad(node, fyN("hedef"), namedNode(iri)));
+        if (isSafeIri(parent)) opQuads.push(quad(node, fyN("ustSinif"), namedNode(parent)));
         if (!iri) return bad("patch_category_iri", "yeni kategorinin IRI'si belirtilmedi.", art("Madde_8_1"));
+        if (!isNewTermIri(iri))
+          return bad("patch_iri_invalid", `yeni kategorinin IRI'si yönetmelik ad alanında (fy:) ve yalnız harf, rakam, "_" ya da "-" içeren bir adla olmalıdır.`, art("Madde_8_1"));
+        if (parent && !isSafeIri(parent)) return bad("patch_iri_invalid", `üst kategori "${op.parent}" ${IRI_INVALID}`, art("Madde_8_1"));
         if (exists(iri)) return bad("patch_category_exists", `${localName(iri)} zaten tanımlı.`, art("Madde_8_1"));
         if (parent !== FY_KATEGORI && !model.isCategory(parent) && !createdCategories.has(parent))
           return bad("patch_category_parent", `üst kategori "${op.parent}" tanımlı değil.`, art("Madde_8_1"));
@@ -178,6 +188,7 @@ export function applyPatchOps(model: BylawModel, patch: RegulationPatch, proposa
 
       case "amendArticleText": {
         const iri = expandIri(String(op.article ?? "").trim());
+        if (iri && !isSafeIri(iri)) return bad("patch_iri_invalid", `"${op.article}" ${IRI_INVALID}`);
         if (iri) opQuads.push(quad(node, fyN("hedef"), namedNode(iri)));
         if (!iri || !isArticle(iri)) return bad("patch_article_missing", `"${op.article}" maddesi bulunamadı.`);
         replace(namedNode(iri), fyN("metin"), literal(String(op.text ?? "")));
@@ -187,14 +198,16 @@ export function applyPatchOps(model: BylawModel, patch: RegulationPatch, proposa
       case "addArticle": {
         const iri = expandIri(String(op.iri ?? "").trim());
         const protection = String(op.protection ?? "Olagan");
-        if (iri) opQuads.push(quad(node, fyN("hedef"), namedNode(iri)));
-        opQuads.push(quad(node, fyN("yeniKoruma"), fyN(protection)));
+        if (isSafeIri(iri)) opQuads.push(quad(node, fyN("hedef"), namedNode(iri)));
+        if (PROTECTION_LEVELS.includes(protection)) opQuads.push(quad(node, fyN("yeniKoruma"), fyN(protection)));
         if (!iri) return bad("patch_article_iri", "yeni maddenin IRI'si belirtilmedi.");
+        if (!isNewTermIri(iri))
+          return bad("patch_iri_invalid", `yeni maddenin IRI'si yönetmelik ad alanında (fy:) ve yalnız harf, rakam, "_" ya da "-" içeren bir adla olmalıdır.`);
         if (exists(iri)) return bad("patch_article_exists", `${localName(iri)} zaten tanımlı.`);
         const number = String(op.number ?? "").trim();
         if (st.getSubjects(fyN("maddeNo"), literal(number), null).length > 0)
           return bad("patch_article_number_taken", `"${number}" numaralı bir madde zaten var.`);
-        if (!["Degistirilemez", "Nitelikli", "Olagan"].includes(protection))
+        if (!PROTECTION_LEVELS.includes(protection))
           return bad("patch_invalid_protection", `"${protection}" geçerli bir koruma düzeyi değil.`, art("Madde_6_1"));
         const s = namedNode(iri);
         st.addQuad(quad(s, RDF_TYPE, fyN("Madde")));
@@ -210,10 +223,11 @@ export function applyPatchOps(model: BylawModel, patch: RegulationPatch, proposa
       case "setProtection": {
         const iri = expandIri(String(op.article ?? "").trim());
         const protection = String(op.protection ?? "");
+        if (iri && !isSafeIri(iri)) return bad("patch_iri_invalid", `"${op.article}" ${IRI_INVALID}`);
         if (iri) opQuads.push(quad(node, fyN("hedef"), namedNode(iri)));
-        opQuads.push(quad(node, fyN("yeniKoruma"), fyN(protection)));
+        if (PROTECTION_LEVELS.includes(protection)) opQuads.push(quad(node, fyN("yeniKoruma"), fyN(protection)));
         if (!iri || !isArticle(iri)) return bad("patch_article_missing", `"${op.article}" maddesi bulunamadı.`);
-        if (!["Degistirilemez", "Nitelikli", "Olagan"].includes(protection))
+        if (!PROTECTION_LEVELS.includes(protection))
           return bad("patch_invalid_protection", `"${protection}" geçerli bir koruma düzeyi değil.`, art("Madde_6_1"));
         replace(namedNode(iri), fyN("korumaDuzeyi"), fyN(protection));
         return;

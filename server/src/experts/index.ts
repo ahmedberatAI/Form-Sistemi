@@ -8,6 +8,7 @@ import {
   contentHash,
   expandIri,
   fy,
+  TEXT_LIMITS,
   type AssignmentStatus,
   type ExpertAssessment,
   type ExpertDrawRecord,
@@ -164,6 +165,19 @@ const fmtTime = (t: number): string => new Date(t).toISOString().slice(0, 16).re
 
 /** Yeterlilik beyanını (credentials) tam görebilen roller; ayrıca bilirkişinin kendisi. */
 const CREDENTIAL_ROLES: readonly Role[] = ["admin", "registrar", "auditor"];
+
+/**
+ * Kesin çıkar çatışması dışlaması: ayrıntılı gerekçe (yakınlık türü, zincir uzunluğu, hane) özel bir beyana ve adresten
+ * türetilmiş bir çıkarıma dayanır; yalnız personele gösterilir, herkese açık panelde genel ifade yer alır.
+ */
+const CONFLICT_REASON = "Yazarla kesin çıkar çatışması";
+const PUBLIC_CONFLICT_REASON = "Çıkar çatışması nedeniyle dışlandı";
+const publicReason = (reason: string): string => (reason.startsWith(CONFLICT_REASON) ? PUBLIC_CONFLICT_REASON : reason);
+
+/** Panelde dışlama gerekçesinin ayrıntısını görebilir mi? (yönetici, kayıt memuru, denetçi) */
+export function canSeeExclusionDetail(viewer: ExpertViewer | undefined): boolean {
+  return !!viewer && viewer.roles.some((r) => CREDENTIAL_ROLES.includes(r));
+}
 
 /** Kimlik belirlemeyen, herkese açık yeterlilik özeti için durum metinleri. */
 const STATUS_SUMMARY: Record<ExpertStatus, string> = {
@@ -393,7 +407,8 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
       });
   };
 
-  const buildPanel = (p: PanelRow): ExpertPanelInfo => {
+  /** `detailed` yalnız personel ve iç çağrılar içindir; varsayılan görünümde çatışma gerekçesi genel ifadeye indirgenir. */
+  const buildPanel = (p: PanelRow, detailed = false): ExpertPanelInfo => {
     const nick = new Map<string, string>();
     const nn = (id: string): string => {
       let v = nick.get(id);
@@ -413,7 +428,7 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
         nickname: nn(c.userId),
         weight: c.weight,
         softConflict: c.softConflict,
-        ...(c.excludedReason ? { excludedReason: c.excludedReason } : {}),
+        ...(c.excludedReason ? { excludedReason: detailed ? c.excludedReason : publicReason(c.excludedReason) } : {}),
       })),
       assignments: db
         .all<AssignmentRow>("SELECT * FROM expert_assignments WHERE panel_id = ? ORDER BY created_at, rowid", p.id)
@@ -559,8 +574,9 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
       if (doms.length === 0) throw badRequest("domains_required", "En az bir uzmanlık alanı seçmelisiniz.");
       if (doms.length > MAX_DOMAINS) throw badRequest("too_many_domains", `En fazla ${MAX_DOMAINS} uzmanlık alanı seçilebilir.`);
       const cred = typeof credentials === "string" ? credentials.trim() : "";
-      if (cred.length < 3 || cred.length > 2000) {
-        throw badRequest("invalid_credentials", "Yeterlilik bilgisi 3 ile 2000 karakter arasında olmalıdır.");
+      const credLim = TEXT_LIMITS.expertCredentials;
+      if (cred.length < credLim.min || cred.length > credLim.max) {
+        throw badRequest("invalid_credentials", `Yeterlilik bilgisi ${credLim.min} ile ${credLim.max} karakter arasında olmalıdır.`);
       }
       const existing = expertRow(userId);
       if (existing?.status === "active") throw conflict("already_expert", "Zaten etkin bir bilirkişisiniz.");
@@ -707,8 +723,9 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
       if (!userRow(userId)) throw notFound("Kullanıcı");
       if (!proposalExists(proposalId)) throw notFound("Öneri");
       const text = typeof body === "string" ? body.trim() : "";
-      if (text.length < 10 || text.length > 1000) {
-        throw badRequest("invalid_question", "Bilirkişiye soru 10 ile 1000 karakter arasında olmalıdır.");
+      const qLim = TEXT_LIMITS.expertQuestion;
+      if (text.length < qLim.min || text.length > qLim.max) {
+        throw badRequest("invalid_question", `Bilirkişiye soru ${qLim.min} ile ${qLim.max} karakter arasında olmalıdır.`);
       }
       const q: QuestionRow = {
         id: newId(),
@@ -782,7 +799,7 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
         let reason: string | undefined;
         if (c.hard) {
           const why = c.reasons.map((r) => r.trim().replace(/\.$/, "")).filter(Boolean);
-          reason = "Yazarla kesin çıkar çatışması" + (why.length ? ` (${why.join("; ")})` : " (aile, iş ya da hane bağı)");
+          reason = CONFLICT_REASON + (why.length ? ` (${why.join("; ")})` : " (aile, iş ya da hane bağı)");
         } else if (recused.has(id)) {
           reason = "Bu öneride daha önce çekinme beyan etti";
         } else if (priorPanelists.has(id)) {
@@ -882,7 +899,7 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
         }
         audit.log(null, "expert.draw", `proposal:${proposalId}`, { panelId, round, counter, widened, selected: selected.length, noExpert });
       });
-      return buildPanel(p);
+      return buildPanel(p, true); // iç çağrı (zamanlayıcı); HTTP'ye çıkmaz
     },
 
     async respond(assignmentId, expertId, decision, reason) {
@@ -903,7 +920,9 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
           throw conflict("invalid_state", `Bu görevden çekinme beyan edilemez (durum: ${ASSIGNMENT_STATUS_LABELS[a.status] ?? a.status}).`);
         }
         const why = typeof reason === "string" && reason.trim() ? reason.trim() : null;
-        if (why && why.length > 1000) throw badRequest("reason_too_long", "Çekinme gerekçesi en fazla 1000 karakter olabilir.");
+        if (why && why.length > TEXT_LIMITS.expertRecuseReason.max) {
+          throw badRequest("reason_too_long", `Çekinme gerekçesi en fazla ${TEXT_LIMITS.expertRecuseReason.max} karakter olabilir.`);
+        }
         db.tx(() => {
           db.run("UPDATE expert_assignments SET status = 'recused', recuse_reason = ?, updated_at = ? WHERE id = ?", why, now, a.id);
           const substitutedBy = substitute(a, "recused");
@@ -930,14 +949,18 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
         throw badRequest("invalid_confidence", "Güven değeri 0 ile 1 arasında olmalıdır.");
       }
       const body = typeof input.body === "string" ? input.body.trim() : "";
-      if (body.length < 50) throw badRequest("body_too_short", "Rapor metni en az 50 karakter olmalıdır.");
-      if (body.length > 20000) throw badRequest("body_too_long", "Rapor metni en fazla 20000 karakter olabilir.");
+      if (body.length < TEXT_LIMITS.expertReportBody.min) {
+        throw badRequest("body_too_short", `Rapor metni en az ${TEXT_LIMITS.expertReportBody.min} karakter olmalıdır.`);
+      }
+      if (body.length > TEXT_LIMITS.expertReportBody.max) {
+        throw badRequest("body_too_long", `Rapor metni en fazla ${TEXT_LIMITS.expertReportBody.max} karakter olabilir.`);
+      }
       if (!Array.isArray(input.risks) || input.risks.some((r) => typeof r !== "string")) {
         throw badRequest("invalid_risks", "Riskler metin dizisi olmalıdır.");
       }
       const risks = input.risks.map((r) => r.trim()).filter(Boolean);
-      if (risks.length > 50 || risks.some((r) => r.length > 1000)) {
-        throw badRequest("invalid_risks", "En fazla 50 risk yazılabilir; her biri en fazla 1000 karakter olmalıdır.");
+      if (risks.length > 50 || risks.some((r) => r.length > TEXT_LIMITS.expertReportRisk.max)) {
+        throw badRequest("invalid_risks", `En fazla 50 risk yazılabilir; her biri en fazla ${TEXT_LIMITS.expertReportRisk.max} karakter olmalıdır.`);
       }
       if (!Array.isArray(input.answers)) throw badRequest("invalid_answers", "Yanıtlar dizi olmalıdır.");
       const questions = questionRows(a.proposal_id);
@@ -952,7 +975,9 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
           throw badRequest("duplicate_answer", "Aynı soru birden fazla kez yanıtlanamaz.");
         }
         const answer = x.answer.trim();
-        if (answer.length > 5000) throw badRequest("answer_too_long", "Bir yanıt en fazla 5000 karakter olabilir.");
+        if (answer.length > TEXT_LIMITS.expertReportAnswer.max) {
+          throw badRequest("answer_too_long", `Bir yanıt en fazla ${TEXT_LIMITS.expertReportAnswer.max} karakter olabilir.`);
+        }
         answers.push({ questionId: x.questionId, answer });
       }
       // Azınlık güvenceli soru (öneride en küçük anlamlı kümeden sorulan ilk soru) yanıtlanmadan rapor kabul edilmez:
@@ -973,7 +998,9 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
         throw badRequest("invalid_dissent", "Karşı görüş metin olmalıdır.");
       }
       const dissent = typeof input.dissent === "string" && input.dissent.trim() ? input.dissent.trim() : null;
-      if (dissent && dissent.length > 10000) throw badRequest("dissent_too_long", "Karşı görüş en fazla 10000 karakter olabilir.");
+      if (dissent && dissent.length > TEXT_LIMITS.expertReportDissent.max) {
+        throw badRequest("dissent_too_long", `Karşı görüş en fazla ${TEXT_LIMITS.expertReportDissent.max} karakter olabilir.`);
+      }
 
       // YZ denetimi danışmadır: hata verirse rapor yine kabul edilir.
       let lint: StoredLint;
@@ -1066,9 +1093,9 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
       });
     },
 
-    panel(proposalId) {
+    panel(proposalId, viewer) {
       const p = db.get<PanelRow>("SELECT * FROM expert_panels WHERE proposal_id = ? ORDER BY round DESC LIMIT 1", proposalId);
-      return p ? buildPanel(p) : null;
+      return p ? buildPanel(p, canSeeExclusionDetail(viewer)) : null;
     },
 
     suspensiveFlag(proposalId) {

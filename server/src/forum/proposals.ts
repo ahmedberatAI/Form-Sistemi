@@ -8,6 +8,7 @@ import {
   fy,
   hashCanonical,
   PROPOSAL_TEXT_LIMITS as TEXT,
+  TEXT_LIMITS,
   rat,
   voteCommitment,
   type AiAnalysisInfo,
@@ -41,6 +42,7 @@ import { type ClusterServiceImpl } from "./clusters";
 import { buildProposalDetail, receiptOf, visibleProposal } from "./detail";
 import { applyTransition, auditInputFor, findingsSummary } from "./lifecycle";
 import { assertNoPii, moderationContext } from "./messages";
+import { OBJECTION_BUDGET, objectionBudgetOf } from "./objection-budget";
 import { bulletinRounds, evaluateObjections, firstRoundChoice } from "./tally";
 import {
   ACTIVE_SQL,
@@ -76,8 +78,6 @@ import {
 } from "./util";
 import { querySummaries, SUMMARY_COLUMNS, proposalSummaries, sponsorsNeeded, type SummaryRow } from "./views";
 
-const OBJECTION_WINDOW_MS = 30 * DAY;
-const OBJECTION_BUDGET = 2;
 const SALAMI_WINDOW_MS = 30 * DAY;
 const SALAMI_SCORE = 0.35;
 const MAX_OPEN_DELETIONS = 3;
@@ -174,6 +174,22 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
     for (const f of add) if (!out.some((x) => x.right === f.right && x.direction === f.direction && x.source === f.source)) out.push(f);
     return out;
   }
+  const flagKey = (f: RightsFlag): string => `${f.right}|${f.direction}|${f.source}`;
+  /**
+   * Üç yönlü birleştirme (applyRevision): `base` işlemin başında okunan anlık görüntü, `current` şimdiki satır, `ours` bu işlemin
+   * hesapladığı küme. Bu arada başkasının eklediği bayraklar korunur, kaldırdıkları (base'de olup current'ta olmayan) geri gelmez.
+   */
+  function foldConcurrentFlags(base: RightsFlag[], current: RightsFlag[], ours: RightsFlag[]): RightsFlag[] {
+    const currentKeys = new Set(current.map(flagKey));
+    const removed = new Set(base.map(flagKey).filter((k) => !currentKeys.has(k)));
+    return mergeFlags(
+      ours.filter((f) => !removed.has(flagKey(f))),
+      current,
+    );
+  }
+  const TIER_RANK: Record<string, number> = { T0: 0, T1: 1, T2: 2, T3: 3 };
+  const stricterTier = <T extends string>(computed: T, current: string | null): T | string =>
+    current !== null && (TIER_RANK[current] ?? -1) > (TIER_RANK[computed] ?? -1) ? current : computed;
 
   function topicRow(id: string | null | undefined): TopicRow | null {
     if (!id) return null;
@@ -407,9 +423,11 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
     const mod = await moderate(actor, `${title}\n${body}`);
     const labels = contentLabelsOf(mod);
     const parsed = parseProposal(p);
-    const rights = mergeFlags(parsed.rightsFlags, aiRightsOf(await classify(actor, title, body)));
+    let rights = mergeFlags(parsed.rightsFlags, aiRightsOf(await classify(actor, title, body)));
     let report: AuditReport | null = null;
     if (p.status !== "draft") {
+      // YZ çağrıları ağ G/Ç'si olabilir (saniyeler): bu arada eklenen/kaldırılan hak bayrakları denetime girmeden önce katılır.
+      rights = foldConcurrentFlags(parsed.rightsFlags, parseProposal(core.requireProposal(p.id)).rightsFlags, rights);
       report = await deps.ontology.audit(auditInputFor(core, p, { title, body, rightsFlags: rights, contentLabels: labels }));
       if (!report.admissible) {
         throw unprocessable("inadmissible_revision", `Revizyon yönetmeliğe aykırı; önceki metin geçerli kalır. ${findingsSummary(report)}`, {
@@ -428,6 +446,10 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
     core.tx(() => {
       const cur = core.requireProposal(p.id);
       if (cur.version !== p.version || cur.status !== p.status) throw conflict("version_conflict", "Öneri bu arada değişti; sayfayı yenileyip tekrar deneyin.");
+      // Await'ler sırasında flagRight bayrak/katman değiştirmiş olabilir: eski anlık görüntüyle ÜZERİNE YAZILMAZ, birleştirilir.
+      const curFlags = parseProposal(cur).rightsFlags;
+      const mergedRights = foldConcurrentFlags(parsed.rightsFlags, curFlags, rights);
+      const flagsRaced = cur.rights_flags !== p.rights_flags;
       const now = core.now();
       const version = cur.version + 1;
       const hash = textHash(title, body);
@@ -447,12 +469,13 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
         body,
         version,
         content_labels: JSON.stringify(labels),
-        rights_flags: JSON.stringify(rights),
+        rights_flags: JSON.stringify(mergedRights),
         updated_at: now,
       };
       if (report) {
         set.audit_report = JSON.stringify(report);
-        if (!parsed.fixedParams) set.tier = report.tier;
+        // Denetim sırasında bayrak değiştiyse katman, daha sıkı olanıdır (hak koruması zayıflamasın).
+        if (!parsed.fixedParams) set.tier = flagsRaced ? stricterTier(report.tier, cur.tier) : report.tier;
       }
       if (cur.kind === "amendment" && parsed.amendment) set.amendment_payload = JSON.stringify({ ...parsed.amendment, newTitle: title, newBody: body });
       core.updateProposal(p.id, set);
@@ -752,7 +775,7 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
       const p = visibleProposal(core, id, actor);
       requireStatus(p, ["deliberation"], "Metin önerileri yalnızca tartışma evresinde yapılabilir.");
       if (p.author_id === actor.id) throw unprocessable("own_proposal", "Yazar olarak metni doğrudan düzenleyebilirsiniz.");
-      const body = checkLength(String(bodyIn ?? ""), 10, 20000, "body", "Önerilen metin");
+      const body = checkLength(String(bodyIn ?? ""), TEXT_LIMITS.suggestion.min, TEXT_LIMITS.suggestion.max, "body", "Önerilen metin");
       assertNoPii(core, body, false);
       const open = Number(
         db.get<{ c: number }>("SELECT COUNT(*) AS c FROM proposal_suggestions WHERE proposal_id = ? AND author_id = ? AND status = 'open'", id, actor.id)?.c ?? 0,
@@ -904,7 +927,7 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
       if (!safe(() => deps.ontology.objectionGrounds(), []).some((g) => g.iri === ground)) {
         throw fieldError("ground", "Geçersiz itiraz gerekçesi; yönetmelikteki itiraz gerekçelerinden biri seçilmelidir.");
       }
-      const statement = checkLength(data.statement, 20, 2000, "statement", "İtiraz açıklaması");
+      const statement = checkLength(data.statement, TEXT_LIMITS.objection.min, TEXT_LIMITS.objection.max, "statement", "İtiraz açıklaması");
       assertNoPii(core, statement, false);
       if (firstRoundChoice(core, p, actor.id) !== "no") {
         throw unprocessable("not_eligible", "Yalnızca ilk turda etkin oyu “Red” olan seçmenler itiraz edebilir (vekâletle verilen oylar dahil).");
@@ -914,13 +937,9 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
           throw conflict("already_objected", "Bu karara zaten itiraz ettiniz.");
         }
         const now = core.now();
-        const used = json<number[]>(db.get<{ v: string }>("SELECT objection_budget_used AS v FROM users WHERE id = ?", actor.id)?.v ?? null, []).filter(
-          (t) => Number.isFinite(t) && t > now - OBJECTION_WINDOW_MS,
-        );
-        if (used.length >= OBJECTION_BUDGET) {
-          throw unprocessable("objection_budget", `Son 30 günde en çok ${OBJECTION_BUDGET} itiraz imzalayabilirsiniz; bütçeniz doldu.`, {
-            nextAvailableAt: Math.min(...used) + OBJECTION_WINDOW_MS,
-          });
+        const { used, exhausted, nextAvailableAt } = objectionBudgetOf(db, actor.id, now);
+        if (exhausted) {
+          throw unprocessable("objection_budget", `Son 30 günde en çok ${OBJECTION_BUDGET} itiraz imzalayabilirsiniz; bütçeniz doldu.`, { nextAvailableAt });
         }
         db.run("UPDATE users SET objection_budget_used = ? WHERE id = ?", JSON.stringify([...used, now]), actor.id);
         const oid = newId();
@@ -951,7 +970,7 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
       if (firstRoundChoice(core, p, actor.id) !== "no") {
         throw unprocessable("not_eligible", "Azınlık raporunu yalnızca ilk turda etkin oyu “Red” olan seçmenler yazabilir.");
       }
-      const body = checkLength(String(bodyIn ?? ""), 50, 5000, "body", "Azınlık raporu");
+      const body = checkLength(String(bodyIn ?? ""), TEXT_LIMITS.minorityReport.min, TEXT_LIMITS.minorityReport.max, "body", "Azınlık raporu");
       assertNoPii(core, body, false);
       const rid = newId();
       const now = core.now();
@@ -1009,7 +1028,7 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
       requireVerified(actor, "Bilirkişiye soru");
       const p = visibleProposal(core, id, actor);
       if (isClosed(p.status) || p.status === "draft") throw conflict("invalid_state", "Bilirkişiye soru yalnızca açık (gönderilmiş, kapanmamış) öneriler için sorulabilir.");
-      const body = checkLength(String(bodyIn ?? ""), 10, 2000, "body", "Soru");
+      const body = checkLength(String(bodyIn ?? ""), TEXT_LIMITS.expertQuestion.min, TEXT_LIMITS.expertQuestion.max, "body", "Soru");
       assertNoPii(core, body, false);
       let minorityGuaranteed = false;
       const snap = clusters.latest();

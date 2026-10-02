@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import type { ClusterSnapshotView, EdgeType, GraphStats, GraphVisEdge, GraphVisNode } from "@forum/shared";
 import type { AuthUser } from "../../core/contracts";
 import { notFound } from "../../core/errors";
+import { anonymizeClusterView } from "../../forum/clusters";
 import { hasRole } from "../auth";
 import { graphQuery, idParams } from "../schemas";
 import type { RouteDeps } from "../types";
@@ -34,24 +35,13 @@ export function registerGraphRoutes(app: FastifyInstance, { services }: RouteDep
 
   app.get("/api/clusters/latest", async (req): Promise<ClusterSnapshotView | null> => {
     const snap = forum.clusters.latest();
-    return snap ? anonymizeSnapshot(snap, req.user) : null;
+    return snap ? anonymizeClusterView(snap, req.user?.id ?? null) : null;
   });
 
   app.get("/api/clusters/:id", async (req): Promise<ClusterSnapshotView> => {
     const { id } = parseParams(idParams, req.params);
     const snap = forum.clusters.get(id);
     if (!snap) throw notFound("Görüş kümesi anlık görüntüsü");
-    return anonymizeSnapshot(snap, req.user);
+    return anonymizeClusterView(snap, req.user?.id ?? null);
   });
-}
-
-/**
- * Görüş haritası anonimdir: noktalar küme ve koordinat taşır, kimlik taşımaz (yalnız görüntüleyenin kendi noktası
- * işaretlenir). Sıra kimliğe göre değil koordinata göre — sıralamadan kimlik çıkarılamasın.
- */
-function anonymizeSnapshot(snap: ClusterSnapshotView, viewer: AuthUser | null): ClusterSnapshotView {
-  const points = snap.points
-    .map((p) => (viewer && p.userId === viewer.id ? p : { ...p, userId: "", nickname: "" }))
-    .sort((a, b) => a.clusterId.localeCompare(b.clusterId) || a.x - b.x || a.y - b.y);
-  return { ...snap, points };
 }

@@ -6,6 +6,7 @@ import { Link } from "react-router-dom";
 import {
   ASSESSMENT_LABELS,
   ASSIGNMENT_STATUS_LABELS,
+  TEXT_LIMITS,
   type ExpertDrawRecord,
   type ExpertPanelInfo,
   type ExpertQuestion,
@@ -306,15 +307,15 @@ export function ExpertPanelCard({ proposal: p, onUpdated }: { proposal: Proposal
             >
               <Textarea
                 label="Bilirkişiye soru sor"
-                hint="10–2000 karakter. En küçük anlamlı görüş grubundan gelen ilk soru “azınlık güvenceli” olur: henüz rapor vermemiş bilirkişiler bu soruyu yanıtlamadan rapor gönderemez."
+                hint={`${TEXT_LIMITS.expertQuestion.min}–${TEXT_LIMITS.expertQuestion.max} karakter. En küçük anlamlı görüş grubundan gelen ilk soru “azınlık güvenceli” olur: henüz rapor vermemiş bilirkişiler bu soruyu yanıtlamadan rapor gönderemez.`}
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
-                maxLength={2000}
+                maxLength={TEXT_LIMITS.expertQuestion.max}
                 showCount
                 rows={3}
               />
               <div className="form-actions">
-                <Button type="submit" loading={ask.loading} disabled={question.trim().length < 10}>
+                <Button type="submit" loading={ask.loading} disabled={question.trim().length < TEXT_LIMITS.expertQuestion.min}>
                   Soruyu gönder
                 </Button>
               </div>

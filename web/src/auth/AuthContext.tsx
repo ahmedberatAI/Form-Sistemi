@@ -1,7 +1,7 @@
 // Oturum, kullanıcı, yetki yardımcıları ve sunucu saati (simüle) senkronu.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { LoginRequest, Me, RegistrationInput, Role, SystemInfo } from "@forum/shared";
-import { ApiError, onUnauthorized, setAuthToken } from "../api/client";
+import { ApiError, isSessionRejected, onUnauthorized, setAuthToken, toConnectionError } from "../api/client";
 import * as api from "../api/endpoints";
 import { getPref, PREF_KEYS, removePref, setPref } from "../lib/prefs";
 import { setReceiptOwner } from "../lib/receipts";
@@ -114,11 +114,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setConnectionError(null);
       return me;
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) {
+      // Yalnızca 401 oturumu bitirir; 5xx / ulaşılamıyor / ağ hatasında belirteç korunur ve bağlantı sorunu gösterilir.
+      if (isSessionRejected(e)) {
         await applySession(null, null);
         return null;
       }
-      if (e instanceof ApiError && e.isNetwork) setConnectionError(e);
+      setConnectionError(toConnectionError(e));
       throw e;
     }
   }, [applySession]);
@@ -137,7 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           await refresh();
         } catch {
-          /* connectionError ayarlandı */
+          /* 401 dışı hatada connectionError ayarlandı; belirteç korunur, oturum kapatılmaz */
         }
         void refreshUnread();
       }

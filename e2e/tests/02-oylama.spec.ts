@@ -1,9 +1,9 @@
 // Senaryo 2 — Kayıttan kesin sayıma tam akış:
 // kayıt → kayıt memuru amaç belirterek kişisel veriyi görür (erişim kaydı) ve onaylar → giriş → yeni öneri (canlı ön denetim T0)
-// → destekçiler (K_s = 4) → yönetici saati +72/+24 sa ileri alır (oylama) → oy + makbuz cihazda → "Oyum kayıtlı mı?" (4 ✔ + 2 henüz)
+// → destekçiler (K_s, üye sayısından) → yönetici saati +72/+24 sa ileri alır (oylama) → oy + makbuz cihazda → "Oyum kayıtlı mı?" (4 ✔ + 2 henüz)
 // → +72 sa (kapanış, kabul) → "Sayımı kendim doğrulayayım" ✔ → "Oyum kayıtlı mı?" 6/6 ✔.
 import { expect, test, type Page } from "@playwright/test";
-import type { AuditLogEntry } from "@forum/shared";
+import { sponsorsRequired, type AuditLogEntry } from "@forum/shared";
 import { newMember } from "../support/data";
 import { useSeededServer } from "../support/fixtures";
 import { expectToast, gotoApp, openSession, reloadApp, waitSettled, type Session } from "../support/ui";
@@ -155,7 +155,9 @@ test("kayıt → onay → öneri → destek → oylama → makbuz → kapanış 
     await expect(page.getByRole("heading", { level: 1, name: PROPOSAL.title })).toBeVisible();
     await expect(page.locator(".page-meta")).toContainText("Destekçi toplanıyor");
     const p = await api.proposal(proposalId);
-    expect(p).toMatchObject({ status: "sponsoring", tier: "T0", sponsorsRequired: 4, kind: "topic" });
+    // K_s = max(2, min(5, ⌈√M/2⌉)): tohumdaki doğrulanmış üye sayısına bağlıdır, sabit yazılmaz.
+    const expectedKs = sponsorsRequired((await api.system()).members.verified, "T0");
+    expect(p).toMatchObject({ status: "sponsoring", tier: "T0", sponsorsRequired: expectedKs, kind: "topic" });
   });
 
   await test.step("5. destek: bir üye arayüzden, diğerleri API ile → ontoloji denetimi → tartışma", async () => {
@@ -169,7 +171,7 @@ test("kayıt → onay → öneri → destek → oylama → makbuz → kapanış 
     await expect.poll(async () => (await api.proposal(proposalId)).status).toBe("deliberation");
     await reloadApp(page);
     await expect(page.locator(".page-meta")).toContainText("Tartışmada");
-    await expect(page.getByRole("region", { name: /Destekçiler \(4\/4\)/ })).toBeVisible();
+    await expect(page.getByRole("region", { name: new RegExp(`Destekçiler \\(${required}/${required}\\)`) })).toBeVisible();
   });
 
   let admin: Page;

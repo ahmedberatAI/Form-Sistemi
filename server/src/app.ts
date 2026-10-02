@@ -1,7 +1,8 @@
 // Bileşim kökü: veritabanı, saat ve tüm servisleri kurar, HTTP sunucusunu bunlara bağlar.
 import type { FastifyInstance } from "fastify";
 import { ScaledClock, type Clock } from "./core/clock";
-import type { Config } from "./core/config";
+import { assertValidSecrets, type Config } from "./core/config";
+import { verifyKeyFingerprints } from "./core/keycheck";
 import type { CoreContext } from "./core/contracts";
 import { createAuditLogger } from "./core/audit";
 import { DbNotifier } from "./core/notifier";
@@ -70,7 +71,16 @@ function saveClockState(db: Db, s: ClockState): void {
 }
 
 export async function createApp(config: Config, opts: CreateAppOptions = {}): Promise<App> {
+  // Gizli anahtarlar geçerli biçimde olmalı (boş/kısa VOTE_KEY vb. reddedilir) ve bu veritabanını oluşturan anahtarlarla eşleşmeli.
+  const secrets = { master: config.masterKey, token: config.tokenKey, vote: config.voteKey };
+  assertValidSecrets(secrets);
   const db = openDb(config.dbPath);
+  try {
+    verifyKeyFingerprints(db, secrets);
+  } catch (err) {
+    db.close();
+    throw err;
+  }
   const timers: ReturnType<typeof setInterval>[] = [];
   let scaled: ScaledClock | null = null;
   let dbOpen = true;

@@ -2,8 +2,10 @@
 // dosyanın sonundaki derleme zamanı denetimleri bu uyumu güvenceye alır.
 // Not: şemalar yalnızca biçimi denetler; iş kuralları (TCKN, şifre gücü, evre, yetki…) servislerdedir.
 import { z } from "zod";
+import { isSafeIri } from "../ontology/iri";
 import {
   expandIri,
+  TEXT_LIMITS,
   type AiApproveRequest,
   type AssignmentRespondRequest,
   type ChangeNicknameRequest,
@@ -113,8 +115,16 @@ export const LEDGER_TX_TYPES = [
 
 const text = (max: number) => z.string().max(max);
 const requiredText = (max: number) => z.string().min(1).max(max);
-/** Ontoloji IRI'si: kısa ad ("fy:Ulasim") tam IRI'ye genişletilir. */
-const iri = z.string().min(1).max(300).transform(expandIri);
+/**
+ * Ontoloji IRI'si: kısa ad ("fy:Ulasim") tam IRI'ye genişletilir. Genişletilmiş değer mutlak bir http(s) IRI'si olmalı;
+ * boşluk, kontrol karakteri ve < > " { } | ^ ` \ içeremez (aksi halde Turtle'a üçlü enjekte edilebilir).
+ */
+const iri = z
+  .string()
+  .min(1)
+  .max(300)
+  .transform(expandIri)
+  .refine(isSafeIri, { message: "Geçersiz IRI: http(s) ile başlayan, boşluk ve < > \" { } | ^ ` \\ karakterleri içermeyen bir IRI (ya da fy: kısa adı) bekleniyordu." });
 const id = z.string().min(1).max(200);
 const qBool = z.enum(["1", "0", "true", "false"]).transform((v) => v === "1" || v === "true");
 const qInt = (min: number, max: number) => z.coerce.number().int().min(min).max(max);
@@ -238,13 +248,13 @@ export const createProposalBody = z.object({
   acknowledgePii: z.boolean().optional(),
 });
 export const updateProposalBody = z.object({ title: requiredText(300), body: text(50_000), acknowledgePii: z.boolean().optional() });
-export const suggestionBody = z.object({ body: requiredText(10_000) });
+export const suggestionBody = z.object({ body: requiredText(TEXT_LIMITS.suggestion.max) });
 export const suggestionDecisionBody = z.object({ decision: z.enum(["accept", "reject"]) });
 export const voteBody = z.object({ choice: z.enum(VOTE_CHOICES) });
-export const objectionBody = z.object({ ground: iri, statement: requiredText(5_000) });
-export const minorityReportBody = z.object({ body: requiredText(20_000) });
+export const objectionBody = z.object({ ground: iri, statement: requiredText(TEXT_LIMITS.objection.max) });
+export const minorityReportBody = z.object({ body: requiredText(TEXT_LIMITS.minorityReport.max) });
 export const expertRequestBody = z.object({ kind: z.enum(["panel", "counter"]) });
-export const expertQuestionBody = z.object({ body: requiredText(2_000) });
+export const expertQuestionBody = z.object({ body: requiredText(TEXT_LIMITS.expertQuestion.max) });
 export const rightsFlagBody = z.object({ right: iri, direction: z.enum(["restrict", "expand"]), remove: z.boolean().optional() });
 export const aiApproveBody = z.object({ draftIndex: z.number().int().min(0).max(100).optional() });
 
@@ -264,17 +274,17 @@ export const messagePrecheckBody = z.object({ body: text(10_000) });
 // ───────────── Bilirkişi ─────────────
 
 export const expertsQuery = z.object({ status: z.enum(EXPERT_STATUSES).optional(), domain: z.string().min(1).max(300).transform(expandIri).optional() });
-export const expertApplyBody = z.object({ domains: z.array(iri).min(1).max(10), credentials: requiredText(5_000) });
+export const expertApplyBody = z.object({ domains: z.array(iri).min(1).max(10), credentials: requiredText(TEXT_LIMITS.expertCredentials.max) });
 export const expertDecisionBody = z.object({ decision: z.enum(["approve", "reject"]), note: text(2_000).optional() });
 export const expertSanctionBody = z.object({ action: z.enum(["warn", "suspend", "remove", "reinstate"]), note: requiredText(2_000) });
-export const assignmentRespondBody = z.object({ decision: z.enum(["accept", "recuse"]), reason: text(2_000).optional() });
+export const assignmentRespondBody = z.object({ decision: z.enum(["accept", "recuse"]), reason: text(TEXT_LIMITS.expertRecuseReason.max).optional() });
 export const expertReportBody = z.object({
   assessment: z.enum(["feasible", "infeasible", "uncertain"]),
   confidence: z.number().min(0).max(1),
-  risks: z.array(requiredText(2_000)).max(50),
-  answers: z.array(z.object({ questionId: id, answer: text(10_000) })).max(100),
-  body: requiredText(50_000),
-  dissent: text(20_000).nullable().optional(),
+  risks: z.array(requiredText(TEXT_LIMITS.expertReportRisk.max)).max(50),
+  answers: z.array(z.object({ questionId: id, answer: text(TEXT_LIMITS.expertReportAnswer.max) })).max(100),
+  body: requiredText(TEXT_LIMITS.expertReportBody.max),
+  dissent: text(TEXT_LIMITS.expertReportDissent.max).nullable().optional(),
 });
 export const lintBody = z.object({ text: text(50_000) });
 

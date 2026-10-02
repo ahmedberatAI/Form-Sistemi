@@ -456,7 +456,8 @@ export interface ExpertService {
   ): Promise<ExpertPanelInfo>;
   respond(assignmentId: string, expertId: string, decision: "accept" | "recuse", reason?: string): Promise<ExpertPanelInfo>;
   submitReport(assignmentId: string, expertId: string, input: ExpertReportInput): Promise<ExpertReportView>;
-  panel(proposalId: string): ExpertPanelInfo | null;
+  /** `viewer` yoksa ya da personel (yönetici/kayıt memuru/denetçi) değilse dışlama gerekçeleri genel ifadeyle döner. */
+  panel(proposalId: string, viewer?: ExpertViewer): ExpertPanelInfo | null;
   /** §8 adım 9: rapor verenlerin ≥2/3'ü infeasible ve güven medyanı ≥0,8 */
   suspensiveFlag(proposalId: string): boolean;
   /** Öneri kapandığında (geri çekildi, düştü, kabul/red) bekleyen atamaları itibar cezası olmadan iptal eder. */

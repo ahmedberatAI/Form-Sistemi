@@ -43,6 +43,19 @@ export interface ClusterServiceImpl extends ClusterService {
 
 const finite = (x: number): number => (Number.isFinite(x) ? x : 0);
 
+/**
+ * Görüş haritası anonimdir (KVKK md. 6: siyasi görüş özel nitelikli veridir): noktalar küme ve koordinat taşır, kimlik
+ * taşımaz; yalnız görüntüleyenin kendi noktası (varsa) işaretlenir. Sıra kimliğe göre değil kümeye ve koordinata göre —
+ * sıralamadan kimlik çıkarılamasın. Kimlikli görünümü yalnız servisin iç `latest()`/`get()` çağrıları üretir;
+ * HTTP'ye çıkan her görünüm (grafik uçları dahil) bu işlevden geçmelidir.
+ */
+export function anonymizeClusterView(snap: ClusterSnapshotView, viewerId: string | null = null): ClusterSnapshotView {
+  const points = snap.points
+    .map((p) => (viewerId && p.userId === viewerId ? p : { ...p, userId: "", nickname: "" }))
+    .sort((a, b) => a.clusterId.localeCompare(b.clusterId) || a.x - b.x || a.y - b.y);
+  return { ...snap, points };
+}
+
 export function createClusterService(core: ForumCore): ClusterServiceImpl {
   const { db } = core;
   const cache = new Map<string, SnapshotData>();
@@ -142,7 +155,8 @@ export function createClusterService(core: ForumCore): ClusterServiceImpl {
         comp = { ...comp, k: 1, outputHash: hashCanonical({ algo, k: 1, silhouette, assignments, coords, sizes, clusteredTotal, excluded }) };
       }
       const last = latestRow();
-      if (last && last.input_hash === comp.inputHash) return view(last);
+      // Yeniden hesaplama sonucu kimlik taşımaz (anonim görünüm); kimlikli görünüm yalnız latest()/get() ile iç kullanım içindir.
+      if (last && last.input_hash === comp.inputHash) return anonymizeClusterView(view(last));
 
       const id = newId();
       const silhouette = finite(comp.silhouette);
@@ -176,7 +190,7 @@ export function createClusterService(core: ForumCore): ClusterServiceImpl {
         });
         db.run("UPDATE cluster_snapshots SET ledger_tx = ? WHERE id = ?", tx, id);
       });
-      return view(row(id)!);
+      return anonymizeClusterView(view(row(id)!));
     },
 
     latest(): ClusterSnapshotView | null {

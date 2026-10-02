@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DataFactory, Parser, Store, Writer, type Literal, type NamedNode, type Quad, type Term } from "n3";
 import { FY_NS, sha256Hex } from "@forum/shared";
+import { hasUnsafeIriChars } from "./iri";
 
 const { namedNode, literal, quad } = DataFactory;
 
@@ -124,8 +125,14 @@ function sortQuads(quads: Quad[]): Quad[] {
   return out;
 }
 
-/** Belirlenimci Turtle çıktısı (öznelere göre sıralı). */
+/**
+ * Belirlenimci Turtle çıktısı (öznelere göre sıralı). N3 yazıcısı IRI içindeki boşluk ve "<>\"{}|^`\\" karakterlerini
+ * kaçırmadığı için bunlardan birini taşıyan her IRI reddedilir: aksi halde yazılan metne üçlü enjekte edilebilir.
+ */
 export function writeTurtle(quads: Quad[], header?: string): string {
+  for (const q of quads)
+    for (const t of [q.subject, q.predicate, q.object, q.graph] as Term[])
+      if (t.termType === "NamedNode" && hasUnsafeIriChars(t.value)) throw new Error(`Turtle'a yazılamayan IRI: ${JSON.stringify(t.value)}`);
   const writer = new Writer({ prefixes: PREFIXES });
   writer.addQuads(sortQuads(quads));
   let out = "";

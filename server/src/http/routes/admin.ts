@@ -120,6 +120,7 @@ export function registerAdminRoutes(app: FastifyInstance, { services }: RouteDep
 
   app.post("/api/admin/clusters/recompute", async (req): Promise<ClusterSnapshotView> => {
     const actor = requireRole(req, "admin");
+    // snapshot() anonim görünüm döner (kimlik/takma ad yok; KVKK md. 6) — yönetici de siyasi görüş kümesini kişiyle eşleştiremez.
     const snap = await forum.clusters.snapshot("yönetici");
     audit.log(actor.id, "admin.clusters_recompute", snap.id, { k: snap.k, members: snap.members });
     return snap;

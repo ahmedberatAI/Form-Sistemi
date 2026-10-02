@@ -1,9 +1,10 @@
 // Yönlendirme. HashRouter: Capacitor (file/http://localhost kökeni) ve sunucunun SPA geri dönüşüyle sorunsuz.
 // Sayfalar tembel yüklenir (ilk paket küçük kalır; graf kütüphanesi yalnızca /graf'ta iner).
 import { lazy, Suspense, type ComponentType, type ReactNode } from "react";
-import { HashRouter, Route, Routes } from "react-router-dom";
+import { HashRouter, Route, Routes, useLocation } from "react-router-dom";
 import { RequireAuth, RequireRole } from "./auth/guards";
 import { AppLayout } from "./components/layout/AppLayout";
+import { ErrorBoundary } from "./components/system/ErrorBoundary";
 import { EmptyState, LinkButton, Spinner } from "./ui";
 
 const page = (load: () => Promise<{ default: ComponentType }>) => lazy(load);
@@ -40,52 +41,60 @@ function NotFound() {
   );
 }
 
+/** Sayfa çizim hatası / paket parçası hatası yalnızca sayfa alanını etkiler; yönlendirmede sıfırlanır. */
+function RouteErrorBoundary({ children }: { children: ReactNode }) {
+  const location = useLocation();
+  return <ErrorBoundary resetKey={location.pathname}>{children}</ErrorBoundary>;
+}
+
 const auth = (el: ReactNode, perm?: Parameters<typeof RequireAuth>[0]["perm"]) => <RequireAuth perm={perm}>{el}</RequireAuth>;
 
 export default function App() {
   return (
     <HashRouter>
       <AppLayout>
-        <Suspense fallback={<Spinner block label="Sayfa yükleniyor…" />}>
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/giris" element={<LoginPage />} />
-            <Route path="/kayit" element={<RegisterPage />} />
-            <Route path="/konular" element={<TopicsPage />} />
-            <Route path="/konular/:id" element={<TopicDetailPage />} />
-            <Route path="/oneriler" element={<ProposalsPage />} />
-            <Route path="/oneriler/yeni" element={auth(<NewProposalPage />)} />
-            <Route path="/oneriler/:id" element={<ProposalDetailPage />} />
-            <Route path="/oy-dogrula" element={<VerifyVotePage />} />
-            <Route path="/bilirkisiler" element={<ExpertsPage />} />
-            <Route path="/profil" element={auth(<ProfilePage />)} />
-            <Route path="/uyeler/:id" element={<UserPage />} />
-            <Route
-              path="/kayit-memuru"
-              element={
-                <RequireRole roles={["registrar", "auditor"]}>
-                  <RegistrarPage />
-                </RequireRole>
-              }
-            />
-            <Route
-              path="/yonetim"
-              element={
-                <RequireRole roles={["admin", "auditor"]}>
-                  <AdminPage />
-                </RequireRole>
-              }
-            />
-            <Route path="/bildirimler" element={auth(<NotificationsPage />)} />
-            <Route path="/ayarlar" element={<SettingsPage />} />
-            <Route path="/graf" element={<GraphPage />} />
-            <Route path="/defter" element={<LedgerPage />} />
-            <Route path="/defter/blok/:height" element={<BlockPage />} />
-            <Route path="/defter/islem/:hash" element={<TxPage />} />
-            <Route path="/yonetmelik" element={<OntologyPage />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </Suspense>
+        <RouteErrorBoundary>
+          <Suspense fallback={<Spinner block label="Sayfa yükleniyor…" />}>
+            <Routes>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/giris" element={<LoginPage />} />
+              <Route path="/kayit" element={<RegisterPage />} />
+              <Route path="/konular" element={<TopicsPage />} />
+              <Route path="/konular/:id" element={<TopicDetailPage />} />
+              <Route path="/oneriler" element={<ProposalsPage />} />
+              <Route path="/oneriler/yeni" element={auth(<NewProposalPage />)} />
+              <Route path="/oneriler/:id" element={<ProposalDetailPage />} />
+              <Route path="/oy-dogrula" element={<VerifyVotePage />} />
+              <Route path="/bilirkisiler" element={<ExpertsPage />} />
+              <Route path="/profil" element={auth(<ProfilePage />)} />
+              <Route path="/uyeler/:id" element={<UserPage />} />
+              <Route
+                path="/kayit-memuru"
+                element={
+                  <RequireRole roles={["registrar", "auditor"]}>
+                    <RegistrarPage />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="/yonetim"
+                element={
+                  <RequireRole roles={["admin", "auditor"]}>
+                    <AdminPage />
+                  </RequireRole>
+                }
+              />
+              <Route path="/bildirimler" element={auth(<NotificationsPage />)} />
+              <Route path="/ayarlar" element={<SettingsPage />} />
+              <Route path="/graf" element={<GraphPage />} />
+              <Route path="/defter" element={<LedgerPage />} />
+              <Route path="/defter/blok/:height" element={<BlockPage />} />
+              <Route path="/defter/islem/:hash" element={<TxPage />} />
+              <Route path="/yonetmelik" element={<OntologyPage />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
+        </RouteErrorBoundary>
       </AppLayout>
     </HashRouter>
   );

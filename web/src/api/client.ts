@@ -30,6 +30,16 @@ export function isApiError(e: unknown): e is ApiError {
   return e instanceof ApiError;
 }
 
+/** Oturumun sunucuca reddedildiği tek durum: 401. Diğer hatalar (5xx, ulaşılamıyor, ağ) oturumu bitirmez. */
+export function isSessionRejected(e: unknown): boolean {
+  return e instanceof ApiError && e.status === 401;
+}
+
+/** 401 dışındaki bir hatayı "bağlantı sorunu" olarak gösterilecek ApiError'a çevirir (açılışta /api/me başarısızsa). */
+export function toConnectionError(e: unknown): ApiError {
+  return e instanceof ApiError ? e : new ApiError(0, "network", errorMessage(e));
+}
+
 /** Her türlü hatadan kullanıcıya gösterilecek Türkçe metin. */
 export function errorMessage(e: unknown): string {
   if (e instanceof ApiError) return e.message;

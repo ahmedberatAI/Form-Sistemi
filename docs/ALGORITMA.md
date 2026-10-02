@@ -222,8 +222,8 @@ Süre: §2'deki tabloya göre. Bu sürede şunlar yapılır:
 
 1. **Tetikleyiciler:** Ontolojide `requiresExpert` kuralı varsa, uygun seçmenlerin ≥%10'u talep ederse ya da yazar talep ederse panel çekilir.
 2. **Aday havuzu:** `active` bilirkişilerden, alanlarından en az biri önerinin kategorilerinden birinin kendisi, üst sınıfı ya da alt sınıfı olanlar alınır.
-3. **Kesin çıkar çatışması (dışlanır):** öneri yazarının kendisi; grafta `RELATED_TO` (aile, iş, hane) kenarı ile yazara 3 adım içinde bağlı olanlar; aynı önerinin önceki paneline girmiş olanlar; kendisi beyan edenler.
-4. **Yumuşak çatışma:** `soft = 1,0` (grafta mesafe 1: takip veya vekâlet) ya da `0,5` (mesafe 2). Ağırlık: `w = clamp(R, 0,5, 1,5) / (1 + aktifGörev) · (1 − soft)`.
+3. **Kesin çıkar çatışması (dışlanır):** öneri yazarının kendisi; yazarla aralarında doğrudan `RELATED_TO` (aile, iş, hane) kenarı bulunanlar (kenarı ikisinden biri beyan etmiş olmalıdır) ve yazarla aynı haneden olanlar (daha uzun `RELATED_TO` zincirleri ile üçüncü kişilerin beyanları yalnız yumuşak çatışmadır, adım 4); aynı önerinin önceki paneline girmiş olanlar; kendisi beyan edenler.
+4. **Yumuşak çatışma:** `soft = 1,0` (grafta mesafe 1: takip veya vekâlet) ya da `0,5` (mesafe 2; `RELATED_TO` ile 2-3 adımlık zincir). Ağırlık: `w = clamp(R, 0,5, 1,5) / (1 + aktifGörev) · (1 − soft)`.
 5. **Tohum:** `seed = SHA256(sonİşlenmişBlokHash ‖ proposalId ‖ round)`. Bu tohum deftere `EXPERT_DRAW` ile, aday listesi ve ağırlıklarla birlikte yazılır. Herkes çekilişi yeniden üretebilir.
 6. **Çekiliş:** Tohumlu sözde rastgele sayı üreteciyle, ağırlıklı ve yerine koymadan `k=3` kişi seçilir (aday azsa hepsi alınır). Adaylar kimliğe göre sıralanır; bu sıralama belirlenimciliği sağlar.
 7. Aday bulunamazsa üst kategoriye genişletilir. Yine yoksa "bilirkişi bulunamadı" bayrağı konur ve süreç durmaz.

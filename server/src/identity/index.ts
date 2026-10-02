@@ -276,6 +276,14 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
     return requireRow(id);
   }
 
+  /** Son-yönetici değişmezi (setRoles ve eraseSelf için ortak): doğrulanmış başka yönetici yoksa bu kullanıcı yönetici olmaktan çıkarılamaz. */
+  function assertNotLastAdmin(userId: string, message: string): void {
+    const others = db
+      .all<{ id: string; roles: string }>("SELECT id, roles FROM users WHERE status = 'verified' AND id != ? AND roles LIKE '%admin%'", userId)
+      .filter((r) => parseRoles(r.roles).includes("admin"));
+    if (others.length === 0) throw conflict("last_admin", message);
+  }
+
   /**
    * Kripto-imha: DEK ve tüm şifreli alanlar, kör indeksler silinir; hesap takma adsızlaştırılır. Başkalarına giden kayıtlı
    * bildirimlerdeki eski takma ad da (ör. kayıt memuruna "\"ali\" takma adlı yeni üye…") yeni adla değiştirilir.
@@ -584,12 +592,7 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
       if (isClosed(row)) throw conflict("invalid_state", "Silinmiş ya da reddedilmiş bir hesaba rol verilemez.");
       const prev = parseRoles(row.roles);
       const next = ALL_ROLES.filter((r) => r === "member" || roles.includes(r));
-      if (prev.includes("admin") && !next.includes("admin")) {
-        const others = db
-          .all<{ id: string; roles: string }>("SELECT id, roles FROM users WHERE status = 'verified' AND id != ? AND roles LIKE '%admin%'", userId)
-          .filter((r) => parseRoles(r.roles).includes("admin"));
-        if (others.length === 0) throw conflict("last_admin", "Sistemde en az bir yönetici kalmalıdır.");
-      }
+      if (prev.includes("admin") && !next.includes("admin")) assertNotLastAdmin(userId, "Sistemde en az bir yönetici kalmalıdır.");
       if (prev.join(",") !== next.join(",")) {
         db.run("UPDATE users SET roles = ? WHERE id = ?", JSON.stringify(next), userId);
         deps.audit.log(actorId, "identity.roles", userId, { from: prev, to: next });
@@ -714,6 +717,10 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
     async eraseSelf(userId) {
       const row = requireRow(userId);
       if (isClosed(row)) throw conflict("already_erased", "Bu hesabın kişisel verileri zaten imha edilmiş.");
+      // shred rolleri sıfırlar: son yönetici kendini silerse sistemde yönetici kalmazdı (setRoles ile aynı değişmez).
+      if (parseRoles(row.roles).includes("admin")) {
+        assertNotLastAdmin(userId, "Sistemdeki son yöneticisiniz; hesabınızı silmeden önce başka bir üyeye yönetici rolü verin.");
+      }
       shred(userId, "erased");
       submitLedger("MEMBER_ERASED", { memberRef: vault.memberRef(userId) });
       deps.audit.log(userId, "identity.erase", userId, { method: "crypto-shredding" });

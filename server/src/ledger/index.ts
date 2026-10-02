@@ -425,6 +425,11 @@ export class InProcessLedger implements LedgerService {
     return (nodeId ? [this.node(nodeId)] : this.nodes).map((n) => n.verifyFull());
   }
 
+  /** Tanı: düğümlerde bugüne dek yapılan blok doğrulaması sayısı (verifyChain önbelleğinin etkisini ölçer). */
+  verifiedBlockCount(): number {
+    return this.nodes.reduce((sum, n) => sum + n.blockVerifications, 0);
+  }
+
   tamper(nodeId: string, height: number): void {
     if (!Number.isInteger(height) || height < 1) throw badRequest("ledger_bad_height", "Geçersiz blok yüksekliği.");
     this.node(nodeId).tamper(height);

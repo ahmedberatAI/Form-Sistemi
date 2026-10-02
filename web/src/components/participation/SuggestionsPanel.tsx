@@ -3,7 +3,7 @@
 // Yazar karar vermeden oylama başlarsa (ya da öneri kapanırsa) açık öneriler "Karar verilmeden kapandı" olur; bunlar da
 // herkese açık kalır ve ayrı öneri olarak açılabilir.
 import { useState } from "react";
-import type { ProposalDetail, Suggestion } from "@forum/shared";
+import { TEXT_LIMITS, type ProposalDetail, type Suggestion } from "@forum/shared";
 import { addSuggestion, decideSuggestion } from "../../api/endpoints";
 import { useAuth } from "../../auth/AuthContext";
 import { routes } from "../../lib/routes";
@@ -59,14 +59,14 @@ export function SuggestionForm({ proposal: p, onAdded }: Pick<SuggestionsPanelPr
     >
       <Textarea
         label="Önerdiğiniz metin"
-        hint="Mevcut metin önceden dolduruldu; değiştirmek istediğiniz yerleri düzenleyin (10–20000 karakter). Yazar kabul ederse yeni sürüm olur ve adınız anılır."
+        hint={`Mevcut metin önceden dolduruldu; değiştirmek istediğiniz yerleri düzenleyin (${TEXT_LIMITS.suggestion.min}–${TEXT_LIMITS.suggestion.max} karakter). Yazar kabul ederse yeni sürüm olur ve adınız anılır.`}
         value={body}
         onChange={(e) => {
           setBody(e.target.value);
           send.reset();
         }}
         rows={10}
-        maxLength={20000}
+        maxLength={TEXT_LIMITS.suggestion.max}
         showCount
       />
       {changed ? (
