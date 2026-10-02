@@ -9,6 +9,8 @@ export const PREF_KEYS = {
   token: "forum.token",
   serverUrl: "forum.serverUrl",
   theme: "forum.theme",
+  /** Görünüm yoğunluğu: "sade" (varsayılan) | "tam". Bkz. lib/detailLevel.tsx */
+  detail: "forum.detail",
   receipts: "forum.receipts",
   validators: "forum.validators",
 } as const;

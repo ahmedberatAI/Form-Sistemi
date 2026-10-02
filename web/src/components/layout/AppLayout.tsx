@@ -121,6 +121,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const bottomItems = items.filter((i) => i.bottom);
   const user = auth.user;
   const sys = auth.system;
+  // Ana sayfa hesap durumunu (bekleyen, askıda, reddedilmiş) kendi kartında söyler; çift mesaj olmasın diye şeritler yalnız '/' rotasında gizlenir.
+  const onHome = location.pathname === "/";
 
   return (
     <div className="app">
@@ -222,12 +224,12 @@ export function AppLayout({ children }: { children: ReactNode }) {
             {auth.connectionError.message}
           </Alert>
         ) : null}
-        {user?.status === "pending" ? (
+        {user?.status === "pending" && !onHome ? (
           <Alert tone="info" title="Hesabınız kayıt memuru onayı bekliyor">
             Onaylanana kadar içerikleri okuyabilir, öneri ve oy işlemlerini ise doğrulamadan sonra yapabilirsiniz.
           </Alert>
         ) : null}
-        {user && (user.status === "suspended" || user.status === "rejected") ? (
+        {user && (user.status === "suspended" || user.status === "rejected") && !onHome ? (
           <Alert tone="warning" title={user.status === "suspended" ? "Hesabınız askıya alındı" : "Kaydınız reddedildi"}>
             Ayrıntı için kayıt memuruyla iletişime geçin.
           </Alert>

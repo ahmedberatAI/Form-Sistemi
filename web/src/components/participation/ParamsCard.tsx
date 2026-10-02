@@ -1,7 +1,8 @@
 // Karar parametreleri (ALGORITMA §2): oylama açılınca öneriye sabitlenir, sonradan yönetmelik değişse de geriye etkili olmaz.
-import type { DecisionParams, ProposalStatus, Rational } from "@forum/shared";
+// Katlanabilir kart: kapalıyken başlığın yanında tek satırlık hüküm ("Onay eşiği ≥ %60 · yeter sayı … · oylamada sabitlendi") durur.
+import { quorumRequired, type DecisionParams, type ProposalStatus, type Rational } from "@forum/shared";
 import { useOntology } from "../../lib/categories";
-import { formatHours, formatPercent } from "../../lib/format";
+import { formatHours, formatNumber, formatPercent } from "../../lib/format";
 import { Card, Details, KeyValue, TierBadge } from "../../ui";
 
 const FIXED_FROM: ProposalStatus[] = ["voting", "objection_window", "reconciliation", "revote", "enacted", "rejected"];
@@ -9,11 +10,39 @@ const FIXED_FROM: ProposalStatus[] = ["voting", "objection_window", "reconciliat
 const pct = (r: Rational) => (r.den ? formatPercent(r.num / r.den) : "—");
 const frac = (r: Rational) => (r.den ? `${r.num}/${r.den} (${pct(r)})` : "—");
 
-export function ParamsCard({ params: p, status, votingRound }: { params: DecisionParams | null; status: ProposalStatus; votingRound: number }) {
+/**
+ * Yeter sayının mutlak değeri. q bir ORANDIR; kişi sayısı yalnız biliniyorsa yazılır: oylamadaki uygun seçmen sayısından
+ * (sunucuyla aynı ortak formül) ya da en son sonuçtaki `quorumRequired` değerinden. Bilinmiyorsa null.
+ */
+export function quorumCount(params: Pick<DecisionParams, "quorum">, eligible?: number | null, resultQuorum?: number | null): number | null {
+  if (params.quorum.den > 0 && eligible && eligible > 0) return quorumRequired(params.quorum, eligible);
+  return resultQuorum && resultQuorum > 0 ? resultQuorum : null;
+}
+
+/** Kart başlığının yanındaki hüküm: "Onay eşiği ≥ %60 · yeter sayı: uygun seçmen oranı %20 · oylamada sabitlendi". */
+export function paramsSummary(p: DecisionParams, fixed: boolean, quorumAbs?: number | null): string {
+  return [
+    `Onay eşiği ${p.thresholdStrict ? ">" : "≥"} ${pct(p.threshold)}`,
+    quorumAbs ? `yeter sayı: en az ${formatNumber(quorumAbs)} kişi (uygun seçmen oranı ${pct(p.quorum)})` : `yeter sayı: uygun seçmen oranı ${pct(p.quorum)}`,
+    fixed ? "oylamada sabitlendi" : "henüz sabitlenmedi",
+  ].join(" · ");
+}
+
+export interface ParamsCardProps {
+  params: DecisionParams | null;
+  status: ProposalStatus;
+  votingRound: number;
+  /** Oylamadaki uygun seçmen sayısı (participation.eligible); verilirse yeter sayının kişi karşılığı yazılır */
+  eligible?: number | null;
+  /** En son sonuçtaki gerekli katılım (DecisionResult.quorumRequired) */
+  resultQuorum?: number | null;
+}
+
+export function ParamsCard({ params: p, status, votingRound, eligible, resultQuorum }: ParamsCardProps) {
   const { categoryLabel } = useOntology();
   if (!p) {
     return (
-      <Card title="Karar parametreleri">
+      <Card title="Karar parametreleri" anchor="parametreler">
         <p className="small muted">Parametreler ontoloji denetimiyle belirlenir (destekçiler toplanınca).</p>
       </Card>
     );
@@ -21,7 +50,13 @@ export function ParamsCard({ params: p, status, votingRound }: { params: Decisio
   const fixed = FIXED_FROM.includes(status) || votingRound > 0;
   const d = p.durationsHours;
   return (
-    <Card title="Karar parametreleri" subtitle={fixed ? "Oylama açılırken sabitlendi; geriye etkili değişmez." : "Henüz sabitlenmedi: oylama açılırken güncel yönetmelikle kesinleşir."}>
+    <Card
+      title="Karar parametreleri"
+      subtitle={fixed ? "Oylama açılırken sabitlendi; geriye etkili değişmez." : "Henüz sabitlenmedi: oylama açılırken güncel yönetmelikle kesinleşir."}
+      collapsible
+      summary={paramsSummary(p, fixed, quorumCount(p, eligible, resultQuorum))}
+      anchor="parametreler"
+    >
       <div className="stack-sm">
         <KeyValue
           compact

@@ -156,6 +156,56 @@ test("ziyaretçi: tüm genel sayfalar ve her öneri (360 px)", async ({ browser 
   expectNoProblems(p0, n0);
 });
 
+// 'Tam' görünüm tercihi (Ayarlar › Görünüm yoğunluğu): kapalı kartlar, "Ayrıntı" açılırları ve kırpılmış metinler varsayılan AÇIK gelir.
+// Sade görünümde kapalı duran bu içerikler (Kura kayıtları, Aday havuzu, Oy taahhüdü işlemleri, Yönetmelik bölümleri…) yukarıdaki
+// taramada hiç ölçülmez; bu test onları açık hâlleriyle ölçer. Anahtar ve değer lib/prefs.ts + lib/detailLevel.tsx ile aynıdır.
+const DETAIL_KEY = "forum.detail";
+const DETAIL_FULL = "tam";
+
+test("ziyaretçi (Tam görünüm): her öneri ve açık ayrıntılı sayfalar (360 px)", async ({ browser }) => {
+  test.setTimeout(420_000);
+  const [p0, n0] = [problems.length, scanned];
+  const s = await phone(browser);
+  // Tercih belge yüklenmeden önce yazılır: arayüz ilk çizimde 'tam' kipini eşzamanlı aynadan (localStorage) okur.
+  await s.context.addInitScript(
+    ([key, value]) => {
+      try {
+        window.localStorage.setItem(key, value);
+      } catch {
+        /* erişilemezse sade kalır; aşağıdaki Ayarlar denetimi bunu yakalar */
+      }
+    },
+    [DETAIL_KEY, DETAIL_FULL],
+  );
+  const t = data.topics;
+  const withSub = t.find((x) => t.some((y) => y.parentId === x.id)) ?? t[0];
+  const views: View[] = [
+    { label: "Ana sayfa", path: "/" },
+    { label: "Konu ayrıntısı (gizlenmiş mesajlı)", path: `/konular/${t[0].id}` },
+    { label: "Konu ayrıntısı (alt konulu)", path: `/konular/${withSub.id}` },
+    ...data.proposals.map((p) => ({ label: `Öneri #K-${p.seq} (${p.status})`, path: `/oneriler/${p.id}` })),
+    { label: "Bilirkişiler", path: "/bilirkisiler", tabs: true },
+    { label: "Graf", path: "/graf", tabs: true },
+    { label: "Defter", path: "/defter", tabs: true },
+    { label: "Yönetmelik", path: "/yonetmelik", tabs: true },
+  ];
+  await scan(s, "ziyaretçi (Tam)", views);
+
+  // Tarama gerçekten 'Tam' kipte yapıldı mı? Ayarlar'daki yoğunluk seçimi 'Tam' olmalı; aksi halde bu test sade kipi ölçer.
+  await gotoApp(s.page, "/ayarlar");
+  await expect(s.page.getByRole("radio", { name: "Tam — tüm ayrıntılar açık" })).toBeChecked();
+  // Bir öneri sayfasında hiçbir katlanabilir kart kapalı kalmamalı (tam kipte hepsi açık gelir).
+  await gotoApp(s.page, `/oneriler/${data.proposals[0].id}`);
+  await expect(s.page.locator("button.card-toggle").first()).toBeVisible();
+  await expect(s.page.locator("button.card-toggle[aria-expanded=false]")).toHaveCount(0);
+  // Aynı sayfadaki "Ayrıntı" açılırları (Details) de açık gelir; en az biri var ve hiçbiri kapalı kalmaz.
+  await expect(s.page.locator("main details").first()).toBeAttached();
+  await expect(s.page.locator("main details:not([open])")).toHaveCount(0);
+
+  expect(scanned - n0).toBeGreaterThan(data.proposals.length + 10);
+  expectNoProblems(p0, n0);
+});
+
 test("üye ve bekleyen üye: profil, bildirimler, yeni öneri formları, oy paneli (360 px)", async ({ browser }) => {
   test.setTimeout(300_000);
   const [p0, n0] = [problems.length, scanned];

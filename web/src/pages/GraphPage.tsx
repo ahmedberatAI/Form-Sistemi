@@ -1,11 +1,12 @@
 // Graf: insanlar grafı (kenar türü süzgeci, düğüm kartı), görüş haritası (PCA + k-means), graf istatistikleri.
 // Grafik bileşeni ağırdır: yalnızca "İnsanlar" sekmesinde React.lazy ile yüklenir.
 import { lazy, Suspense, useState } from "react";
-import { EDGE_LABELS, type EdgeType, type GraphVisNode } from "@forum/shared";
+import { EDGE_LABELS, LOSER_MIN_DECISIONS, LOSER_WARN_SHARE, type EdgeType, type GraphVisNode } from "@forum/shared";
 import { getGraph, getGraphStats, getLatestClusters } from "../api/endpoints";
 import { useAuth } from "../auth/AuthContext";
 import { UserLink } from "../components/UserLink";
 import { ClusterMap } from "../components/community/ClusterMap";
+import { LOSER_STATUS_LABELS, loserStatus, type LoserStatus } from "../components/community/loserStatus";
 import { ClusterGlyph, clusterLabel } from "../components/community/vizColors";
 import "../components/community/community.css";
 import { formatDateTime, formatNumber, formatPercent } from "../lib/format";
@@ -21,6 +22,7 @@ const FILTER_TYPES: EdgeType[] = ["FOLLOWS", "VOUCHES", "DELEGATES_TO", "REPLIED
 const DEFAULT_TYPES: EdgeType[] = ["FOLLOWS", "VOUCHES", "DELEGATES_TO"];
 
 export default function GraphPage() {
+  const auth = useAuth();
   const [tabRaw, setTab] = useQueryState("sekme", "insanlar");
   const tab = (["insanlar", "harita", "istatistik"].includes(tabRaw) ? tabRaw : "insanlar") as TabId;
   return (
@@ -29,6 +31,12 @@ export default function GraphPage() {
         title="Graf ve görüş kümeleri"
         subtitle="Üyeler arasındaki herkese açık ilişkiler ve oy örüntülerinden çıkarılan görüş kümeleri. Kümeler köprü testinde kullanılır; graf göstergeleri yalnızca bilgi amaçlıdır."
       />
+      {/* Gizlilik uyarısı iki sekmede tekrar etmesin diye sekmelerin üstünde bir kez gösterilir. */}
+      <Alert tone="info" title="Gizlilik">
+        Siyasi görüş özel nitelikli kişisel veridir (KVKK md. 6): düğümler görüş kümesine göre renklendirilmez, görüş haritası anonimdir; kendi kümenizi ve
+        konumunuzu yalnız siz görürsünüz. Yakınlık (aile/iş/hane) beyanları da gizlidir ve grafta gösterilmez.
+        {auth.user ? null : " Kendi konumunuzu görmek için giriş yapın."}
+      </Alert>
       <Tabs
         label="Graf bölümleri"
         value={tab}
@@ -111,10 +119,6 @@ function PeopleTab() {
             {formatNumber(data.nodes.length)} düğüm, {formatNumber(data.edges.length)} kenar. Bir düğüme dokunarak ayrıntısını görün; sürükleyerek ve
             iki parmakla yakınlaştırarak gezinin.
           </p>
-          <Alert tone="info" title="Gizlilik">
-            Siyasi görüş özel nitelikli kişisel veridir (KVKK md. 6): düğümler görüş kümesine göre renklendirilmez; kendi kümenizi yalnız siz görürsünüz.
-            Yakınlık (aile/iş/hane) beyanları da gizlidir ve grafta gösterilmez.
-          </Alert>
           {sel ? <NodeCard n={sel} isMe={sel.id === auth.user?.id} onClose={() => setSelected(null)} /> : null}
           <Details summary="Düğüm listesi (tablo görünümü)">
             <Table
@@ -217,10 +221,6 @@ function OpinionMap() {
             kümelenir. Eksenlerin kesin bir anlamı yoktur; yakın noktalar benzer oy veren üyelerdir. Hesap tohumlu ve belirlenimcidir; girdi özeti ve sonuç
             deftere yazılır.
           </p>
-          <Alert tone="info" title="Gizlilik">
-            Siyasi görüş özel nitelikli kişisel veridir (KVKK md. 6); harita anonimdir, kendi konumunuzu yalnız siz görürsünüz.
-            {auth.user ? null : " Kendi konumunuzu görmek için giriş yapın."}
-          </Alert>
         </div>
       </Card>
     </div>
@@ -234,6 +234,7 @@ function StatsView() {
   if (loading && !data) return <Spinner block label="İstatistikler yükleniyor…" />;
   if (error) return <ErrorView error={error} onRetry={reload} />;
   if (!data) return null;
+  const anyLoserWarning = data.permanentLoser.some((x) => loserStatus(x) === "warning");
   return (
     <div className="stack-lg">
       <StatGrid>
@@ -263,27 +264,58 @@ function StatsView() {
         />
       </Card>
 
-      <Card title="Kalıcı kaybeden küme göstergesi" subtitle="Çoğunluk tiranlığı için erken uyarı: bir görüş kümesinin kararların çoğunda kaybeden tarafta kalıp kalmadığı.">
-        {data.permanentLoser.length ? (
-          <Table
-            caption="Kümelere göre kaybedilen karar payı"
-            rows={[...data.permanentLoser].sort((a, b) => b.lostShare - a.lostShare)}
-            rowKey={(r) => r.clusterId}
-            columns={[
-              { key: "c", header: "Küme", render: (r) => <span className="row"><ClusterGlyph clusterId={r.clusterId} /> {clusterLabel(r.clusterId)}</span> },
-              {
-                key: "l",
-                header: "Kaybedilen pay",
-                align: "right",
-                render: (r) => formatPercent(r.lostShare),
-              },
-              { key: "d", header: "Karar sayısı", align: "right", render: (r) => r.decisions },
-            ]}
-          />
-        ) : (
-          <EmptyState title="Henüz yeterli karar yok" />
-        )}
+      <Card
+        title="Kalıcı kaybeden küme göstergesi"
+        subtitle="Çoğunluk tiranlığı için erken uyarı: bir görüş kümesinin kararların çoğunda kaybeden tarafta kalıp kalmadığı."
+        tone={anyLoserWarning ? "warning" : "default"}
+      >
+        <div className="stack-sm">
+          {data.permanentLoser.length ? (
+            <Table
+              caption="Kümelere göre kaybedilen karar payı"
+              rows={[...data.permanentLoser].sort((a, b) => b.lostShare - a.lostShare)}
+              rowKey={(r) => r.clusterId}
+              columns={[
+                { key: "c", header: "Küme", render: (r) => <span className="row"><ClusterGlyph clusterId={r.clusterId} /> {clusterLabel(r.clusterId)}</span> },
+                // Durum, dar ekranda tabloyu kaydırmadan görünsün diye kümenin hemen yanında durur.
+                { key: "s", header: "Durum", render: (r) => <LoserStatusBadge status={loserStatus(r)} /> },
+                {
+                  key: "l",
+                  header: "Kaybedilen pay",
+                  align: "right",
+                  render: (r) => formatPercent(r.lostShare),
+                },
+                { key: "d", header: "Karar sayısı", align: "right", render: (r) => r.decisions },
+              ]}
+            />
+          ) : (
+            <EmptyState title="Henüz yeterli karar yok" />
+          )}
+          {anyLoserWarning ? (
+            <Alert tone="warning" title="Bir görüş kümesi kararların çoğunda kaybediyor">
+              Köprü testi, azınlık itirazı ve uzlaşma turları bu kümenin sesini korumak içindir. Tartışmalarda bu kümenin görüşlerini aramak ve köprü kuran
+              metinler önermek dengeyi güçlendirir.
+            </Alert>
+          ) : null}
+          <p className="small muted mt-0">
+            Durum, en az {LOSER_MIN_DECISIONS} karar sonuçlanmış ve kümenin kaybettiği karar payı {formatPercent(LOSER_WARN_SHARE)} ya da üzerindeyse “Uyarı”dır;
+            {" "}
+            {LOSER_MIN_DECISIONS} karardan azında oran anlamlı sayılmaz (“Yetersiz veri”), diğer durumlarda “Olağan”dır. Kaybedilen pay, sonuçlanan kararların
+            kaçında kümenin kendi çoğunluğunun aksi yönünde karar çıktığını gösterir. Gösterge yalnızca bilgi içindir; hiçbir kararı değiştirmez.
+          </p>
+        </div>
       </Card>
     </div>
+  );
+}
+
+/** Renk tek başına anlam taşımasın diye durum her zaman metinle (ve uyarıda simgeyle) yazılır. */
+function LoserStatusBadge({ status }: { status: LoserStatus }) {
+  return status === "warning" ? (
+    <Badge tone="danger" icon="warning">
+      {LOSER_STATUS_LABELS[status]}
+    </Badge>
+  ) : (
+    <Badge tone={status === "insufficient" ? "neutral" : "success"}>{LOSER_STATUS_LABELS[status]}</Badge>
   );
 }

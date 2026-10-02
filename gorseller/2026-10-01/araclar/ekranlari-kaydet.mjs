@@ -151,6 +151,8 @@ try {
     await capture('Kesin sayımı cihazda doğrulama','Birinci tur ve yeniden oylama sayımları doğrulandı.','Sayımı kendim doğrulayayım');
     replaceCapture=false;
     await go(ppath(32));
+    // Kura kayıtları, sade görünümde kapalı gelen "Kura ve adillik kanıtı" açılırının içindedir.
+    await page.locator('summary').filter({hasText:/^Kura ve adillik kanıtı/}).click();
     await page.locator('summary').filter({hasText:/^Kura kayıtları/}).click();
     await capture('Bilirkişi kurası — adaylar ve seçim','Tohum, aday havuzu ve seçilen üyeler.',page.locator('summary').filter({hasText:/^Kura kayıtları/}));
     await view('Bilirkişi raporu ve sorular',ppath(32),'Uygulanabilirlik raporu ve üye soruları.','Raporlar (1)');

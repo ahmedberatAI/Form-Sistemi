@@ -44,10 +44,30 @@ export function IntegrityWarningList({ warnings }: { warnings: IntegrityWarning[
   );
 }
 
+/** Kart başlığının yanındaki hüküm: "⚠ Kilit adım oy grubu: 1 · en büyüğü 6 kişi · karar değişmedi". */
+export function integritySummary(warnings: IntegrityWarning[]): string {
+  if (!warnings.length) return "";
+  const largest = Math.max(...warnings.map((w) => w.groupSize));
+  return `⚠ Kilit adım oy grubu: ${formatNumber(warnings.length)} · en büyüğü ${formatNumber(largest)} kişi · karar değişmedi`;
+}
+
+/**
+ * Öneri sayfasındaki kart. Uyarı varsa HER ZAMAN açık gelir (her iki görünüm yoğunluğunda); kullanıcı isterse katlayabilir,
+ * hüküm satırı başlıkta kalır. Uyarı yoksa hiçbir şey çizilmez.
+ */
 export function IntegrityCard({ warnings }: { warnings: IntegrityWarning[] }) {
   if (!warnings.length) return null;
   return (
-    <Card title={`Bütünlük uyarıları (${warnings.length})`} subtitle="Kesin sayımda otomatik tarama · karar değiştirilmedi" tone="warning">
+    <Card
+      title={`Bütünlük uyarıları (${warnings.length})`}
+      subtitle="Kesin sayımda otomatik tarama · karar değiştirilmedi"
+      tone="warning"
+      collapsible
+      defaultOpen
+      summary={integritySummary(warnings)}
+      summaryTone="warning"
+      anchor="butunluk"
+    >
       <div className="stack-sm">
         <p className="small">
           Çok kısa aralıklarla aynı oyu veren ve geçmişte de büyük ölçüde birlikte oy kullanan yoğun gruplar (kilit adım) işaretlenir. Bu bir kanıt değil, denetçi

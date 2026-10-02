@@ -57,34 +57,40 @@ export default function ExpertsPage() {
         title="Bilirkişiler"
         subtitle="Bilirkişiler önerilerin teknik uygulanabilirliği hakkında danışma görüşü verir. Görüşleri bağlayıcı değildir; oyları her üye gibi 1 sayılır."
       />
+      <ReputationInfo />
       <Tabs tabs={tabs} value={tab} onChange={(v) => setTab(v)} label="Bilirkişi bölümleri">
         {tab === "liste" ? <ExpertList /> : tab === "basvur" ? <ApplyTab /> : tab === "gorevlerim" ? <AssignmentsTab /> : <ExpertAdminPanel />}
       </Tabs>
-      <ReputationInfo />
     </div>
   );
 }
 
+// Sayfa başlığının hemen altında durur (sekmelerden önce, kendisi sekme içermez): tek cümle özet ve kapalı açılır.
+// 'Tam' görünümde açılır açık gelir; metin eskiden her sekmenin altında hep açık duran karttaki ile aynıdır.
 function ReputationInfo() {
   return (
-    <Card title="İtibar nasıl hesaplanır?" tone="muted" headingLevel={2}>
-      <div className="stack-sm">
-        <p className="mt-0">
-          Her rapordan sonra itibar güncellenir: <span className="cm-formula">R′ = 0,8·R + 0,2·S</span> (başlangıç R₀ = 0,75).
-        </p>
-        <p className="mt-0">S ∈ [0, 1] şu kontrol listesiyle hesaplanır:</p>
-        <ul className="steps">
-          <li>rapor zamanında teslim edildi mi,</li>
-          <li>üyelerin tüm sorularına yanıt verildi mi,</li>
-          <li>uzmanlık alanı içinde kalındı mı,</li>
-          <li>hukuki nitelendirme yapılmadı mı (6754 s. Kanun md. 3/2).</li>
-        </ul>
-        <Alert tone="info" title="Çoğunlukla aynı fikirde olmak ödüllendirilmez">
-          İtibar, raporun özenine bakar; sonucun oylamayla ya da diğer bilirkişilerle örtüşmesine bakmaz. Kura ağırlığı itibarla orantılıdır
-          (0,5–1,5 arasında sınırlanır), aktif görev sayısı arttıkça azalır.
-        </Alert>
-      </div>
-    </Card>
+    <div className="stack-sm">
+      <p className="small muted mt-0">Bilirkişi itibarı her rapordan sonra raporun özenine göre güncellenir ve kura ağırlığını belirler.</p>
+      <Details summary="Bu sayfa ne gösteriyor?">
+        <div className="stack-sm">
+          <h2 className="h3 mt-0">İtibar nasıl hesaplanır?</h2>
+          <p className="mt-0">
+            Her rapordan sonra itibar güncellenir: <span className="cm-formula">R′ = 0,8·R + 0,2·S</span> (başlangıç R₀ = 0,75).
+          </p>
+          <p className="mt-0">S ∈ [0, 1] şu kontrol listesiyle hesaplanır:</p>
+          <ul className="steps">
+            <li>rapor zamanında teslim edildi mi,</li>
+            <li>üyelerin tüm sorularına yanıt verildi mi,</li>
+            <li>uzmanlık alanı içinde kalındı mı,</li>
+            <li>hukuki nitelendirme yapılmadı mı (6754 s. Kanun md. 3/2).</li>
+          </ul>
+          <Alert tone="info" title="Çoğunlukla aynı fikirde olmak ödüllendirilmez">
+            İtibar, raporun özenine bakar; sonucun oylamayla ya da diğer bilirkişilerle örtüşmesine bakmaz. Kura ağırlığı itibarla orantılıdır
+            (0,5–1,5 arasında sınırlanır), aktif görev sayısı arttıkça azalır.
+          </Alert>
+        </div>
+      </Details>
+    </div>
   );
 }
 

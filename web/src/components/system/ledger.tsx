@@ -6,7 +6,7 @@ import { listBlocks, listTxs, repairNode, setNodeFault, tamperBlock, verifyChain
 import { formatNumber } from "../../lib/format";
 import { routes } from "../../lib/routes";
 import { useAsync } from "../../lib/useAsync";
-import { Alert, Badge, Button, Card, EmptyState, ErrorView, HashText, Input, LinkButton, Select, Spinner, Table, Time, useToast, type Tone } from "../../ui";
+import { Alert, Badge, Button, Card, Details, EmptyState, ErrorView, HashText, Input, LinkButton, Select, Spinner, Table, Time, useToast, type Tone } from "../../ui";
 import { TxTypeBadge, TxTypeBadges, VerifyMark } from "./marks";
 import "./system.css";
 
@@ -16,36 +16,46 @@ const FAULT_LABELS: Record<ValidatorStatus["fault"], { label: string; tone: Tone
   byzantine: { label: "Bizans (kötü niyetli)", tone: "warning" },
 };
 
+/**
+ * Sayfa başlığının hemen altında durur (sekmelerden önce, kendisi sekme içermez): tek cümle özet ve kapalı açılır.
+ * 'Tam' görünümde açılır açık gelir; metin eskiden her sekmenin altında hep açık duran karttaki ile aynıdır.
+ */
 export function LedgerExplainer() {
   return (
-    <Card title="Defterde ne var, ne yok?" tone="muted">
-      <div className="sy-has-list">
-        <div>
-          <strong>Var</strong>
-          <ul>
-            <li>içerik özetleri: SHA-256(tuz ‖ metin)</li>
-            <li>faz geçişleri (öneri evreleri)</li>
-            <li>oy taahhütleri: SHA-256(öneri ‖ tur ‖ pusula ‖ seçim ‖ tuz)</li>
-            <li>oylama sonunda tek bir pusula açıklaması (pusula kimliği, seçim, tuz, küme)</li>
-            <li>sayım sonucu ve girdi özetleri</li>
-            <li>küme ve graf çalışma özetleri, bilirkişi kuraları</li>
-            <li>yapay zekâ çıktı özetleri, yönetmelik sürüm özetleri</li>
-          </ul>
+    <div className="stack-sm">
+      <p className="small muted mt-0">Defterde yalnız özetler ve taahhütler durur; kişisel veri, ham mesaj metni ve kullanıcı ile oy arasındaki bağ yoktur.</p>
+      <Details summary="Bu sayfa ne gösteriyor?">
+        <div className="stack-sm">
+          <h2 className="h3 mt-0">Defterde ne var, ne yok?</h2>
+          <div className="sy-has-list">
+            <div>
+              <strong>Var</strong>
+              <ul>
+                <li>içerik özetleri: SHA-256(tuz ‖ metin)</li>
+                <li>faz geçişleri (öneri evreleri)</li>
+                <li>oy taahhütleri: SHA-256(öneri ‖ tur ‖ pusula ‖ seçim ‖ tuz)</li>
+                <li>oylama sonunda tek bir pusula açıklaması (pusula kimliği, seçim, tuz, küme)</li>
+                <li>sayım sonucu ve girdi özetleri</li>
+                <li>küme ve graf çalışma özetleri, bilirkişi kuraları</li>
+                <li>yapay zekâ çıktı özetleri, yönetmelik sürüm özetleri</li>
+              </ul>
+            </div>
+            <div>
+              <strong>Yok</strong>
+              <ul>
+                <li>ad, soyad, T.C. kimlik no, adres, doğum tarihi, e-posta, telefon (şifreli halleri de yok)</li>
+                <li>ham mesaj metni</li>
+                <li>kullanıcı ile oy arasındaki bağ — pusula kimliği öneriye özel bir HMAC'tir; aynı kişinin farklı önerilerdeki oyları birbirine bağlanamaz</li>
+              </ul>
+            </div>
+          </div>
+          <p className="small muted mt-0">
+            Her blok dört doğrulayıcıdan en az üçünün (2f + 1) Ed25519 imzasını taşır. Makbuzunuzla oyunuzun deftere doğru yazıldığını “Oyum kayıtlı mı?”
+            sayfasından doğrulayabilirsiniz. Bu sistem düşük riskli topluluk yönetişimi içindir; siyasi seçim için değildir.
+          </p>
         </div>
-        <div>
-          <strong>Yok</strong>
-          <ul>
-            <li>ad, soyad, T.C. kimlik no, adres, doğum tarihi, e-posta, telefon (şifreli halleri de yok)</li>
-            <li>ham mesaj metni</li>
-            <li>kullanıcı ile oy arasındaki bağ — pusula kimliği öneriye özel bir HMAC'tir; aynı kişinin farklı önerilerdeki oyları birbirine bağlanamaz</li>
-          </ul>
-        </div>
-      </div>
-      <p className="small muted">
-        Her blok dört doğrulayıcıdan en az üçünün (2f + 1) Ed25519 imzasını taşır. Makbuzunuzla oyunuzun deftere doğru yazıldığını “Oyum kayıtlı mı?”
-        sayfasından doğrulayabilirsiniz. Bu sistem düşük riskli topluluk yönetişimi içindir; siyasi seçim için değildir.
-      </p>
-    </Card>
+      </Details>
+    </div>
   );
 }
 

@@ -14,7 +14,9 @@
               .badge .badge-{neutral|info|success|warning|danger|accent} · .count-badge · .chip .chips
               .alert .alert-{info|success|warning|error} · .empty · .spinner .spinner-block
               .progress .progress-{primary|success|warning|danger|accent} .progress-marker
-              .kv (tanım listesi) · .table-wrap .table · .stat .stat-grid · .details · .tabs .tab .tab-panel
+              .kv (tanım listesi) · .table-wrap .table · .stat .stat-grid · .details (.details-has-meta .details-meta) · .tabs .tab .tab-panel
+              .card-collapsible (.is-open) .card-toggle .card-summary(-success/-warning/-danger) .card-subtitle-body (katlanabilir kart)
+              .clamp-text (.is-expanded) .clamp-text-body .clamp-text-toggle (kırpılmış uzun metin)
               .field .field-label .field-hint .field-error .input .textarea .select .check .radio-group .radio-cards
               .form-section .form-grid .form-actions .consent-box
               .modal .modal-sheet · .toast-region .toast · .menu .menu-list .menu-item
@@ -252,6 +254,12 @@ a:focus:not(:focus-visible) {
 .icon {
   flex: none;
   vertical-align: middle;
+}
+
+/* hidden özniteliği her zaman gizler: .stack/.row gibi display:flex sınıflar onu ezemez. "until-found" (katlanmış kart
+   gövdeleri) tarayıcının kendi içerik gizlemesini kullanır: sayfa içi arama bulur ve beforematch ile kartı açar. */
+[hidden]:not([hidden="until-found" i]) {
+  display: none !important;
 }
 
 /* ───────────── Erişilebilirlik ve yardımcılar ───────────── */
@@ -878,6 +886,82 @@ a:focus:not(:focus-visible) {
   border-left-width: 4px;
 }
 
+/* ── Açılım altyapısı: katlanabilir kart (WAI-ARIA akordeonu), hüküm satırı, derin bağlantı hedefi ──
+   <h2 class="card-title"><button class="card-toggle" aria-expanded aria-controls>Başlık</button></h2>
+   <p class="card-summary">tek satırlık hüküm</p> başlığın DIŞINDADIR (bölge adı değişmez). */
+.card-summary {
+  margin: 0.15rem 0 0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.card-summary-success {
+  color: var(--success);
+}
+.card-summary-warning {
+  color: var(--warning);
+}
+.card-summary-danger {
+  color: var(--danger);
+}
+.card-collapsible > .card-header .card-summary {
+  padding-inline-start: 1.35rem; /* düğmedeki ok + boşluk kadar: hüküm başlık metniyle hizalanır */
+}
+.card-collapsible:not(.is-open) > .card-header {
+  padding-bottom: 0.9rem;
+}
+.card-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 36px;
+  margin: 0;
+  padding: 0.1rem 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.card-toggle::before {
+  content: "";
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin: 0 0.25rem 0 0.1rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.15s;
+}
+.card-toggle[aria-expanded="true"]::before {
+  transform: rotate(45deg);
+}
+.card-toggle:hover {
+  color: var(--primary);
+}
+.card-subtitle-body {
+  margin: 0 0 0.75rem;
+}
+/* Gizli (katlanmış) gövde ve altlık yer kaplamaz; until-found iken kutu kalır, yalnız iç boşluk sıfırlanır. */
+.card-collapsible > .card-body[hidden],
+.card-collapsible > .card-footer[hidden] {
+  padding-block: 0;
+  border-top-width: 0;
+}
+/* Derin bağlantı hedefleri sabit üst çubuğun altında kalmasın. */
+.card[id],
+.section[id],
+.details[id],
+.clamp-text[id] {
+  scroll-margin-top: calc(var(--header-h) + env(safe-area-inset-top, 0px) + 12px);
+}
+
 /* ───────────── Düğmeler ───────────── */
 .btn {
   display: inline-flex;
@@ -1428,6 +1512,47 @@ a:focus:not(:focus-visible) {
 }
 .details-body {
   padding: 0.75rem 0.9rem;
+}
+/* meta: özet satırının sağında gri sayı ya da kısa hüküm (yerel işaret korunur, bu yüzden summary flex yapılmaz) */
+.details > summary.details-has-meta::after {
+  content: "";
+  display: block;
+  clear: both;
+}
+.details-meta {
+  float: right;
+  margin-inline-start: 0.75rem;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  font-weight: 400;
+}
+
+/* ───────────── Kırpılmış uzun metin (ui/ClampText) ─────────────
+   Metin DOM'da tam kalır; yalnız görünen satır sayısı sınırlanır. Düğme yalnız ölçülen taşmada çıkar. */
+.clamp-text {
+  min-width: 0;
+}
+.clamp-text-body {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--clamp-lines, 10);
+  line-clamp: var(--clamp-lines, 10);
+  overflow: hidden;
+}
+@media (min-width: 900px) {
+  .clamp-text-body {
+    -webkit-line-clamp: var(--clamp-lines-wide, 16);
+    line-clamp: var(--clamp-lines-wide, 16);
+  }
+}
+.clamp-text.is-expanded .clamp-text-body {
+  display: block;
+  -webkit-line-clamp: none;
+  line-clamp: none;
+  overflow: visible;
+}
+.clamp-text-toggle {
+  margin-top: 0.35rem;
 }
 
 /* ───────────── Sekmeler ───────────── */
@@ -2828,127 +2953,6 @@ a.list-item:hover,
 .del-ref {
   margin-right: 0.4rem;
   font-family: var(--mono);
-}
-
-/* Ana sayfa: sistem şeridi */
-.sys-strip {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1px;
-  background: var(--border);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-@media (min-width: 720px) {
-  .sys-strip {
-    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  }
-}
-@media (max-width: 719.98px) {
-  .sys-strip > .sys-item:last-child:nth-child(odd) {
-    grid-column: 1 / -1;
-  }
-}
-.sys-strip-empty {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  background: var(--surface);
-}
-.sys-item {
-  display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-  padding: 0.6rem 0.75rem;
-  background: var(--surface);
-  color: var(--text);
-  text-decoration: none;
-  min-width: 0;
-}
-.sys-link:hover {
-  background: var(--surface-2);
-  color: var(--text);
-}
-.sys-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  color: var(--text-muted);
-}
-.sys-value {
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
-}
-.sys-hint {
-  font-size: 0.775rem;
-  color: var(--text-muted);
-  overflow-wrap: anywhere;
-}
-.sys-warn {
-  color: var(--warning);
-  font-weight: 600;
-}
-
-/* Ana sayfa: ilkeler */
-.principles {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 0.75rem;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr));
-}
-.principle {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  padding: 0.9rem 1rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-top: 3px solid var(--primary);
-  border-radius: var(--radius);
-  min-width: 0;
-}
-.principle-head {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
-}
-.principle-icon {
-  flex: none;
-  display: inline-grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 999px;
-  background: var(--primary-soft);
-  color: var(--primary);
-}
-.principle-title {
-  margin: 0;
-  font-size: 0.975rem;
-  line-height: 1.35;
-}
-.principle-text {
-  margin: 0;
-  font-size: 0.9rem;
-  color: var(--text-muted);
-  flex: 1;
-}
-.principle-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.2rem;
-  font-size: 0.875rem;
-  font-weight: 600;
 }
 
 /* Ana sayfa: bekleyen işler ve kalıcı kaybeden göstergesi */

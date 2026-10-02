@@ -149,6 +149,19 @@
   margin: 0.25rem 0 0;
 }
 
+/* Yönetmelik maddeleri: bölüm başına yerel <details> (ui/Details). İç liste kendi çerçevesini bırakır, kutu çift çizilmez. */
+.sy-part > .details-body {
+  padding: 0;
+}
+.sy-part .list {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.sy-part > summary {
+  overflow-wrap: anywhere;
+}
+
 .sy-tree .tree-item > .row {
   gap: 0.35rem 0.5rem;
 }

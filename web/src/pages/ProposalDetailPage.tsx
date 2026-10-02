@@ -1,13 +1,14 @@
 // Öneri ayrıntısı — sistemin vitrini: başlık ve evre, zaman çizelgesi, evreye göre eylem paneli (destek, metin önerileri,
 // oy, itiraz, uzlaşma), kesin sonuçlar ve tarayıcıda yeniden sayım, denetim/parametre kartları, bilirkişi paneli,
 // YZ özeti, sürüm geçmişi, defter kayıtları ve tartışma.
+// Yan sütundaki denetim kartları (zaman çizelgesi, ontoloji denetimi, karar parametreleri, sürüm geçmişi, defter kayıtları)
+// kapalı başlar ve başlıklarının yanında tek satırlık hüküm taşır (aykırılık/ihlal varsa ontoloji denetimi açık gelir); Destekçiler
+// hiç katlanmaz, bütünlük uyarısı varsa kartı açık gelir.
 import { useCallback, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
-  LEDGER_TX_LABELS,
   expandIri,
   type AiAnalysisInfo,
-  type LedgerTxType,
   type MessageView,
   type MinorityReport,
   type ProposalDetail,
@@ -22,9 +23,10 @@ import { AuditCard } from "../components/participation/AuditCard";
 import { Discussion } from "../components/participation/Discussion";
 import { ExpertPanelCard } from "../components/participation/ExpertPanelCard";
 import { IntegrityCard } from "../components/participation/IntegrityCard";
+import { LedgerCard } from "../components/participation/LedgerList";
 import { ObjectionPanel } from "../components/participation/ObjectionPanel";
 import { ParamsCard } from "../components/participation/ParamsCard";
-import { PhaseStrip, PhaseTimeline } from "../components/participation/PhaseTimeline";
+import { PhaseStrip, PhaseTimelineCard } from "../components/participation/PhaseTimeline";
 import { ProposalEditor } from "../components/participation/ProposalEditor";
 import { AmendmentDiff, DeletionTargets, EnactedEffect, RegulationPatchView } from "../components/participation/ProposalSubject";
 import { MinorityReportForm, ReconciliationPanel } from "../components/participation/ReconciliationPanel";
@@ -33,14 +35,13 @@ import { RightsFlags } from "../components/participation/RightsFlags";
 import { SponsorPanel, WithdrawButton } from "../components/participation/SponsorPanel";
 import { SuggestionsPanel } from "../components/participation/SuggestionsPanel";
 import { VerifyTallyPanel } from "../components/participation/VerifyTallyPanel";
-import { VersionHistory } from "../components/participation/VersionHistory";
+import { VersionHistory, versionHistorySummary } from "../components/participation/VersionHistory";
 import { VotePanel } from "../components/participation/VotePanel";
-import { PlainText, SubHeading } from "../components/participation/common";
 import { useOntology } from "../lib/categories";
 import { proposalRef } from "../lib/format";
 import { routes } from "../lib/routes";
 import { useAsync } from "../lib/useAsync";
-import { Alert, Badge, Button, Card, Countdown, ErrorView, HashText, KindBadge, PageHeader, Section, Spinner, StatusBadge, TierBadge, Time } from "../ui";
+import { Alert, Badge, Button, Card, ClampText, Countdown, ErrorView, HashText, KindBadge, PageHeader, Section, Spinner, StatusBadge, TierBadge, Time } from "../ui";
 
 const TERMINAL: ProposalStatus[] = ["enacted", "rejected", "withdrawn", "expired", "inadmissible"];
 
@@ -55,6 +56,7 @@ const PHASE_PREFIX: Partial<Record<ProposalStatus, string>> = {
 
 export default function ProposalDetailPage() {
   const { id = "" } = useParams();
+  const auth = useAuth();
   const { categoryLabel, categoryPath } = useOntology();
   const { data: p, error, loading, reload, setData } = useAsync(() => getProposal(id), [id], { pollMs: 30_000 });
   const [threadMessages, setThreadMessages] = useState<Map<string, MessageView>>(() => new Map());
@@ -142,7 +144,7 @@ export default function ProposalDetailPage() {
             }
           >
             <div className="stack">
-              <PlainText text={p.body} />
+              <ClampText text={p.body} />
               {p.kind === "amendment" ? <AmendmentDiff proposal={p} /> : null}
               {p.deletion ? <DeletionTargets deletion={p.deletion} enacted={p.status === "enacted"} bodyShown={p.body} /> : null}
               {p.regulationPatch ? <RegulationPatchView patch={p.regulationPatch} /> : null}
@@ -181,13 +183,9 @@ export default function ProposalDetailPage() {
         </div>
 
         <aside className="stack" aria-label="Öneri bilgileri">
-          <Card title="Zaman çizelgesi" subtitle="Her evre geçişi dağıtık deftere yazılır.">
-            <PhaseTimeline proposal={p} />
-          </Card>
-          <AuditCard audit={p.audit} />
+          {/* Uyarı ve Destekçiler hep görünür üstte; beş denetim kartı kapalı, başlığında hükümle. */}
           <IntegrityCard warnings={integrityWarnings} />
-          <ParamsCard params={p.params} status={p.status} votingRound={p.votingRound} />
-          <Card title={`Destekçiler (${p.sponsorCount}/${p.sponsorsRequired})`}>
+          <Card title={`Destekçiler (${p.sponsorCount}/${p.sponsorsRequired})`} anchor="destekciler">
             {p.sponsors.length ? (
               <ul className="plain-list stack-sm small">
                 {p.sponsors.map((s) => (
@@ -201,7 +199,22 @@ export default function ProposalDetailPage() {
               <p className="small muted">Henüz destekçi yok.</p>
             )}
           </Card>
-          <Card title="Sürüm geçmişi" subtitle="Eski sürümler silinmez; iki sürüm seçip farkı görün.">
+          <PhaseTimelineCard proposal={p} />
+          <AuditCard audit={p.audit} />
+          <ParamsCard
+            params={p.params}
+            status={p.status}
+            votingRound={p.votingRound}
+            eligible={p.participation?.eligible}
+            resultQuorum={results.length ? results[results.length - 1].quorumRequired : null}
+          />
+          <Card
+            title="Sürüm geçmişi"
+            subtitle="Eski sürümler silinmez; iki sürüm seçip farkı görün."
+            collapsible
+            summary={versionHistorySummary(p.versions, auth.now())}
+            anchor="surumler"
+          >
             <VersionHistory
               label="Öneri"
               current={p.version}
@@ -226,9 +239,7 @@ export default function ProposalDetailPage() {
               })}
             />
           </Card>
-          <Card title="Defter kayıtları" subtitle="Bu öneriyle ilgili dağıtık defter işlemleri (kişisel veri içermez).">
-            <LedgerList txs={p.ledgerTxs} totals={p.ledgerTxCounts} />
-          </Card>
+          <LedgerCard txs={p.ledgerTxs} totals={p.ledgerTxCounts} />
         </aside>
       </div>
 
@@ -412,40 +423,5 @@ function DeliberationPanel({ proposal: p, onUpdated, onSuggestion }: { proposal:
         {p.kind !== "deletion" ? <RightsFlags proposal={p} onUpdated={onUpdated} /> : null}
       </div>
     </Card>
-  );
-}
-
-function LedgerList({ txs, totals }: { txs: ProposalDetail["ledgerTxs"]; totals?: ProposalDetail["ledgerTxCounts"] }) {
-  const [all, setAll] = useState(false);
-  if (!txs.length) return <p className="small muted">Henüz defter kaydı yok.</p>;
-  const sorted = txs.slice().sort((a, b) => b.at - a.at);
-  // Sunucu oy taahhütlerini kısaltabilir (en yeni N); sayılar listenin değil defterin toplamıdır.
-  const counts = new Map<string, number>(totals ? Object.entries(totals) : []);
-  if (!totals) for (const t of txs) counts.set(t.type, (counts.get(t.type) ?? 0) + 1);
-  const label = (t: string) => LEDGER_TX_LABELS[t as LedgerTxType] ?? t;
-  const shown = all ? sorted : sorted.slice(0, 8);
-  return (
-    <div className="stack-sm">
-      <p className="small muted">
-        {[...counts.entries()].map(([t, n]) => `${label(t)}: ${n}`).join(" · ")}
-      </p>
-      <SubHeading level={4}>Son kayıtlar</SubHeading>
-      <ul className="plain-list stack-sm small ledger-list">
-        {shown.map((t) => (
-          <li key={t.txHash}>
-            <div className="row-between">
-              <span>{label(t.type)}</span>
-              <Time at={t.at} className="muted" />
-            </div>
-            <HashText hash={t.txHash} chars={12} to={routes.tx(t.txHash)} copy={false} label="İşlem özeti" />
-          </li>
-        ))}
-      </ul>
-      {sorted.length > 8 ? (
-        <Button size="sm" variant="ghost" onClick={() => setAll((x) => !x)}>
-          {all ? "Daha az göster" : `Tümünü göster (${sorted.length})`}
-        </Button>
-      ) : null}
-    </div>
   );
 }

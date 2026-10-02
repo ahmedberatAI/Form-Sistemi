@@ -15,7 +15,8 @@ export const routes = {
     const s = sp.toString();
     return "/oneriler/yeni" + (s ? "?" + s : "");
   },
-  proposal: (id: string) => `/oneriler/${encodeURIComponent(id)}`,
+  /** `bolum` verilirse bağlantı o çapadaki kartı açar, oraya kaydırır ve odağı taşır (lib/sectionParam.ts: ?bolum=). */
+  proposal: (id: string, q?: { bolum?: string }) => `/oneriler/${encodeURIComponent(id)}` + (q?.bolum ? `?bolum=${encodeURIComponent(q.bolum)}` : ""),
   verifyVote: (q?: { proposalId?: string }) => "/oy-dogrula" + (q?.proposalId ? `?oneri=${encodeURIComponent(q.proposalId)}` : ""),
   experts: () => "/bilirkisiler",
   profile: () => "/profil",

@@ -1,0 +1,199 @@
+/* ── Ana sayfa: vitrin, topluluk durumu (sayaç hapları, azınlık koruması) ve ilke akordeonu ──
+   Yeni renk belirteci yok: açık ve koyu temada styles.css'teki --text-muted/--success/--warning/--danger/--primary kullanılır.
+   Renk her zaman metin ya da simgeyle birliktedir (✔ ⚠ + sözcük). */
+
+/* Vitrin: 6 karo; telefonda 2 sütun (360 px'de uzun sözcükler sarar), ≥ 720 px'de 3 sütun */
+.showcase-tiles {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (min-width: 720px) {
+  .showcase-tiles {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.showcase-tiles > li {
+  min-width: 0;
+  display: flex;
+}
+.showcase-tile {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  text-decoration: none;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+a.showcase-tile:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+a.showcase-tile:focus-visible {
+  border-radius: var(--radius);
+}
+.showcase-label {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.showcase-go {
+  margin-inline-start: auto;
+}
+.showcase-value {
+  font-size: 0.95rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.showcase-hint {
+  font-size: 0.775rem;
+  color: var(--text-muted);
+}
+.showcase-warn {
+  color: var(--warning);
+  font-weight: 600;
+}
+/* Mor yalnız yapay zekâ içindir */
+.showcase-tile-ai .showcase-value {
+  color: var(--accent);
+}
+.showcase-line {
+  margin: 0;
+  font-size: 0.825rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.showcase-line-empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Sayaç hapları (Topluluk durumu): tek satırlık, sarmalı bağlantılar; sıfırlar soluk ama görünür */
+.count-pills {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.count-pills > li {
+  min-width: 0;
+  max-width: 100%;
+}
+.count-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 40px;
+  max-width: 100%;
+  padding: 0.25rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 0.875rem;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.count-pill:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.count-pill-n {
+  font-size: 0.95rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+/* Mavi: şu an süren evre · turuncu: dikkat · yeşil ve kırmızı: sonuç */
+.count-pill-now .count-pill-n {
+  color: var(--primary);
+}
+.count-pill-attention .count-pill-n {
+  color: var(--warning);
+}
+.count-pill-success .count-pill-n {
+  color: var(--success);
+}
+.count-pill-danger .count-pill-n {
+  color: var(--danger);
+}
+.count-pill.is-zero {
+  background: transparent;
+  border-style: dashed;
+  color: var(--text-muted);
+}
+.count-pill.is-zero .count-pill-n {
+  color: var(--text-muted);
+}
+
+/* Azınlık koruması: kapalıyken tek satır hüküm; uyarıda açık gelir ve uyarı tonuna geçer */
+.minority.minority-warn {
+  border-color: var(--warning);
+  border-left-width: 4px;
+}
+.minority > summary .details-meta {
+  float: none;
+  display: block;
+  margin: 0.1rem 0 0;
+}
+.minority-verdict {
+  font-weight: 600;
+}
+.minority-verdict-ok {
+  color: var(--success);
+}
+.minority-verdict-warning {
+  color: var(--warning);
+}
+.minority-verdict-pending {
+  font-weight: 400;
+}
+
+/* İlke akordeonu: 8 başlık görünür, metin ve bağlantı açılınca (≥ 900 px'te 2 sütun) */
+.tenets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+@media (min-width: 900px) {
+  .tenets {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.tenets > li {
+  min-width: 0;
+}
+.tenet-text {
+  margin: 0 0 0.6rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+.tenet-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding-block: 0.2rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}

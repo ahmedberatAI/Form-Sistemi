@@ -7,7 +7,7 @@ import { canDownloadFiles, downloadText } from "../../lib/download";
 import { formatDateTime, formatNumber, formatPercent, normalizeSearch } from "../../lib/format";
 import { routes } from "../../lib/routes";
 import { useAsync } from "../../lib/useAsync";
-import { Alert, Badge, Button, Card, CopyButton, EmptyState, ErrorView, HashText, Input, Select, Spinner, Table, TierBadge, type Tone } from "../../ui";
+import { Alert, Badge, Button, Card, CopyButton, Details, EmptyState, ErrorView, HashText, Input, Select, Spinner, Table, TierBadge, type Tone } from "../../ui";
 import "./system.css";
 
 const PROTECTION: Record<ProtectionLevel, { label: string; tone: Tone; hint: string }> = {
@@ -25,10 +25,19 @@ export function ProtectionBadge({ level }: { level: ProtectionLevel }) {
   );
 }
 
+/**
+ * Bir bölümün varsayılan açıklığı: ilk bölüm açık gelir; arama ya da süzgeç varken hepsi açıktır. Diğer durumda
+ * `undefined` (görünüm yoğunluğuna uyar: 'sade' kapalı, 'tam' açık).
+ */
+export function partDefaultOpen(index: number, filtering: boolean): boolean | undefined {
+  return index === 0 || filtering ? true : undefined;
+}
+
 export function ArticlesView({ articles }: { articles: ArticleInfo[] }) {
   const [q, setQ] = useState("");
   const [level, setLevel] = useState("");
   const nq = normalizeSearch(q.trim());
+  const filtering = !!nq || !!level;
   const filtered = articles.filter(
     (a) => (!level || a.protection === level) && (!nq || normalizeSearch(`${a.number} ${a.title} ${a.text}`).includes(nq)),
   );
@@ -61,28 +70,32 @@ export function ArticlesView({ articles }: { articles: ArticleInfo[] }) {
         />
       </div>
       {!filtered.length ? <EmptyState title="Eşleşen madde yok" /> : null}
-      {parts.map(([part, list]) => (
-        <section key={part} className="stack-sm" aria-label={part}>
-          <h3 className="h3 mt-0">{part}</h3>
-          <ul className="list">
-            {list.map((a) => (
-              <li key={a.iri} className="list-item">
-                <article className={a.protection === "Degistirilemez" ? "sy-article is-immutable" : a.protection === "Nitelikli" ? "sy-article is-qualified" : "sy-article"}>
-                  <div className="row-between">
-                    <strong>
-                      {a.number}
-                      {a.title ? ` — ${a.title}` : ""}
-                    </strong>
-                    <ProtectionBadge level={a.protection} />
-                  </div>
-                  <p className="sy-article-text">{a.text}</p>
-                  <code className="small muted">{compactIri(a.iri)}</code>
-                </article>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
+      {parts.length ? (
+        <div className="stack-sm">
+          {/* Anahtar süzgeç durumunu içerir: arama başlayınca/bitince bölümler kullanıcının önceki açıp kapamasından bağımsız varsayılana döner. */}
+          {parts.map(([part, list], i) => (
+            <Details key={`${part}|${filtering}`} className="sy-part" summary={part} meta={`${list.length} fıkra`} open={partDefaultOpen(i, filtering)}>
+              <ul className="list">
+                {list.map((a) => (
+                  <li key={a.iri} className="list-item">
+                    <article className={a.protection === "Degistirilemez" ? "sy-article is-immutable" : a.protection === "Nitelikli" ? "sy-article is-qualified" : "sy-article"}>
+                      <div className="row-between">
+                        <strong>
+                          {a.number}
+                          {a.title ? ` — ${a.title}` : ""}
+                        </strong>
+                        <ProtectionBadge level={a.protection} />
+                      </div>
+                      <p className="sy-article-text">{a.text}</p>
+                      <code className="small muted">{compactIri(a.iri)}</code>
+                    </article>
+                  </li>
+                ))}
+              </ul>
+            </Details>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -338,33 +351,43 @@ export function TurtleView({ versions, version, onVersion }: { versions: number[
   );
 }
 
+/**
+ * Sayfa başlığının hemen altında durur (sekmelerden önce, kendisi sekme içermez): tek cümle özet ve kapalı açılır.
+ * 'Tam' görünümde açılır açık gelir; metin eskiden her sekmenin altında hep açık duran karttaki ile aynıdır.
+ */
 export function ModelExplainer() {
   return (
-    <Card title="Yönetmelik nasıl çalışır?" tone="muted">
-      <ul className="steps">
-        <li>
-          <strong>T-kutusu (şema):</strong> madde, kategori, temel hak, gerekçe, katman ve kural sınıfları ile özellikleri. Kodla birlikte gelir, oylanmaz.
-        </li>
-        <li>
-          <strong>A-kutusu (bilgi):</strong> maddeler, kategori ağacı, haklar, gerekçeler ve parametreler. Yalnızca kabul edilmiş bir yönetmelik değişikliği
-          önerisiyle, yeni sürüm olarak değişir; her sürümün özeti deftere yazılır.
-        </li>
-        <li>
-          <strong>N3 kuralları:</strong> öneri bir RDF alt grafına çevrilir ve ileri zincirleme çıkarımla kategori kalıtımı, bilirkişi gereksinimi, hak
-          kısıtlaması, değiştirilemez hedef gibi sonuçlar türetilir.
-        </li>
-        <li>
-          <strong>SHACL şekilleri:</strong> ihlal ve uyarıları maddeye atıflı Türkçe mesajlarla üretir. İhlal varsa öneri oylamaya girmez.
-        </li>
-        <li>
-          <strong>“En koruyucu kazanır”:</strong> birden çok kural uygulanırsa her parametre için en koruyucu değer seçilir (q, τ, φ için en büyüğü, süreler
-          için en uzunu; bilirkişi gereksinimi “veya”).
-        </li>
-        <li>
-          <strong>Meta-kurallar:</strong> değiştirilemez çekirdek değiştirilemez; yeni değiştirilemez hüküm üretilemez (bugünkü çoğunluk kendini
-          kalıcılaştıramaz); koruma tabanları ve kalıcılaştırma sınırları aşılamaz; iki adımlı atlatma yasaktır.
-        </li>
-      </ul>
-    </Card>
+    <div className="stack-sm">
+      <p className="small muted mt-0">Şema kodla gelir, bilgi yalnız kabul edilen değişiklik önerisiyle yeni sürüm olur; kurallar çakışırsa en koruyucu değer kazanır.</p>
+      <Details summary="Bu sayfa ne gösteriyor?">
+        <div className="stack-sm">
+          <h2 className="h3 mt-0">Yönetmelik nasıl çalışır?</h2>
+          <ul className="steps">
+            <li>
+              <strong>T-kutusu (şema):</strong> madde, kategori, temel hak, gerekçe, katman ve kural sınıfları ile özellikleri. Kodla birlikte gelir, oylanmaz.
+            </li>
+            <li>
+              <strong>A-kutusu (bilgi):</strong> maddeler, kategori ağacı, haklar, gerekçeler ve parametreler. Yalnızca kabul edilmiş bir yönetmelik değişikliği
+              önerisiyle, yeni sürüm olarak değişir; her sürümün özeti deftere yazılır.
+            </li>
+            <li>
+              <strong>N3 kuralları:</strong> öneri bir RDF alt grafına çevrilir ve ileri zincirleme çıkarımla kategori kalıtımı, bilirkişi gereksinimi, hak
+              kısıtlaması, değiştirilemez hedef gibi sonuçlar türetilir.
+            </li>
+            <li>
+              <strong>SHACL şekilleri:</strong> ihlal ve uyarıları maddeye atıflı Türkçe mesajlarla üretir. İhlal varsa öneri oylamaya girmez.
+            </li>
+            <li>
+              <strong>“En koruyucu kazanır”:</strong> birden çok kural uygulanırsa her parametre için en koruyucu değer seçilir (q, τ, φ için en büyüğü, süreler
+              için en uzunu; bilirkişi gereksinimi “veya”).
+            </li>
+            <li>
+              <strong>Meta-kurallar:</strong> değiştirilemez çekirdek değiştirilemez; yeni değiştirilemez hüküm üretilemez (bugünkü çoğunluk kendini
+              kalıcılaştıramaz); koruma tabanları ve kalıcılaştırma sınırları aşılamaz; iki adımlı atlatma yasaktır.
+            </li>
+          </ul>
+        </div>
+      </Details>
+    </div>
   );
 }

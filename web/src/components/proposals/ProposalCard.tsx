@@ -1,12 +1,15 @@
 // Öneri özeti kartı ve listesi: öneriler sayfası, ana sayfa, konu ve profil sayfaları için.
+// Sade kart (rozet bütçesi): üst satırda #K-n ve TEK durum rozeti (+ T0 dışı katman ve 'Sizin'); tür, yazar, zaman ve mesaj
+// sayısı rozet değil, noktayla ayrılmış düz metin meta satırıdır. Kategoriler en çok 2 ve '+n'.
 import { useId } from "react";
 import { Link } from "react-router-dom";
-import type { ProposalStatus, ProposalSummary } from "@forum/shared";
+import { PROPOSAL_KIND_LABELS, type ProposalStatus, type ProposalSummary } from "@forum/shared";
 import { useOntology } from "../../lib/categories";
 import { formatPercent, proposalRef } from "../../lib/format";
 import { routes } from "../../lib/routes";
-import { Badge, Countdown, cx, Icon, KindBadge, ProgressBar, StatusBadge, TierBadge, Time } from "../../ui";
+import { Badge, Countdown, cx, ProgressBar, StatusBadge, TierBadge, Time } from "../../ui";
 import { UserLink } from "../UserLink";
+import "./proposals.css";
 
 /** Evre geri sayımının önündeki metin ("Oylamanın bitmesine 2 sa 13 dk kaldı"). */
 export const PHASE_DEADLINE_PREFIX: Partial<Record<ProposalStatus, string>> = {
@@ -18,7 +21,14 @@ export const PHASE_DEADLINE_PREFIX: Partial<Record<ProposalStatus, string>> = {
   reconciliation: "Uzlaşmanın bitmesine",
 };
 
-const MAX_CATS = 4;
+const MAX_CATS = 2;
+
+/** Meta satırındaki noktalı ayraç (ekran okuyucuya okunmaz). */
+const Dot = () => (
+  <span className="pcard-dot" aria-hidden="true">
+    ·
+  </span>
+);
 
 export interface ProposalCardProps {
   proposal: ProposalSummary;
@@ -32,23 +42,23 @@ export interface ProposalCardProps {
 export function ProposalCard({ proposal: p, compact, myId, headingLevel = 3 }: ProposalCardProps) {
   const { categoryLabel, categoryPath } = useOntology();
   const hid = useId();
+  const noteId = useId();
   const H = `h${headingLevel}` as "h3";
   const mine = !!myId && p.authorId === myId;
   const prefix = PHASE_DEADLINE_PREFIX[p.status];
   const voting = p.status === "voting" || p.status === "revote";
   const part = voting && p.participation && p.participation.eligible > 0 ? p.participation : null;
   const cats = compact ? [] : p.categories.slice(0, MAX_CATS);
-  const more = compact ? 0 : Math.max(0, p.categories.length - MAX_CATS);
+  const hiddenCats = compact ? [] : p.categories.slice(MAX_CATS);
 
   return (
-    <article className={cx("pcard", mine && "pcard-mine")} aria-labelledby={hid}>
+    <article className={cx("pcard", mine && "pcard-mine")} aria-labelledby={hid} aria-describedby={part ? noteId : undefined}>
       <div className="pcard-top">
         <span className="pcard-ref">{proposalRef(p.seq)}</span>
-        <KindBadge kind={p.kind} />
         <StatusBadge status={p.status} />
-        {p.tier ? <TierBadge tier={p.tier} short /> : null}
+        {p.tier && p.tier !== "T0" ? <TierBadge tier={p.tier} short /> : null}
         {mine ? (
-          <Badge tone="info" icon="user">
+          <Badge tone="neutral" icon="user">
             Sizin
           </Badge>
         ) : null}
@@ -58,17 +68,23 @@ export function ProposalCard({ proposal: p, compact, myId, headingLevel = 3 }: P
         <Link to={routes.proposal(p.id)}>{p.title}</Link>
       </H>
 
-      <div className="pcard-meta">
+      <div className="pcard-meta pcard-meta-dots">
+        <span>{PROPOSAL_KIND_LABELS[p.kind] ?? p.kind}</span>
         {!compact ? (
-          <span>
-            <UserLink id={p.authorId} nickname={p.authorNickname} />
-          </span>
+          <>
+            <Dot />
+            <span>
+              <UserLink id={p.authorId} nickname={p.authorNickname} />
+            </span>
+          </>
         ) : null}
+        <Dot />
         <span>
           <Time at={p.createdAt} />
         </span>
+        <Dot />
         <span className="pcard-msgs" title="Tartışmadaki mesaj sayısı">
-          <Icon name="topics" size={14} /> {p.messageCount} mesaj
+          {p.messageCount} mesaj
         </span>
       </div>
 
@@ -79,7 +95,12 @@ export function ProposalCard({ proposal: p, compact, myId, headingLevel = 3 }: P
               {categoryLabel(c)}
             </span>
           ))}
-          {more ? <span className="cat-tag cat-tag-more">+{more}</span> : null}
+          {hiddenCats.length ? (
+            <span className="cat-tag cat-tag-more" title={hiddenCats.map(categoryLabel).join(", ")}>
+              +{hiddenCats.length}
+              <span className="sr-only"> kategori daha</span>
+            </span>
+          ) : null}
         </div>
       ) : null}
 
@@ -96,13 +117,16 @@ export function ProposalCard({ proposal: p, compact, myId, headingLevel = 3 }: P
       {part ? (
         <div className="pcard-part">
           <ProgressBar
-            label="Katılım"
+            label="Katılım (ara sonuç gizli)"
             value={part.voted}
             max={part.eligible}
             valueText={`${part.voted}/${part.eligible} (${formatPercent(part.voted / part.eligible)})`}
             tone="accent"
           />
-          <span className="small muted">Ara sonuç oylama bitene kadar gizlidir.</span>
+          {/* Her kartta tekrarlanan cümle görünmez; ekran okuyucu için kartın açıklaması olarak kalır. */}
+          <span id={noteId} className="sr-only">
+            Ara sonuç oylama bitene kadar gizlidir.
+          </span>
         </div>
       ) : null}
 

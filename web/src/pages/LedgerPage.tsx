@@ -45,10 +45,10 @@ export default function LedgerPage() {
         title="Dağıtık defter"
         subtitle="Kararların, oy taahhütlerinin ve içerik özetlerinin değiştirilemez kaydı. Dört doğrulayıcı Tendermint benzeri uzlaşıyla blok üretir; herkes zinciri tarayıcısında doğrulayabilir."
       />
+      <LedgerExplainer />
       <Tabs tabs={tabs} value={tab} onChange={(v) => setTab(v)} label="Defter bölümleri">
         {body()}
       </Tabs>
-      <LedgerExplainer />
     </div>
   );
 }

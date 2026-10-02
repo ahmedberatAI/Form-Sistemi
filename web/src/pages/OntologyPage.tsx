@@ -85,10 +85,10 @@ export default function OntologyPage() {
           ) : null
         }
       />
+      <ModelExplainer />
       <Tabs tabs={tabs} value={tab} onChange={(v) => setTab(v)} label="Yönetmelik bölümleri">
         {body()}
       </Tabs>
-      <ModelExplainer />
     </div>
   );
 }

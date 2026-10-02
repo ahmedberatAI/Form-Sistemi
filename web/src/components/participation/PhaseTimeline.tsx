@@ -1,8 +1,10 @@
 // Önerinin yaşam döngüsü (ALGORITMA §3): tamamlanan evreler (defter kaydıyla), şu anki evre ve beklenen sonraki evreler.
+// Öneri sayfasında katlanabilir kartın (PhaseTimelineCard) içinde durur; gelecek evrelerin açıklamaları "Sonraki evreler" açılırındadır.
 import { PROPOSAL_STATUS_LABELS, type DecisionParams, type ProposalDetail, type ProposalStatus } from "@forum/shared";
 import { formatHours } from "../../lib/format";
 import { routes } from "../../lib/routes";
-import { cx, HashText, Time } from "../../ui";
+import { Card, cx, Details, HashText, Time } from "../../ui";
+import "./participation.css";
 
 const TERMINAL: ProposalStatus[] = ["enacted", "rejected", "withdrawn", "expired", "inadmissible"];
 
@@ -71,53 +73,78 @@ function eventLabel(from: ProposalStatus | null, to: ProposalStatus): string {
   return PROPOSAL_STATUS_LABELS[to] ?? to;
 }
 
+/** Kart başlığının yanındaki hüküm: "5 evre geçişi · hepsi defterde". */
+export function phaseTimelineSummary(p: Pick<ProposalDetail, "events">): string {
+  const n = p.events.length;
+  if (!n) return "Henüz evre geçişi yok";
+  const onLedger = p.events.filter((e) => !!e.ledgerTx).length;
+  return `${n} evre geçişi · ${onLedger === n ? "hepsi defterde" : `${onLedger}/${n} defterde`}`;
+}
+
 export function PhaseTimeline({ proposal: p }: { proposal: ProposalDetail }) {
   const events = p.events.slice().sort((a, b) => a.at - b.at);
   const terminal = TERMINAL.includes(p.status);
   const next = expectedNext(p);
   return (
-    <ol className="timeline phase-timeline">
-      {events.length === 0 ? (
-        <li className="timeline-item is-current">
-          <strong>{PROPOSAL_STATUS_LABELS[p.status]}</strong>
-          <div className="small muted">
-            <Time at={p.createdAt} mode="both" />
-          </div>
-        </li>
-      ) : null}
-      {events.map((e, i) => {
-        const last = i === events.length - 1;
-        return (
-          <li key={`${e.at}-${i}`} className={cx("timeline-item", last && !terminal ? "is-current" : "is-done", last && terminal && `is-final is-${e.to}`)}>
-            <div className="row-between">
-              <strong>{eventLabel(e.from, e.to)}</strong>
-              <Time at={e.at} mode="absolute" className="small muted" />
+    <div className="stack-sm">
+      <ol className="timeline phase-timeline">
+        {events.length === 0 ? (
+          <li className="timeline-item is-current">
+            <strong>{PROPOSAL_STATUS_LABELS[p.status]}</strong>
+            <div className="small muted">
+              <Time at={p.createdAt} mode="both" />
             </div>
-            {e.reason ? <p className="small timeline-reason">{e.reason}</p> : null}
-            {last && !terminal && p.phaseEndsAt ? (
-              <p className="small muted">
-                Evre bitişi: <Time at={p.phaseEndsAt} mode="both" />
-              </p>
-            ) : null}
-            {e.ledgerTx ? (
-              <div className="small muted">
-                Defter: <HashText hash={e.ledgerTx} chars={8} to={routes.tx(e.ledgerTx)} copy={false} label="Evre değişikliği işlemi" />
+          </li>
+        ) : null}
+        {events.map((e, i) => {
+          const last = i === events.length - 1;
+          return (
+            <li key={`${e.at}-${i}`} className={cx("timeline-item", last && !terminal ? "is-current" : "is-done", last && terminal && `is-final is-${e.to}`)}>
+              <div className="row-between">
+                <strong>{eventLabel(e.from, e.to)}</strong>
+                <Time at={e.at} mode="absolute" className="small muted" />
               </div>
-            ) : null}
-          </li>
-        );
-      })}
-      {next.map((s) => {
-        const h = durationOf(s, p.params);
-        return (
-          <li key={`next-${s}`} className="timeline-item is-future">
-            <strong>{PROPOSAL_STATUS_LABELS[s]}</strong>
-            <span className="small muted"> · beklenen{h ? ` · ${formatHours(h)}` : ""}</span>
-            {PHASE_HINT[s] ? <p className="small muted">{PHASE_HINT[s]}</p> : null}
-          </li>
-        );
-      })}
-    </ol>
+              {e.reason ? <p className="small timeline-reason">{e.reason}</p> : null}
+              {last && !terminal && p.phaseEndsAt ? (
+                <p className="small muted">
+                  Evre bitişi: <Time at={p.phaseEndsAt} mode="both" />
+                </p>
+              ) : null}
+              {e.ledgerTx ? (
+                <div className="small muted">
+                  Defter: <HashText hash={e.ledgerTx} chars={8} to={routes.tx(e.ledgerTx)} copy={false} label="Evre değişikliği işlemi" />
+                </div>
+              ) : null}
+            </li>
+          );
+        })}
+      </ol>
+      {next.length ? (
+        <Details summary="Sonraki evreler" meta={`${next.length} evre`} className="phase-next">
+          <ol className="timeline phase-timeline">
+            {next.map((s) => {
+              const h = durationOf(s, p.params);
+              return (
+                <li key={`next-${s}`} className="timeline-item is-future">
+                  <strong>{PROPOSAL_STATUS_LABELS[s]}</strong>
+                  <span className="small muted"> · beklenen{h ? ` · ${formatHours(h)}` : ""}</span>
+                  {PHASE_HINT[s] ? <p className="small muted">{PHASE_HINT[s]}</p> : null}
+                </li>
+              );
+            })}
+          </ol>
+        </Details>
+      ) : null}
+    </div>
+  );
+}
+
+/** "Zaman çizelgesi" kartı: başlıkta hüküm, gövde kapalı (1 dokunuşla açılır; 'Tam' görünümde açık gelir). */
+export function PhaseTimelineCard({ proposal: p }: { proposal: ProposalDetail }) {
+  return (
+    <Card title="Zaman çizelgesi" subtitle="Her evre geçişi dağıtık deftere yazılır." collapsible summary={phaseTimelineSummary(p)} anchor="evreler">
+      <PhaseTimeline proposal={p} />
+    </Card>
   );
 }
 

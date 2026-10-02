@@ -1,0 +1,108 @@
+/* ── Öneriler listesi ve öneri kartı (sade kart, evre çipleri, telefonda süz ve sırala) ──
+   Yeni renk belirteci yok: yalnız styles.css'teki --primary, --primary-soft, --border, --text-muted vb. kullanılır;
+   koyu tema bu belirteçlerle kendiliğinden uyar. Bu dosya sayfa parçasıyla birlikte yüklenir (styles.css'ten sonra). */
+
+/* Telefonda Tür ve Sırala, 'Süz ve sırala' açılırının içinde: iki alan yan yana */
+.proposals-filter-fields {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+
+/* Sekme paneli: (gri not) · evre çipleri · (seçili çipin tek satır açıklaması) · liste */
+.proposals-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+}
+.proposals-note {
+  margin: 0;
+}
+
+/* Dört sekme (Açık · Sonuçlanan · Tümü · Benim) 360 px'de yatay kaydırma gerektirmesin: dar ekranda sekme iç boşlukları daralır */
+@media (max-width: 480px) {
+  .proposals-tabs .tab-list {
+    gap: 0;
+  }
+  .proposals-tabs .tab {
+    gap: 0.3rem;
+    padding-inline: 0.35rem;
+    font-size: 0.9rem;
+  }
+  .proposals-tabs .tab-count {
+    min-width: 1.2rem;
+    padding-inline: 0.25rem;
+  }
+}
+
+/* Evre çipleri (role=group, aria-pressed düğmeler). Seçili çip dolgu + kalın yazı + onay işaretiyle ayrılır (yalnız renk değil). */
+.phase-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.phase-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 34px;
+  max-width: 100%;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.phase-chip:hover {
+  background: var(--surface-2);
+}
+.phase-chip-count {
+  min-width: 1.3rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+/* Sayısı 0 olan çip soluk ama erişilebilir: renk yerine kesik çerçeve ve ikincil yazı rengi (kontrast korunur) */
+.phase-chip-empty {
+  border-style: dashed;
+  background: transparent;
+  color: var(--text-muted);
+}
+.phase-chip[aria-pressed="true"] {
+  border-style: solid;
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-weight: 650;
+}
+.phase-chip[aria-pressed="true"]::before {
+  content: "✓";
+  content: "✓" / "";
+}
+.phase-chip[aria-pressed="true"] .phase-chip-count {
+  background: var(--surface);
+  color: var(--primary);
+}
+
+/* Sade öneri kartı: tür, yazar, zaman ve mesaj sayısı tek meta satırında, noktayla ayrılmış düz metin */
+.pcard-meta.pcard-meta-dots {
+  gap: 0.1rem 0.4rem;
+}
+.pcard-dot {
+  color: var(--text-muted);
+}
+/* Katılım etiketi ('Katılım (ara sonuç gizli)') dar kartta alt satıra inebilir; sayfa yatay taşmaz */
+.pcard-part .progress-labels {
+  flex-wrap: wrap;
+}

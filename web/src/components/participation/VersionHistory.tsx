@@ -1,6 +1,8 @@
 // Sürüm geçmişi + iki sürüm arasında fark görünümü (öneri sürümleri ve konu revizyonları için ortak).
+// Sürüm listesi hep görünür; fark görünümü "Sürümleri karşılaştır" açılırındadır (diffDefaultOpen ile açık başlatılabilir).
 import { useEffect, useState, type ReactNode } from "react";
-import { DiffView, HashText, RadioGroup, Select, Time } from "../../ui";
+import { DiffView, Details, HashText, RadioGroup, Select, Time } from "../../ui";
+import "./participation.css";
 
 export interface VersionEntry {
   version: number;
@@ -17,9 +19,30 @@ export interface VersionHistoryProps {
   current: number;
   /** Bölüm/erişilebilir ad öneki: "Öneri", "Konu" */
   label?: string;
+  /**
+   * Fark görünümü ("Sürümleri karşılaştır") ilk çizimde açık mı? Varsayılan false: kapalı başlar, 1 dokunuşla açılır.
+   * false iken 'Tam' görünümde yine açık gelir (Details'in genel kuralı).
+   */
+  diffDefaultOpen?: boolean;
 }
 
-export function VersionHistory({ versions, current, label = "Metin" }: VersionHistoryProps) {
+const dayMonth = new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "short" });
+const dayMonthYear = new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "short", year: "numeric" });
+
+/**
+ * Kart başlığının yanındaki hüküm: "2 sürüm · son değişiklik 10 Eyl" (tek sürümde "1 sürüm · değişiklik yok").
+ * `now` (sunucu saati) verilirse ve son sürüm başka bir yıldaysa yıl da yazılır.
+ */
+export function versionHistorySummary(versions: Pick<VersionEntry, "createdAt">[], now?: number): string {
+  const n = versions.length;
+  if (!n) return "Sürüm kaydı yok";
+  if (n === 1) return "1 sürüm · değişiklik yok";
+  const last = Math.max(...versions.map((v) => v.createdAt));
+  const otherYear = now !== undefined && new Date(last).getFullYear() !== new Date(now).getFullYear();
+  return `${n} sürüm · son değişiklik ${(otherYear ? dayMonthYear : dayMonth).format(last)}`;
+}
+
+export function VersionHistory({ versions, current, label = "Metin", diffDefaultOpen = false }: VersionHistoryProps) {
   const sorted = versions.slice().sort((a, b) => a.version - b.version);
   const latest = sorted[sorted.length - 1]?.version ?? current;
   const [from, setFrom] = useState<number>(sorted.length > 1 ? sorted[sorted.length - 2].version : latest);
@@ -64,32 +87,35 @@ export function VersionHistory({ versions, current, label = "Metin" }: VersionHi
       </ol>
 
       {sorted.length > 1 ? (
-        <div className="stack-sm">
-          <div className="form-grid">
-            <Select label="Eski sürüm" value={String(from)} onChange={(e) => setFrom(Number(e.target.value))} options={options} />
-            <Select label="Yeni sürüm" value={String(to)} onChange={(e) => setTo(Number(e.target.value))} options={options} />
+        // open yalnız true iken verilir: undefined → 'Tam' görünümde açık, 'sade'de kapalı.
+        <Details summary="Sürümleri karşılaştır" open={diffDefaultOpen ? true : undefined} className="version-compare">
+          <div className="stack-sm">
+            <div className="form-grid">
+              <Select label="Eski sürüm" value={String(from)} onChange={(e) => setFrom(Number(e.target.value))} options={options} />
+              <Select label="Yeni sürüm" value={String(to)} onChange={(e) => setTo(Number(e.target.value))} options={options} />
+            </div>
+            <RadioGroup<"lines" | "inline">
+              label="Fark görünümü"
+              layout="inline"
+              value={mode}
+              onChange={setMode}
+              options={[
+                { value: "lines", label: "Satır satır" },
+                { value: "inline", label: "Tek akış" },
+              ]}
+            />
+            {a && b ? (
+              <>
+                {a.title !== b.title ? (
+                  <div className="small">
+                    <strong>Başlık:</strong> <DiffView before={a.title} after={b.title} mode="inline" label="Başlık farkı" />
+                  </div>
+                ) : null}
+                <DiffView before={a.body} after={b.body} mode={mode} context={mode === "lines" ? 2 : undefined} label={`${label}: sürüm ${a.version} → ${b.version} farkı`} />
+              </>
+            ) : null}
           </div>
-          <RadioGroup<"lines" | "inline">
-            label="Fark görünümü"
-            layout="inline"
-            value={mode}
-            onChange={setMode}
-            options={[
-              { value: "lines", label: "Satır satır" },
-              { value: "inline", label: "Tek akış" },
-            ]}
-          />
-          {a && b ? (
-            <>
-              {a.title !== b.title ? (
-                <div className="small">
-                  <strong>Başlık:</strong> <DiffView before={a.title} after={b.title} mode="inline" label="Başlık farkı" />
-                </div>
-              ) : null}
-              <DiffView before={a.body} after={b.body} mode={mode} context={mode === "lines" ? 2 : undefined} label={`${label}: sürüm ${a.version} → ${b.version} farkı`} />
-            </>
-          ) : null}
-        </div>
+        </Details>
       ) : (
         <p className="small muted">Henüz tek sürüm var; düzenlendikçe farklar burada görünür.</p>
       )}

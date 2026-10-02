@@ -15,9 +15,16 @@ function closeTopDialog(): boolean {
   return true;
 }
 
+/**
+ * Açık açılır menünün DOM işareti: ui/Menu listeyi (<ul class="menu-list">) yalnız açıkken çizer.
+ * Menu bilinçli olarak disclosure (düğme + liste) desenidir ve role="menu" taşımaz (e2e menü öğelerini düğme/bağlantı rolüyle
+ * arar); bu yüzden [role="menu"] hiçbir zaman eşleşmezdi ve geri tuşu açık menüyü kapatmıyordu. Sınıf adı ui/Menu.tsx ile birlikte değişir.
+ */
+const OPEN_MENU_SELECTOR = ".menu-list";
+
 /** Açık açılır menü (ui/Menu) Esc ile kapanır; açıksa Esc gönderir. */
 function closeOpenMenu(): boolean {
-  if (!document.querySelector('[role="menu"]')) return false;
+  if (!document.querySelector(OPEN_MENU_SELECTOR)) return false;
   document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   return true;
 }

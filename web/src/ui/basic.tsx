@@ -1,6 +1,7 @@
 // Temel görsel bileşenler: düğme, kart, rozet, uyarı, boş durum, ilerleme, başlıklar, tablolar.
-import { useEffect, useId, type ComponentProps, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { Link, useNavigate, type LinkProps } from "react-router-dom";
+import { resolveDefaultOpen, useDetailLevel } from "../lib/detailLevel";
 import { Icon, type IconName } from "./Icon";
 
 export const cx = (...parts: (string | false | null | undefined)[]): string => parts.filter(Boolean).join(" ");
@@ -53,12 +54,82 @@ export function LinkButton({ variant = "secondary", size = "md", block, icon, cl
   );
 }
 
+// ───────────── Açılım altyapısı (katlanabilir kart, Details) ─────────────
+
+/**
+ * Bölüm açma olayı. Bir öğede `bubbles: true` ile tetiklenirse o öğeyi içeren katlanmış kartların hepsi açılır
+ * (derin bağlantı: lib/sectionParam.ts). `bubbles: false` ile yalnız o kartı açar/kapatır (setSectionsOpen).
+ */
+export const SECTION_OPEN_EVENT = "forum:section-open";
+
+export interface SectionOpenDetail {
+  open: boolean;
+}
+
+/**
+ * Hedefi görünür kılar: onu içeren yerel <details> öğelerini ve katlanmış kartları açar. Güncellemelerin DOM'a
+ * işlenmesi için çağıran flushSync içinde çalıştırmalıdır; kaydırma ve odak da çağıranın işidir.
+ */
+export function revealSection(target: Element): void {
+  for (let el: Element | null = target; el; el = el.parentElement) {
+    if (el.tagName === "DETAILS") (el as HTMLDetailsElement).open = true;
+  }
+  target.dispatchEvent(new CustomEvent<SectionOpenDetail>(SECTION_OPEN_EVENT, { bubbles: true, detail: { open: true } }));
+}
+
+/** `root` içindeki bütün katlanabilir kartları açar ya da kapatır ("Tümünü aç / Tümünü kapat"). */
+export function setSectionsOpen(root: ParentNode, open: boolean): void {
+  for (const el of Array.from(root.querySelectorAll(".card-collapsible"))) {
+    el.dispatchEvent(new CustomEvent<SectionOpenDetail>(SECTION_OPEN_EVENT, { detail: { open } }));
+  }
+}
+
+/** Tarayıcı hidden="until-found" ve beforematch destekliyorsa true (Chromium 102+, Android WebView dahil). */
+function canFindInHidden(): boolean {
+  try {
+    return typeof document !== "undefined" && "onbeforematch" in document.documentElement;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Açık/kapalı durumu. İlk değer `explicit` ?? görünüm yoğunluğu (sade → kapalı, tam → açık). Kullanıcı dokunmadıysa
+ * yoğunluk değişince (Ayarlar ya da Android'de kalıcı depodan gecikmeli okuma) yeni varsayılana uyar.
+ * `followExplicit`: `explicit` sonradan değişirse (Details open={...}) o da uygulanır; Card için yalnız ilk değer sayılır.
+ */
+function useDisclosure(explicit: boolean | undefined, openInFull: boolean, followExplicit: boolean): [boolean, (open: boolean) => void] {
+  const { level } = useDetailLevel();
+  const [open, setOpenState] = useState(() => resolveDefaultOpen(explicit, level, openInFull));
+  const touched = useRef(false);
+  const lastExplicit = useRef(explicit);
+
+  // Yalnız yoğunluk değişince çalışır; explicit/openInFull o anki çizimden okunur.
+  useEffect(() => {
+    if (!touched.current) setOpenState(resolveDefaultOpen(explicit, level, openInFull));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [level]);
+
+  useEffect(() => {
+    if (!followExplicit || lastExplicit.current === explicit) return;
+    lastExplicit.current = explicit;
+    touched.current = false;
+    setOpenState(resolveDefaultOpen(explicit, level, openInFull));
+  }, [explicit, followExplicit, level, openInFull]);
+
+  const setOpen = useCallback((next: boolean) => {
+    touched.current = true;
+    setOpenState(next);
+  }, []);
+  return [open, setOpen];
+}
+
 // ───────────── Kart ─────────────
 
 export interface CardProps {
   title?: ReactNode;
   subtitle?: ReactNode;
-  /** Başlığın sağındaki düğmeler */
+  /** Başlığın sağındaki düğmeler (katlanabilir kartta da her zaman görünür) */
   actions?: ReactNode;
   footer?: ReactNode;
   children?: ReactNode;
@@ -67,13 +138,34 @@ export interface CardProps {
   headingLevel?: 2 | 3 | 4;
   tone?: "default" | "muted" | "warning" | "danger" | "success" | "accent";
   id?: string;
+  /**
+   * true → başlık, gövdeyi açıp kapatan düğme olur (WAI-ARIA akordeonu: <h2><button aria-expanded aria-controls>).
+   * Gövde DOM'da kalır (hidden); içindeki bileşenler, yoklamalar ve yazılmış formlar kaybolmaz. `title` gerekir ve düz
+   * metin olmalıdır (düğmenin içine girer). subtitle katlanabilir kartta gövdenin en üstünde durur (kapalıyken görünmez).
+   */
+  collapsible?: boolean;
+  /** collapsible iken ilk açıklık (yalnız ilk çizimde). Verilmezse 'tam' görünümde açık, 'sade'de kapalı. */
+  defaultOpen?: boolean;
+  /** false → 'tam' görünümde de varsayılan kapalı (yalnız defaultOpen verilmemişse anlamlı). */
+  openInFull?: boolean;
+  /**
+   * Başlığın altında tek satırlık hüküm ("✔ Uygun · Olağan karar (T0) · 1 uyarı"). Başlığın DIŞINDADIR: bölge (region)
+   * adı değişmez; collapsible kartta düğmeye aria-describedby ile bağlanır. Kart kapalıyken de görünür.
+   */
+  summary?: ReactNode;
+  /** summary rengi (renk her zaman metin/simgeyle birlikte kullanılır) */
+  summaryTone?: "neutral" | "success" | "warning" | "danger";
+  /** Derin bağlantı çapası: bölümün id'si (id yerine). `?bolum=<anchor>` bu kartı açar, kaydırır, odağı taşır. */
+  anchor?: string;
 }
 
-export function Card({ title, subtitle, actions, footer, children, className, headingLevel = 2, tone = "default", id }: CardProps) {
+const summaryClass = (tone: CardProps["summaryTone"]) => cx("card-summary", tone && tone !== "neutral" && `card-summary-${tone}`);
+
+function PlainCard({ title, subtitle, actions, footer, children, className, headingLevel = 2, tone = "default", id, summary, summaryTone, anchor }: CardProps) {
   const H = `h${headingLevel}` as "h2";
   const hid = useId();
   return (
-    <section className={cx("card", tone !== "default" && `card-${tone}`, className)} id={id} aria-labelledby={title ? hid : undefined}>
+    <section className={cx("card", tone !== "default" && `card-${tone}`, className)} id={anchor ?? id} aria-labelledby={title ? hid : undefined}>
       {(title || actions) && (
         <header className="card-header">
           <div className="card-heading">
@@ -82,6 +174,7 @@ export function Card({ title, subtitle, actions, footer, children, className, he
                 {title}
               </H>
             ) : null}
+            {summary ? <p className={summaryClass(summaryTone)}>{summary}</p> : null}
             {subtitle ? <p className="card-subtitle">{subtitle}</p> : null}
           </div>
           {actions ? <div className="card-actions">{actions}</div> : null}
@@ -91,6 +184,87 @@ export function Card({ title, subtitle, actions, footer, children, className, he
       {footer ? <footer className="card-footer">{footer}</footer> : null}
     </section>
   );
+}
+
+function CollapsibleCard({ title, subtitle, actions, footer, children, className, headingLevel = 2, tone = "default", id, defaultOpen, openInFull = true, summary, summaryTone, anchor }: CardProps) {
+  const H = `h${headingLevel}` as "h2";
+  const hid = useId();
+  const bodyId = useId();
+  const summaryId = useId();
+  const [open, setOpen] = useDisclosure(defaultOpen, openInFull, false);
+  const sectionRef = useRef<HTMLElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const footerRef = useRef<HTMLElement>(null);
+  const hasFooter = !!footer;
+
+  // Kapalı gövde `hidden` ile gizlenir ama DOM'da bağlı kalır. Destekleyen tarayıcıda öznitelik hidden="until-found"a
+  // yükseltilir: sayfa içi arama bulur ve beforematch ile kartı açar. React 19 `hidden` özelliğini yalnız boolean yazar
+  // ("until-found" geçmez), bu yüzden yükseltme elle yapılır; `hidden` özelliği ilk işaretlemeyi ve (destek yoksa) geri dönüşü sağlar.
+  useLayoutEffect(() => {
+    if (open || !canFindInHidden()) return;
+    for (const el of [bodyRef.current, footerRef.current]) el?.setAttribute("hidden", "until-found");
+  }, [open, hasFooter]);
+
+  useEffect(() => {
+    const el = sectionRef.current;
+    if (!el) return;
+    const onOpen = (e: Event) => {
+      const d = (e as CustomEvent<SectionOpenDetail>).detail;
+      if (typeof d?.open === "boolean") setOpen(d.open);
+    };
+    const onFound = () => setOpen(true);
+    el.addEventListener(SECTION_OPEN_EVENT, onOpen);
+    el.addEventListener("beforematch", onFound);
+    return () => {
+      el.removeEventListener(SECTION_OPEN_EVENT, onOpen);
+      el.removeEventListener("beforematch", onFound);
+    };
+  }, [setOpen]);
+
+  return (
+    <section
+      ref={sectionRef}
+      className={cx("card", "card-collapsible", open && "is-open", tone !== "default" && `card-${tone}`, className)}
+      id={anchor ?? id}
+      aria-labelledby={hid}
+    >
+      <header className="card-header">
+        <div className="card-heading">
+          <H className="card-title" id={hid}>
+            <button
+              type="button"
+              className="card-toggle"
+              aria-expanded={open}
+              aria-controls={bodyId}
+              aria-describedby={summary ? summaryId : undefined}
+              onClick={() => setOpen(!open)}
+            >
+              {title}
+            </button>
+          </H>
+          {summary ? (
+            <p className={summaryClass(summaryTone)} id={summaryId}>
+              {summary}
+            </p>
+          ) : null}
+        </div>
+        {actions ? <div className="card-actions">{actions}</div> : null}
+      </header>
+      <div className="card-body" id={bodyId} ref={bodyRef} hidden={!open}>
+        {subtitle ? <p className="card-subtitle card-subtitle-body">{subtitle}</p> : null}
+        {children}
+      </div>
+      {footer ? (
+        <footer className="card-footer" ref={footerRef} hidden={!open}>
+          {footer}
+        </footer>
+      ) : null}
+    </section>
+  );
+}
+
+export function Card(props: CardProps) {
+  return props.collapsible && props.title ? <CollapsibleCard {...props} /> : <PlainCard {...props} />;
 }
 
 // ───────────── Rozet ─────────────
@@ -434,10 +608,41 @@ export function StatGrid({ children }: { children: ReactNode }) {
 
 // ───────────── Açılır ayrıntı ─────────────
 
-export function Details({ summary, children, open, className }: { summary: ReactNode; children: ReactNode; open?: boolean; className?: string }) {
+export interface DetailsProps {
+  summary: ReactNode;
+  children: ReactNode;
+  /** Açık/kapalı. Verilmezse 'tam' görünümde açık, 'sade'de kapalı gelir; verilen değer her iki kipte de geçerlidir. */
+  open?: boolean;
+  className?: string;
+  /** Özet satırının sağında gri sayı ya da kısa hüküm ("3", "✔ tutarlı"). Özet düğmesinin adına dahil olur. */
+  meta?: ReactNode;
+  /** Derin bağlantı çapası (`?bolum=<id>` bu açılırı açar, kaydırır, odağı özetine taşır). */
+  id?: string;
+  /** false → 'tam' görünümde de varsayılan kapalı (ör. moderasyonla daraltılmış içerik); yalnız `open` verilmemişse anlamlı. */
+  openInFull?: boolean;
+}
+
+export function Details({ summary, children, open, className, meta, id, openInFull = true }: DetailsProps) {
+  const [isOpen, setOpen] = useDisclosure(open, openInFull, true);
   return (
-    <details className={cx("details", className)} open={open}>
-      <summary>{summary}</summary>
+    <details
+      className={cx("details", className)}
+      id={id}
+      open={isOpen}
+      onToggle={(e) => {
+        // Kullanıcının (ya da tarayıcının sayfa içi aramasının) açıp kapatması durumu günceller; React'in kendi değişikliği zaten eşittir.
+        const now = e.currentTarget.open;
+        if (now !== isOpen) setOpen(now);
+      }}
+    >
+      {meta ? (
+        <summary className="details-has-meta">
+          <span className="details-summary-text">{summary}</span>
+          <span className="details-meta">{meta}</span>
+        </summary>
+      ) : (
+        <summary>{summary}</summary>
+      )}
       <div className="details-body">{children}</div>
     </details>
   );

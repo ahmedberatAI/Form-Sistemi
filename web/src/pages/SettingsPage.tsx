@@ -3,6 +3,7 @@ import { SURUM } from "@forum/shared";
 import { defaultServerUrl, getSavedServerUrl, getServerUrl, NATIVE_DEFAULT_SERVER, normalizeServerUrl, pingServer, setServerUrl } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { setTheme, getTheme, THEME_LABELS, type ThemeMode } from "../components/system/theme";
+import { DETAIL_LEVEL_LABELS, useDetailLevel, type DetailLevel } from "../lib/detailLevel";
 import { formatDateTime, shortHash } from "../lib/format";
 import { isNativePlatform, platformName } from "../lib/prefs";
 import { exportReceipts, listReceipts } from "../lib/receipts";
@@ -126,18 +127,30 @@ function ServerCard() {
 
 function ThemeCard() {
   const [mode, setMode] = useState<ThemeMode>(getTheme());
+  const { level, setLevel } = useDetailLevel();
   return (
     <Card title="Görünüm">
-      <RadioGroup<ThemeMode>
-        label="Tema"
-        value={mode}
-        layout="inline"
-        onChange={(m) => {
-          setMode(m);
-          void setTheme(m);
-        }}
-        options={(["light", "dark", "system"] as ThemeMode[]).map((m) => ({ value: m, label: THEME_LABELS[m] }))}
-      />
+      <div className="stack">
+        <RadioGroup<ThemeMode>
+          label="Tema"
+          value={mode}
+          layout="inline"
+          onChange={(m) => {
+            setMode(m);
+            void setTheme(m);
+          }}
+          options={(["light", "dark", "system"] as ThemeMode[]).map((m) => ({ value: m, label: THEME_LABELS[m] }))}
+        />
+        <RadioGroup<DetailLevel>
+          label="Görünüm yoğunluğu"
+          value={level}
+          onChange={setLevel}
+          options={[
+            { value: "sade", label: DETAIL_LEVEL_LABELS.sade, hint: "Ayrıntı kartları, açılırlar ve uzun metinler kapalı ya da kısa başlar; hepsi tek dokunuşla açılır." },
+            { value: "tam", label: DETAIL_LEVEL_LABELS.tam, hint: "Bütün kartlar, açılırlar ve uzun metinler açık gelir (ayrıntıları baştan görmek isteyenler için)." },
+          ]}
+        />
+      </div>
     </Card>
   );
 }

@@ -20,3 +20,10 @@ export const TEXT_LIMITS = {
   expertReportAnswer: { max: 5_000 },
   expertReportDissent: { max: 10_000 },
 } as const;
+
+// Kalıcı kaybeden küme göstergesi (Ana sayfa "Çoğunluk tiranlığı erken uyarısı" ve Graf istatistikleri):
+// iki sayfa aynı eşiği kullanır; bir kümenin durumu yalnız buradaki değerlerden türetilir.
+/** Uyarı eşiği: bir kümenin kaybettiği kararların oranı (0..1); bu orana ulaşan küme "Uyarı" sayılır. */
+export const LOSER_WARN_SHARE = 0.75;
+/** Oran en az bu kadar karardan sonra anlamlı sayılır; altında küme "Yetersiz veri" olarak gösterilir. */
+export const LOSER_MIN_DECISIONS = 3;

@@ -20,6 +20,9 @@ export {
   Details,
   VisuallyHidden,
   useDocumentTitle,
+  revealSection,
+  setSectionsOpen,
+  SECTION_OPEN_EVENT,
 } from "./basic";
 export type {
   Tone,
@@ -37,7 +40,11 @@ export type {
   Column,
   TableProps,
   StatProps,
+  DetailsProps,
+  SectionOpenDetail,
 } from "./basic";
+export { ClampText } from "./ClampText";
+export type { ClampTextProps } from "./ClampText";
 export {
   StatusBadge,
   TierBadge,

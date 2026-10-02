@@ -1,6 +1,7 @@
 // Bilirkişi paneli (ALGORITMA §8): tohum ve kaynağı, adaylar (ağırlık, yumuşak çatışma, dışlanma), atamalar (çekinme
 // gerekçeleriyle), kura kayıtları (ilk kura + yedek kuraların EXPERT_DRAW defter işlemleri), raporlar (YZ hukuki nitelendirme
 // uyarılarıyla), sorular (azınlık güvenceli), askı bayrağı. Bilirkişi danışmandır; oyu 1'dir.
+// Kura kanıtı (tohum, atamalar, kura kayıtları, aday havuzu) tek "Kura ve adillik kanıtı" açılırındadır; raporlar ve sorular görünür kalır.
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -21,6 +22,7 @@ import { useAction } from "../../lib/useAsync";
 import { AiLabel, Alert, Badge, Button, Card, Details, HashText, Table, Textarea, Time } from "../../ui";
 import { UserLink } from "../UserLink";
 import { fmtDecimal, PlainText, SubHeading } from "./common";
+import "./participation.css";
 
 const CLOSED = ["enacted", "rejected", "withdrawn", "expired", "inadmissible"];
 
@@ -128,8 +130,86 @@ function AssignmentStatusCell({ status, recuseReason }: { status: ExpertPanelInf
   );
 }
 
-function PanelBody({ panel: e }: { panel: ExpertPanelInfo }) {
+/** "Kura ve adillik kanıtı" açılırının sağındaki gri sayılar: "1. kura · 3 atama · 12 aday". */
+export function expertEvidenceMeta(e: Pick<ExpertPanelInfo, "round" | "assignments" | "candidates">): string {
+  return [`${e.round}. kura`, e.assignments.length ? `${e.assignments.length} atama` : null, e.candidates.length ? `${e.candidates.length} aday` : null]
+    .filter((x): x is string => !!x)
+    .join(" · ");
+}
+
+/** Kura ve adillik kanıtı: tohum ve kaynağı, atamalar, kura kayıtları, aday havuzu. İçerik eskisiyle birebir aynıdır; yalnız tek açılırda toplandı. */
+function PanelEvidence({ panel: e }: { panel: ExpertPanelInfo }) {
   const draws = e.draws ?? [];
+  return (
+    <Details summary="Kura ve adillik kanıtı" meta={expertEvidenceMeta(e)} id="kura" className="expert-evidence">
+      <div className="stack">
+        <div className="small expert-seed">
+          <strong>Kura tohumu:</strong> <HashText hash={e.seed} chars={12} label="Kura tohumu" />
+          <div className="muted">
+            SHA256(blok hash ‖ öneri ‖ tur) — blok <Link to={routes.block(e.seedSource.blockHeight)}>#{e.seedSource.blockHeight}</Link> (
+            <HashText hash={e.seedSource.blockHash} chars={8} copy={false} />
+            ), tur {e.seedSource.round}. Blok önceden taahhüt edildiği için kura sonradan seçilemez; herkes çekilişi yeniden üretebilir.
+            {e.ledgerTx ? (
+              <>
+                {" "}
+                Kayıt: <HashText hash={e.ledgerTx} chars={8} to={routes.tx(e.ledgerTx)} copy={false} />
+              </>
+            ) : null}
+          </div>
+        </div>
+
+        {e.assignments.length ? (
+          <div className="stack-sm">
+            <SubHeading level={4}>Atamalar</SubHeading>
+            <Table
+              caption="Bilirkişi atamaları"
+              rowKey={(a) => a.id}
+              rows={e.assignments}
+              columns={[
+                { key: "n", header: "Bilirkişi", render: (a) => <UserLink id={a.expertId} nickname={a.nickname} isExpert /> },
+                { key: "s", header: "Durum", render: (a) => <AssignmentStatusCell status={a.status} recuseReason={a.recuseReason} /> },
+                { key: "d", header: "Son gün", render: (a) => <Time at={a.dueAt} mode="absolute" /> },
+              ]}
+            />
+          </div>
+        ) : null}
+
+        {draws.length ? (
+          <Details summary={`Kura kayıtları (${draws.length})`}>
+            <div className="stack-sm">
+              <DrawList draws={draws} />
+              <p className="small muted">
+                Çekinme ya da görevden alma ile boşalan yer için yedek kura aynı panelin aday listesinden, türetilmiş tohumla (tohum ‖ yedek ‖ sıra) yapılır ve ayrı bir
+                EXPERT_DRAW kaydı olarak deftere yazılır. Kayıtta kişisel veri yoktur; adaylar öneriye özel takma değerlerle yer alır.
+              </p>
+            </div>
+          </Details>
+        ) : null}
+
+        {e.candidates.length ? (
+          <Details summary={`Aday havuzu (${e.candidates.length})`}>
+            <Table
+              caption="Bilirkişi adayları, kura ağırlıkları ve çıkar çatışmaları"
+              rowKey={(c) => c.userId}
+              rows={e.candidates}
+              columns={[
+                { key: "n", header: "Aday", render: (c) => <UserLink id={c.userId} nickname={c.nickname} showExpert={false} /> },
+                { key: "w", header: "Ağırlık", align: "right", render: (c) => fmtDecimal(c.weight, 3) },
+                { key: "s", header: "Yumuşak çatışma", align: "right", render: (c) => (c.softConflict ? fmtDecimal(c.softConflict, 1) : "—") },
+                { key: "x", header: "Dışlanma", render: (c) => c.excludedReason ?? "—" },
+              ]}
+            />
+            <p className="small muted">
+              Ağırlık w = clamp(itibar, 0,5, 1,5) / (1 + aktif görev) · (1 − yumuşak çatışma). Yazarın kendisi, aile/iş/hane yakınları ve önceki panel üyeleri dışlanır.
+            </p>
+          </Details>
+        ) : null}
+      </div>
+    </Details>
+  );
+}
+
+function PanelBody({ panel: e }: { panel: ExpertPanelInfo }) {
   return (
     <div className="stack">
       <div className="row">
@@ -148,68 +228,7 @@ function PanelBody({ panel: e }: { panel: ExpertPanelInfo }) {
           Rapor verenlerin en az 2/3'ü “uygulanamaz” dedi ve güven medyanı ≥ 0,8: tartışma bir kez uzatıldı ve oylama ekranında uyarı gösterilir. Eşik değişmez.
         </Alert>
       ) : null}
-
-      <div className="small">
-        <strong>Kura tohumu:</strong> <HashText hash={e.seed} chars={12} label="Kura tohumu" />
-        <div className="muted">
-          SHA256(blok hash ‖ öneri ‖ tur) — blok <Link to={routes.block(e.seedSource.blockHeight)}>#{e.seedSource.blockHeight}</Link> (
-          <HashText hash={e.seedSource.blockHash} chars={8} copy={false} />
-          ), tur {e.seedSource.round}. Blok önceden taahhüt edildiği için kura sonradan seçilemez; herkes çekilişi yeniden üretebilir.
-          {e.ledgerTx ? (
-            <>
-              {" "}
-              Kayıt: <HashText hash={e.ledgerTx} chars={8} to={routes.tx(e.ledgerTx)} copy={false} />
-            </>
-          ) : null}
-        </div>
-      </div>
-
-      {e.assignments.length ? (
-        <div className="stack-sm">
-          <SubHeading level={4}>Atamalar</SubHeading>
-          <Table
-            caption="Bilirkişi atamaları"
-            rowKey={(a) => a.id}
-            rows={e.assignments}
-            columns={[
-              { key: "n", header: "Bilirkişi", render: (a) => <UserLink id={a.expertId} nickname={a.nickname} isExpert /> },
-              { key: "s", header: "Durum", render: (a) => <AssignmentStatusCell status={a.status} recuseReason={a.recuseReason} /> },
-              { key: "d", header: "Son gün", render: (a) => <Time at={a.dueAt} mode="absolute" /> },
-            ]}
-          />
-        </div>
-      ) : null}
-
-      {draws.length ? (
-        <Details summary={`Kura kayıtları (${draws.length})`}>
-          <div className="stack-sm">
-            <DrawList draws={draws} />
-            <p className="small muted">
-              Çekinme ya da görevden alma ile boşalan yer için yedek kura aynı panelin aday listesinden, türetilmiş tohumla (tohum ‖ yedek ‖ sıra) yapılır ve ayrı bir
-              EXPERT_DRAW kaydı olarak deftere yazılır. Kayıtta kişisel veri yoktur; adaylar öneriye özel takma değerlerle yer alır.
-            </p>
-          </div>
-        </Details>
-      ) : null}
-
-      {e.candidates.length ? (
-        <Details summary={`Aday havuzu (${e.candidates.length})`}>
-          <Table
-            caption="Bilirkişi adayları, kura ağırlıkları ve çıkar çatışmaları"
-            rowKey={(c) => c.userId}
-            rows={e.candidates}
-            columns={[
-              { key: "n", header: "Aday", render: (c) => <UserLink id={c.userId} nickname={c.nickname} showExpert={false} /> },
-              { key: "w", header: "Ağırlık", align: "right", render: (c) => fmtDecimal(c.weight, 3) },
-              { key: "s", header: "Yumuşak çatışma", align: "right", render: (c) => (c.softConflict ? fmtDecimal(c.softConflict, 1) : "—") },
-              { key: "x", header: "Dışlanma", render: (c) => c.excludedReason ?? "—" },
-            ]}
-          />
-          <p className="small muted">
-            Ağırlık w = clamp(itibar, 0,5, 1,5) / (1 + aktif görev) · (1 − yumuşak çatışma). Yazarın kendisi, aile/iş/hane yakınları ve önceki panel üyeleri dışlanır.
-          </p>
-        </Details>
-      ) : null}
+      <PanelEvidence panel={e} />
     </div>
   );
 }
@@ -240,7 +259,7 @@ export function ExpertPanelCard({ proposal: p, onUpdated }: { proposal: Proposal
   }
 
   return (
-    <Card title="Bilirkişi görüşü" subtitle="Bilirkişi danışmandır; oy ağırlığı yoktur, oyu 1'dir. Hukuki nitelendirme yapmaz.">
+    <Card title="Bilirkişi görüşü" subtitle="Bilirkişi danışmandır; oy ağırlığı yoktur, oyu 1'dir. Hukuki nitelendirme yapmaz." anchor="bilirkisi">
       <div className="stack">
         {panel ? (
           <PanelBody panel={panel} />

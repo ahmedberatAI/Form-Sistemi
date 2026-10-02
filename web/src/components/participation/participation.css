@@ -1,0 +1,19 @@
+/* ── Katılım bileşenleri (öneri sayfası): kanıt kartlarının içindeki açılırlar ──
+   Yeni renk belirteci yok; yalnız yerleşim kuralları (iki temada da aynı). */
+
+/* İç açılırların gövdesi dar ekranda (360 px) yatay taşma üretmez: grid/flex çocukları daralabilir. */
+.phase-next > .details-body,
+.version-compare > .details-body,
+.expert-evidence > .details-body {
+  min-width: 0;
+}
+
+/* "Sonraki evreler": zaman çizelgesinin ilk noktası özet kenarlığına yapışmasın. */
+.phase-next > .details-body {
+  padding-top: 0.9rem;
+}
+
+/* Kura tohumu cümlesi: blok bağlantısı ve özetler dar ekranda sarar (tablolara dokunmaz). */
+.expert-seed {
+  overflow-wrap: anywhere;
+}

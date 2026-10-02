@@ -119,6 +119,7 @@ export default function TopicDetailPage() {
             <VersionHistory
               label="Konu"
               current={t.version}
+              diffDefaultOpen={false}
               versions={t.revisions.map((r) => ({
                 version: r.version,
                 title: r.title,
