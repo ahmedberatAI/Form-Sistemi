@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import {
   OUTCOME_LABELS,
   VOTE_LABELS,
+  txMatchesHash,
   verifyInclusionProof,
   verifyTally,
   voteCommitment,
@@ -13,6 +14,7 @@ import {
 } from "@forum/shared";
 import { errorMessage, isApiError } from "../api/client";
 import { getBulletin, getProof, getTx, listTxs } from "../api/endpoints";
+import { loadRoundFromLedger } from "../lib/ledgerVerify";
 import { useAuth } from "../auth/AuthContext";
 import { Tick } from "../components/participation/common";
 import { canDownloadFiles, downloadText } from "../lib/download";
@@ -177,7 +179,7 @@ export default function VerifyVotePage() {
     else {
       try {
         const proof = await getProof(r.txHash);
-        const v = verifyInclusionProof(proof, pinned.validators);
+        const v = verifyInclusionProof(proof, pinned.validators, r.txHash);
         step(
           "proof",
           v.ok ? "ok" : "fail",
@@ -206,6 +208,8 @@ export default function VerifyVotePage() {
         const tx = await getTx(r.txHash);
         const pl = tx.payload as { proposalId?: string; round?: number; ballotId?: string; commitment?: string };
         const problems: string[] = [];
+        // Sunucunun verdiği içerik gerçekten bu işlem özetine mi ait? (İçerik değiştirilmişse özet tutmaz.)
+        if (!txMatchesHash(tx, r.txHash)) problems.push("işlem içeriği özetiyle eşleşmiyor");
         if (tx.type !== "VOTE_COMMIT") problems.push(`işlem türü ${tx.type}`);
         if (pl.proposalId !== r.proposalId) problems.push("öneri kimliği farklı");
         if (Number(pl.round) !== r.round) problems.push("tur farklı");
@@ -235,7 +239,9 @@ export default function VerifyVotePage() {
         .filter((t) => t.payload.ballotId === r.ballotId && Number(t.payload.round) === r.round)
         .sort((a, b) => a.height - b.height || a.index - b.index);
       const last = mine[mine.length - 1];
-      if (!last) step("latest", r.txHash ? "pending" : "fail", "Bu oy pusulası için defterde henüz bloğa girmiş taahhüt yok.");
+      const unbound = mine.filter((t) => !txMatchesHash(t, t.hash));
+      if (unbound.length) step("latest", "fail", `${unbound.length} taahhüt işleminin içeriği özetiyle eşleşmiyor; liste güvenilir değil.`);
+      else if (!last) step("latest", r.txHash ? "pending" : "fail", "Bu oy pusulası için defterde henüz bloğa girmiş taahhüt yok.");
       else if (last.hash === r.txHash) step("latest", "ok", mine.length > 1 ? `Bu pusula için ${mine.length} taahhüt var (oy değiştirilmiş); geçerli olan en son taahhüt bu makbuzunki.` : "Bu pusula için tek taahhüt var.");
       else
         step(
@@ -260,42 +266,57 @@ export default function VerifyVotePage() {
       if (!round) {
         step("reveal", "pending", "Oylama henüz kapanmadı: oylar oylama bitince toplu olarak açıklanır (BALLOT_REVEAL). Sonra yeniden doğrulayın.");
         step("tally", "pending", "Sayım oylama kapanınca yapılır.");
+      } else if (!pinned) {
+        step("reveal", "fail", "Sabitlenmiş doğrulayıcı anahtarı olmadan açıklama defterden doğrulanamaz.");
+        step("tally", "fail", "Sabitlenmiş doğrulayıcı anahtarı olmadan sayım defterden doğrulanamaz.");
       } else {
-        const rev = round.reveals.find((x) => x.ballotId === r.ballotId);
-        if (!rev) step("reveal", "fail", "Bu oy pusulası açıklanan oylar arasında yok.");
+        // Açıklama, sayım ve taahhütler sunucunun bülteninden değil, defterden bağlı olarak alınır.
+        const L = await loadRoundFromLedger(r.proposalId, round, pinned);
+        if (L.revealCheck.state === "pending") step("reveal", "pending", "Açıklama işlemi henüz bloğa girmedi; birkaç saniye sonra yeniden deneyin.");
+        else if (L.revealCheck.state !== "ok") step("reveal", "fail", L.revealCheck.state === "fail" ? L.revealCheck.reason : "Açıklama işlemi defterde yok.");
         else {
-          const ok = rev.choice === r.choice && rev.salt === r.salt && round.commitments[r.ballotId] === computed;
-          step(
-            "reveal",
-            ok ? "ok" : "fail",
-            <>
-              Açıklanan: <VoteBadge choice={rev.choice} /> {rev.via === "delegated" ? "(vekâletle)" : ""}; makbuz: <VoteBadge choice={r.choice} />.{" "}
-              {ok ? "Seçim, tuz ve son taahhüt eşleşiyor." : "Eşleşmiyor."}
-              {round.revealTx ? (
-                <>
-                  {" "}
-                  Açıklama işlemi <HashText hash={round.revealTx} chars={8} to={routes.tx(round.revealTx)} copy={false} />
-                </>
-              ) : null}
-            </>,
-          );
-        }
-        try {
-          const v = verifyTally(round.tally, round.reveals, round.commitments);
-          step(
-            "tally",
-            v.ok ? "ok" : "fail",
-            v.ok ? (
+          const rev = L.reveals.find((x) => x.ballotId === r.ballotId);
+          if (!rev) step("reveal", "fail", "Bu oy pusulası defterdeki açıklanan oylar arasında yok.");
+          else {
+            const ok = rev.choice === r.choice && rev.salt === r.salt && L.commitments[r.ballotId] === computed;
+            step(
+              "reveal",
+              ok ? "ok" : "fail",
               <>
-                Sonuç: <strong>{OUTCOME_LABELS[v.recomputed.outcome]}</strong> (kabul {v.recomputed.totals.yes}, red {v.recomputed.totals.no}, çekimser{" "}
-                {v.recomputed.totals.abstain}). Ayrıntılı doğrulama için <Link to={routes.proposal(r.proposalId)}>öneri sayfasındaki</Link> “Sayımı kendim doğrulayayım”.
-              </>
-            ) : (
-              v.mismatches.join("; ")
-            ),
-          );
-        } catch (e) {
-          step("tally", "fail", errorMessage(e));
+                Açıklanan: <VoteBadge choice={rev.choice} /> {rev.via === "delegated" ? "(vekâletle)" : ""}; makbuz: <VoteBadge choice={r.choice} />.{" "}
+                {ok ? "Seçim, tuz ve defterdeki son taahhüt eşleşiyor." : "Eşleşmiyor."}
+                {round.revealTx ? (
+                  <>
+                    {" "}
+                    Açıklama işlemi <HashText hash={round.revealTx} chars={8} to={routes.tx(round.revealTx)} copy={false} />
+                  </>
+                ) : null}
+              </>,
+            );
+          }
+        }
+        if (L.tallyCheck.state === "pending" || L.commitsPending > 0) step("tally", "pending", "Sayım ya da taahhüt işlemleri henüz bloğa girmedi; birkaç saniye sonra yeniden deneyin.");
+        else if (L.tallyCheck.state !== "ok") step("tally", "fail", L.tallyCheck.state === "fail" ? L.tallyCheck.reason : "Sayım işlemi defterde yok.");
+        else if (L.commitProblems.length) step("tally", "fail", L.commitProblems.slice(0, 3).join(" "));
+        else {
+          try {
+            const v = verifyTally(L.tally, L.reveals, L.commitments);
+            step(
+              "tally",
+              v.ok ? "ok" : "fail",
+              v.ok ? (
+                <>
+                  Sonuç: <strong>{OUTCOME_LABELS[v.recomputed.outcome]}</strong> (kabul {v.recomputed.totals.yes}, red {v.recomputed.totals.no}, çekimser{" "}
+                  {v.recomputed.totals.abstain}); defterden doğrulanmış verilerle yeniden sayıldı. Ayrıntılar için{" "}
+                  <Link to={routes.proposal(r.proposalId)}>öneri sayfasındaki</Link> “Sayımı kendim doğrulayayım”.
+                </>
+              ) : (
+                v.mismatches.join("; ")
+              ),
+            );
+          } catch (e) {
+            step("tally", "fail", errorMessage(e));
+          }
         }
       }
     } catch (e) {

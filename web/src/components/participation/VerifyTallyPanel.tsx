@@ -1,22 +1,14 @@
-// "Sayımı kendim doğrulayayım": bülten + defter kayıtlarından KC-1.0 sayımı TARAYICIDA yeniden yapılır.
-// TALLY / BALLOT_REVEAL işlemleri defterden alınır, dahil olma kanıtları cihazda sabitlenen doğrulayıcı anahtarlarıyla denetlenir,
-// her açıklanan doğrudan oy defterdeki son taahhüdüyle karşılaştırılır (shared verifyTally).
+// "Sayımı kendim doğrulayayım": KC-1.0 sayımı TARAYICIDA, sunucuya güvenmeden yeniden yapılır.
+// TALLY, BALLOT_REVEAL ve her VOTE_COMMIT işlemi defterden alınır; içeriğin istenen işlem özetine ait olduğu
+// (ledgerTxHash) ve dahil olma kanıtı cihazda sabitlenen doğrulayıcı anahtarlarıyla denetlenir. Sunucunun bültende
+// verdiği hazır veriler yalnızca karşılaştırma için kullanılır; sayım defterden kurulan verilerle yapılır.
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import {
-  hashCanonical,
-  OUTCOME_LABELS,
-  revealHash,
-  verifyInclusionProof,
-  verifyTally,
-  type BulletinRound,
-  type DecisionResult,
-  type RevealEntry,
-  type TallyPayload,
-} from "@forum/shared";
-import { errorMessage, isApiError } from "../../api/client";
-import { getBulletin, getProof, getTx } from "../../api/endpoints";
+import { hashCanonical, OUTCOME_LABELS, revealHash, verifyTally, type BulletinRound, type DecisionResult } from "@forum/shared";
+import { errorMessage } from "../../api/client";
+import { getBulletin } from "../../api/endpoints";
 import { formatNumber } from "../../lib/format";
+import { loadRoundFromLedger, type BoundResult } from "../../lib/ledgerVerify";
 import { routes } from "../../lib/routes";
 import { describeValidatorDiff, ensurePinnedValidators, type PinnedValidators } from "../../lib/validators";
 import { Alert, Button, Card, Details, HashText, Spinner } from "../../ui";
@@ -40,67 +32,60 @@ interface RoundCheck {
 }
 
 const PENDING_TEXT = "Henüz bloğa girmedi; defter işlemleri genellikle bir saniye içinde işler.";
-const isNotYetCommitted = (e: unknown) => isApiError(e) && e.status === 404;
 
-async function proofStep(label: string, txHash: string | null, pinned: PinnedValidators): Promise<Step> {
-  if (!txHash) return { label, ok: false, detail: "Defter işlem özeti yok." };
-  try {
-    const proof = await getProof(txHash);
-    const v = verifyInclusionProof(proof, pinned.validators);
-    return {
-      label,
-      ok: v.ok,
-      detail: v.ok ? (
-        <>
-          Blok <Link to={routes.block(proof.height)}>#{proof.height}</Link>, sıra {proof.index + 1}; Merkle yolu ve {proof.header.commitSigs.length} doğrulayıcı imzası denetlendi.
-        </>
-      ) : (
-        v.reasons.join("; ")
-      ),
-    };
-  } catch (e) {
-    return isNotYetCommitted(e) ? { label, ok: null, detail: PENDING_TEXT } : { label, ok: false, detail: errorMessage(e) };
-  }
+function boundStep(label: string, r: BoundResult<unknown> | { state: "missing" }): Step {
+  if (r.state === "missing") return { label, ok: false, detail: "Defter işlem özeti yok." };
+  if (r.state === "pending") return { label, ok: null, detail: PENDING_TEXT };
+  if (r.state === "fail") return { label, ok: false, detail: r.reason };
+  return {
+    label,
+    ok: true,
+    detail: (
+      <>
+        İçerik işlem özetiyle eşleşti; blok <Link to={routes.block(r.height)}>#{r.height}</Link>, sıra {r.index + 1}; Merkle yolu ve{" "}
+        {r.proof.header.commitSigs.length} doğrulayıcı imzası sabitlenmiş anahtarlarla denetlendi.
+      </>
+    ),
+  };
 }
 
-async function checkRound(b: BulletinRound, shown: DecisionResult | undefined, pinned: PinnedValidators): Promise<RoundCheck> {
+async function checkRound(proposalId: string, b: BulletinRound, shown: DecisionResult | undefined, pinned: PinnedValidators): Promise<RoundCheck> {
   const steps: Step[] = [];
-  let tally: TallyPayload = b.tally;
-  let reveals: RevealEntry[] = b.reveals;
+  const L = await loadRoundFromLedger(proposalId, b, pinned);
 
-  // 1) Bülten ile defterdeki işlem yükleri aynı mı?
-  if (b.tallyTx) {
-    try {
-      const tx = await getTx(b.tallyTx);
-      const same = hashCanonical(tx.payload) === hashCanonical(b.tally);
-      steps.push({ label: "Sayım kaydı (TALLY) defterdeki işlemle aynı", ok: same, detail: same ? undefined : "Bültendeki sayım verisi defterdekinden farklı; defterdeki kullanıldı." });
-      tally = tx.payload as unknown as TallyPayload;
-    } catch (e) {
-      steps.push({ label: "Sayım kaydı (TALLY) defterden alındı", ok: isNotYetCommitted(e) ? null : false, detail: isNotYetCommitted(e) ? PENDING_TEXT : errorMessage(e) });
-    }
-  } else steps.push({ label: "Sayım kaydı (TALLY) defterde", ok: false, detail: "İşlem özeti yok." });
+  // 1–2) Sayım ve açıklama işlemleri defterden, içerik-özet bağı ve dahil olma kanıtıyla
+  steps.push(boundStep("Sayım kaydı (TALLY) defterden doğrulandı", L.tallyCheck));
+  steps.push(boundStep("Açıklanan oylar (BALLOT_REVEAL) defterden doğrulandı", L.revealCheck));
 
-  if (b.revealTx) {
-    try {
-      const tx = await getTx(b.revealTx);
-      const ledgerReveals = (tx.payload as { reveals?: RevealEntry[] }).reveals ?? [];
-      const same = revealHash(ledgerReveals) === revealHash(b.reveals);
-      steps.push({ label: "Açıklanan oylar (BALLOT_REVEAL) defterdeki işlemle aynı", ok: same, detail: same ? undefined : "Bültendeki açıklama listesi defterdekinden farklı; defterdeki kullanıldı." });
-      reveals = ledgerReveals;
-    } catch (e) {
-      steps.push({ label: "Açıklanan oylar (BALLOT_REVEAL) defterden alındı", ok: isNotYetCommitted(e) ? null : false, detail: isNotYetCommitted(e) ? PENDING_TEXT : errorMessage(e) });
-    }
-  } else steps.push({ label: "Açıklanan oylar (BALLOT_REVEAL) defterde", ok: false, detail: "İşlem özeti yok." });
+  // 3) Oy taahhütleri: her VOTE_COMMIT işlemi tek tek doğrulanır, "pusula → son taahhüt" haritası defterden kurulur
+  steps.push(
+    L.commitProblems.length
+      ? { label: "Oy taahhütleri defterden doğrulandı", ok: false, detail: L.commitProblems.slice(0, 5).join(" ") }
+      : L.commitsPending
+        ? { label: "Oy taahhütleri defterden doğrulandı", ok: null, detail: `${L.commitsPending} taahhüt işlemi henüz bloğa girmedi.` }
+        : {
+            label: "Oy taahhütleri defterden doğrulandı",
+            ok: true,
+            detail: `${formatNumber(b.commitTxs.length)} taahhüt işlemi doğrulandı; ${formatNumber(L.commitsChecked)} pusulanın son taahhüdü defterden kuruldu.`,
+          },
+  );
 
-  // 2) Dahil olma kanıtları
-  steps.push(await proofStep("Sayım işlemi bloğa dahil (Merkle + ≥ 2f+1 imza)", b.tallyTx, pinned));
-  steps.push(await proofStep("Açıklama işlemi bloğa dahil (Merkle + ≥ 2f+1 imza)", b.revealTx, pinned));
+  // 4) Sunucunun bülteni defterle aynı mı? (Farklıysa sunucu yanıltmaya çalışıyor demektir; sayım yine defterle yapılır.)
+  const tallySame = L.tallyCheck.state !== "ok" || hashCanonical(L.tally) === hashCanonical(b.tally);
+  const revealSame = L.revealCheck.state !== "ok" || revealHash(L.reveals) === revealHash(b.reveals);
+  const bulletinPending = L.tallyCheck.state === "pending" || L.revealCheck.state === "pending" || L.commitsPending > 0;
+  const diffs = [!tallySame && "sayım verisi", !revealSame && "açıklama listesi", !bulletinPending && !L.bulletinCommitmentsMatch && "taahhüt haritası"].filter(Boolean);
+  steps.push({
+    label: "Sunucunun bülteni defterle aynı",
+    ok: diffs.length ? false : bulletinPending ? null : true,
+    detail: diffs.length ? `Bültendeki ${diffs.join(", ")} defterdekinden farklı; sayım defterdeki verilerle yapıldı.` : bulletinPending ? PENDING_TEXT : undefined,
+  });
 
-  // 3) Yeniden sayım
+  // 5) Yeniden sayım — yalnızca defterden doğrulanmış verilerle
   let mismatches: string[] = [];
   let recomputed: DecisionResult | null = null;
   try {
-    const v = verifyTally(tally, reveals, b.commitments);
+    const v = verifyTally(L.tally, L.reveals, L.commitments);
     mismatches = v.mismatches;
     recomputed = v.recomputed;
     steps.push({
@@ -113,7 +98,7 @@ async function checkRound(b: BulletinRound, shown: DecisionResult | undefined, p
     steps.push({ label: "KC-1.0 sayımı yeniden yapıldı", ok: false, detail: errorMessage(e) });
   }
 
-  // 4) Sayfada gösterilen sonuçla karşılaştırma
+  // 6) Sayfada gösterilen sonuçla karşılaştırma
   if (shown && recomputed) {
     const same = shown.outcome === recomputed.outcome && shown.inputsHash === recomputed.inputsHash;
     steps.push({
@@ -158,7 +143,7 @@ export function VerifyTallyPanel({ proposalId, results }: { proposalId: string; 
       for (let attempt = 0; attempt < 4; attempt++) {
         const bulletin = await getBulletin(proposalId);
         out = [];
-        for (const b of bulletin.rounds) out.push(await checkRound(b, results.find((r) => r.round === b.round), pin.pinned));
+        for (const b of bulletin.rounds) out.push(await checkRound(proposalId, b, results.find((r) => r.round === b.round), pin.pinned));
         if (!out.some((c) => c.pending)) break;
         await new Promise((r) => setTimeout(r, 1200));
       }

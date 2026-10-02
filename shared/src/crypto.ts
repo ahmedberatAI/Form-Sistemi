@@ -151,19 +151,43 @@ export function ed25519RandomSecretKey(): string {
   return bytesToHex(ed25519.utils.randomSecretKey());
 }
 
-/** Bir dahil olma kanıtının tam doğrulaması: Merkle yolu + blok özeti + ≥ 2f+1 geçerli precommit imzası. */
+/**
+ * Defter işlem özeti: hashCanonical({type, payload, nonce}) — sunucudaki ledger/tx.ts ile aynı formül.
+ * İstemci, sunucudan aldığı işlem içeriğinin istediği özete ait olduğunu bununla kanıtlar.
+ */
+export function ledgerTxHash(tx: { type: string; payload: unknown; nonce: string }): string {
+  return hashCanonical({ type: tx.type, payload: tx.payload, nonce: tx.nonce });
+}
+
+/** Sunucudan gelen işlem içeriği, beklenen özete gerçekten ait mi? (İçerik değiştirilmişse özet tutmaz.) */
+export function txMatchesHash(tx: { type: string; payload: unknown; nonce: string; hash?: string }, expectedHash: string): boolean {
+  try {
+    return ledgerTxHash(tx) === expectedHash && (tx.hash === undefined || tx.hash === expectedHash);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Bir dahil olma kanıtının tam doğrulaması: Merkle yolu + blok özeti + ≥ 2f+1 geçerli precommit imzası.
+ * expectedTxHash verilirse kanıtın o işleme ait olduğu da denetlenir (başka bir işlemin kanıtı kabul edilmez).
+ */
 export function verifyInclusionProof(
   proof: InclusionProof,
   pinnedValidators?: { id: string; publicKey: string }[],
+  expectedTxHash?: string,
 ): { ok: boolean; reasons: string[] } {
   const reasons: string[] = [];
+  if (expectedTxHash !== undefined && proof.txHash !== expectedTxHash) reasons.push("Kanıt istenen işleme ait değil (işlem özeti farklı)");
   const validators = pinnedValidators ?? proof.validators;
   if (!verifyMerklePath(proof.txHash, proof.path, proof.txRoot)) reasons.push("Merkle yolu kökle eşleşmiyor");
   if (proof.header.txRoot !== proof.txRoot) reasons.push("Başlıktaki txRoot kanıttakiyle aynı değil");
   const computed = blockHash(proof.header);
   if (computed !== proof.header.hash) reasons.push("Blok özeti yeniden hesaplanınca tutmuyor");
   const n = validators.length;
-  const f = Math.floor((n - 1) / 3);
+  // Boş doğrulayıcı kümesiyle hiçbir kanıt geçerli sayılmaz (fail-closed): n = 0 iken 2f+1 negatif olurdu.
+  if (n === 0) reasons.push("Doğrulayıcı anahtarı yok; kanıt doğrulanamaz");
+  const f = Math.floor((Math.max(n, 1) - 1) / 3);
   const need = 2 * f + 1;
   const seen = new Set<string>();
   for (const s of proof.header.commitSigs) {
