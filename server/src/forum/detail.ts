@@ -19,10 +19,10 @@ import type { Viewer } from "../core/forum-contracts";
 import { notFound } from "../core/errors";
 import { json } from "../db";
 import type { ClusterServiceImpl } from "./clusters";
+import { canObject as mayObject, canVote as mayVote, canWriteMinorityReport as mayWriteMinorityReport, voterStanding } from "./eligibility";
 import { integrityWarnings } from "./integrity";
-import { objectionBudgetOf } from "./objection-budget";
-import { evaluateObjections, finalTallies, firstRoundChoice } from "./tally";
-import { isVotingStatus, parseProposal, safe, type BallotRow, type ForumCore, type ProposalRow } from "./util";
+import { evaluateObjections, finalTallies } from "./tally";
+import { parseProposal, safe, type BallotRow, type ForumCore, type ProposalRow } from "./util";
 import { proposalSummaries, summaryRowOf } from "./views";
 
 export function receiptOf(b: BallotRow): BallotReceipt {
@@ -172,15 +172,17 @@ export function buildProposalDetail(core: ForumCore, clusters: ClusterServiceImp
   let canObject = false;
   let canWriteMinorityReport = false;
   if (viewer) {
-    const eligible = !!db.get("SELECT 1 FROM eligible_voters WHERE proposal_id = ? AND user_id = ?", p.id, viewer.id);
-    const me = core.user(viewer.id);
-    const active = me?.status === "verified";
     if (p.voting_round > 0) {
       const b = db.get<BallotRow>("SELECT * FROM ballots WHERE proposal_id = ? AND round = ? AND user_id = ?", p.id, p.voting_round, viewer.id);
       if (b) myBallot = { choice: b.choice, receipt: receiptOf(b) };
     }
-    canVote =
-      eligible && active && me?.political_consent === 1 && isVotingStatus(p.status) && p.phase_ends_at !== null && now < p.phase_ends_at;
+    // Oy / itiraz / azınlık raporu bayrakları Ana sayfa görevleriyle AYNI koşulları kullanır (tek kaynak: eligibility.ts).
+    // Tur-1 oyları yalnız gerekirse, bir kez ayrıştırılır.
+    const standing = voterStanding(core, p.id, viewer.id);
+    let firstRoundReveals: RevealEntry[] | undefined;
+    const reveals = (): RevealEntry[] =>
+      (firstRoundReveals ??= json<RevealEntry[]>(tallies.find((t) => Number(t.round) === 1)?.reveal_payload ?? null, []));
+    canVote = mayVote(core, p, viewer.id, now, { standing });
     const last = tallies[tallies.length - 1];
     if (last) {
       const hasDirect = !!db.get("SELECT 1 FROM ballots WHERE proposal_id = ? AND round = ? AND user_id = ?", p.id, last.round, viewer.id);
@@ -191,24 +193,8 @@ export function buildProposalDetail(core: ForumCore, clusters: ClusterServiceImp
         if (mine) myEffectiveVia = { delegateNickname: nick.get(delegate) ?? "", choice: mine.choice as VoteChoice };
       }
     }
-    if (p.status === "objection_window" && eligible && active && p.phase_ends_at !== null && now < p.phase_ends_at) {
-      const t1 = tallies.find((t) => Number(t.round) === 1);
-      const bid = core.ballotId(viewer.id, p.id, 1);
-      const first = json<RevealEntry[]>(t1?.reveal_payload ?? null, []).find((r) => r.ballotId === bid);
-      // ProposalService.object() ile aynı kural: 30 günlük itiraz imza bütçesi de dahil (tek kaynak: objection-budget.ts).
-      canObject =
-        first?.choice === "no" &&
-        !objectionRows.some((o) => o.user_id === viewer.id) &&
-        me?.political_consent === 1 &&
-        !objectionBudgetOf(db, viewer.id, now).exhausted;
-    }
-    // ProposalService.minorityReport ile aynı koşullar: evre, güncel seçmen koşulları, tur-1 ETKİN oyu "red" (vekâletle dahil), tek rapor.
-    if ((p.status === "reconciliation" || p.status === "objection_window") && eligible && active && me?.political_consent === 1) {
-      const t1 = tallies.find((t) => Number(t.round) === 1);
-      canWriteMinorityReport =
-        firstRoundChoice(core, p, viewer.id, json<RevealEntry[]>(t1?.reveal_payload ?? null, [])) === "no" &&
-        !reportRows.some((r) => r.author_id === viewer.id);
-    }
+    canObject = mayObject(core, p, viewer.id, now, { standing, reveals, hasObjected: objectionRows.some((o) => o.user_id === viewer.id) });
+    canWriteMinorityReport = mayWriteMinorityReport(core, p, viewer.id, { standing, reveals, hasReport: reportRows.some((r) => r.author_id === viewer.id) });
   }
 
   const ledger = safe(() => proposalLedgerTxs(deps.ledger, p.id), { ledgerTxs: [], ledgerTxCounts: {} });

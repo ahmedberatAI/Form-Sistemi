@@ -1,6 +1,6 @@
 // İtiraz imza bütçesi: bir üye son 30 günde en çok OBJECTION_BUDGET itiraz imzalayabilir.
-// ProposalService.object() ve ProposalDetail.canObject AYNI kuralı bu tek yerden uygular (arayüz "itiraz edebilirsin" deyip
-// sunucu "bütçeniz doldu" demesin).
+// ProposalService.object() ve eligibility.canObject (ProposalDetail.canObject bayrağı ile Ana sayfa "itiraz hakkınız var"
+// görevi) AYNI kuralı bu tek yerden uygular (arayüz "itiraz edebilirsin" deyip sunucu "bütçeniz doldu" demesin).
 import { DAY } from "../core/clock";
 import { json, type Db } from "../db";
 

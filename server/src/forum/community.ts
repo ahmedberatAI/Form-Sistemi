@@ -15,7 +15,6 @@ import {
   type ProposalStatus,
   type PublicProfile,
   type PublicUser,
-  type RevealEntry,
 } from "@forum/shared";
 import type { AuthUser } from "../core/contracts";
 import { notFound } from "../core/errors";
@@ -23,6 +22,7 @@ import { renderNotificationRows } from "../core/notification-text";
 import type { CommunityService, Viewer } from "../core/forum-contracts";
 import { json } from "../db";
 import { latestClusterOf } from "./clusters";
+import { canObject, canVote, canWriteMinorityReport } from "./eligibility";
 import { ACTIVE_SQL, ALL_STATUSES, hasRole, jsonList, proposalLink, proposalRef, safe, type ForumCore } from "./util";
 import { publicUsers, publicUsersByIds, querySummaries } from "./views";
 
@@ -62,22 +62,17 @@ export function createCommunityService(core: ForumCore): CommunityService {
     );
   }
 
-  /** Görüntüleyenin tur-1 etkin oyu "no" olduğu, itiraz/uzlaşma evresindeki öneriler (tek geçişte). */
-  function firstRoundNo(userId: string, statuses: ProposalStatus[]): { id: string; seq: number; title: string; status: ProposalStatus; phase_ends_at: number | null }[] {
-    const rows = db.all<{ id: string; seq: number; title: string; status: ProposalStatus; phase_ends_at: number | null; reveal_payload: string | null }>(
-      `SELECT p.id, p.seq, p.title, p.status, p.phase_ends_at, t.reveal_payload
+  /** Görüntüleyenin uygun seçmen listesinde olduğu, verilen evrelerdeki öneriler (aday kümesi; yetki kararı eligibility.ts'tedir). */
+  function openAsVoter(userId: string, statuses: ProposalStatus[]): { id: string; seq: number; title: string; status: ProposalStatus; phase_ends_at: number | null }[] {
+    return db.all<{ id: string; seq: number; title: string; status: ProposalStatus; phase_ends_at: number | null }>(
+      `SELECT p.id, p.seq, p.title, p.status, p.phase_ends_at
          FROM proposals p
          JOIN eligible_voters e ON e.proposal_id = p.id AND e.user_id = ?
-         JOIN tallies t ON t.proposal_id = p.id AND t.round = 1 AND t.interim = 0
         WHERE p.status IN (SELECT value FROM json_each(?))
         ORDER BY p.phase_ends_at ASC`,
       userId,
       JSON.stringify(statuses),
     );
-    return rows.filter((r) => {
-      const bid = core.ballotId(userId, r.id, 1);
-      return json<RevealEntry[]>(r.reveal_payload, []).some((x) => x.ballotId === bid && x.choice === "no");
-    });
   }
 
   const service: CommunityService = {
@@ -292,28 +287,29 @@ export function createCommunityService(core: ForumCore): CommunityService {
       const now = core.now();
       const verified = me.status === "verified";
       if (verified) {
-        // Oy bekleyenler: uygun seçmen, bu turda doğrudan oy vermemiş.
-        for (const p of db.all<{ id: string; seq: number; title: string; status: string; phase_ends_at: number }>(
+        // Görev koşulları öneri sayfasındaki bayraklarla AYNIDIR (canVote / canObject / canWriteMinorityReport: eligibility.ts):
+        // rızası geri çekilmiş ya da itiraz bütçesi dolmuş üyeye, sayfada yapamayacağı bir eylem görev diye gösterilmez.
+        // Oy bekleyenler: oy verebilen, bu turda doğrudan oy vermemiş.
+        for (const p of db.all<{ id: string; seq: number; title: string; status: ProposalStatus; phase_ends_at: number | null }>(
           `SELECT p.id, p.seq, p.title, p.status, p.phase_ends_at FROM proposals p
              JOIN eligible_voters e ON e.proposal_id = p.id AND e.user_id = ?
-            WHERE p.status IN ('voting', 'revote') AND p.phase_ends_at > ?
+            WHERE p.status IN ('voting', 'revote')
               AND NOT EXISTS (SELECT 1 FROM ballots b WHERE b.proposal_id = p.id AND b.round = p.voting_round AND b.user_id = ?)
             ORDER BY p.phase_ends_at ASC`,
           viewer.id,
-          now,
           viewer.id,
         )) {
+          if (!canVote(core, p, viewer.id, now)) continue;
           out.push({ kind: "vote", title: `${proposalRef(p)} “${p.title}” için oy verin${p.status === "revote" ? " (yeniden oylama)" : ""}`, link: proposalLink(p.id), dueAt: Number(p.phase_ends_at) });
         }
-        // İtiraz hakkı olanlar.
-        for (const p of firstRoundNo(viewer.id, ["objection_window"])) {
-          if (p.phase_ends_at !== null && p.phase_ends_at <= now) continue;
-          if (db.get("SELECT 1 FROM objections WHERE proposal_id = ? AND user_id = ?", p.id, viewer.id)) continue;
+        // İtiraz hakkı olanlar (tur-1 etkin oyu "red", süre sürüyor, rıza ve 30 günlük itiraz bütçesi uygun).
+        for (const p of openAsVoter(viewer.id, ["objection_window"])) {
+          if (!canObject(core, p, viewer.id, now)) continue;
           out.push({ kind: "object", title: `${proposalRef(p)} kabul edildi; itiraz hakkınız var`, link: proposalLink(p.id), dueAt: p.phase_ends_at });
         }
         // Uzlaşmada azınlık raporu.
-        for (const p of firstRoundNo(viewer.id, ["reconciliation"])) {
-          if (db.get("SELECT 1 FROM minority_reports WHERE proposal_id = ? AND author_id = ?", p.id, viewer.id)) continue;
+        for (const p of openAsVoter(viewer.id, ["reconciliation"])) {
+          if (!canWriteMinorityReport(core, p, viewer.id)) continue;
           out.push({ kind: "reconciliation", title: `${proposalRef(p)} uzlaşma turunda: azınlık raporu yazabilirsiniz`, link: proposalLink(p.id), dueAt: p.phase_ends_at });
         }
         // Destek bekleyenler (en çok 5).
