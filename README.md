@@ -46,7 +46,7 @@ npm run dev:web                      # yalnız Vite, port 5173 (/api → 4000 ve
 
 ```bash
 npm run typecheck                    # shared + server + web
-npm test                             # sunucu (792) + web (9) testleri
+npm test                             # sunucu (863) + web (15) testleri
 npm run sim -w server                # Monte Carlo simülasyonu → docs/SIMULASYON.md
 ```
 
