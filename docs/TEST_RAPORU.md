@@ -8,7 +8,7 @@
 | Kontrol | Sonuç |
 |---|---|
 | `npm run typecheck` (shared + server + web) | ✔ 0 hata |
-| `npm test` (sunucu 76 dosya + web 5 dosya) | ✔ **863 / 863** sunucu ve **15 / 15** web testi geçti (Windows/Node 24; 2 Ekim 2026) |
+| `npm test` (sunucu 85 dosya + web 9 dosya) | ✔ **901 / 901** sunucu ve **26 / 26** web testi geçti (Windows/Node 24; 2 Ekim 2026) |
 | `npm run build` (web, Vite) | ✔ |
 | `npm run seed -- --reset` (tohum doğrulamaları, 18 kontrol) | ✔ (~30 sn, Windows) |
 | `npm run sim -w server` (Monte Carlo, belirlenimci) | ✔ (~30 sn) → [SIMULASYON.md](SIMULASYON.md) |

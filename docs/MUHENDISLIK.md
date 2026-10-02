@@ -2,7 +2,7 @@
 
 > Tarih: 2 Ekim 2026.
 > Yöntem: 18 ilke ayrı ayrı incelendi. Her ilke için bir inceleyici (Claude Sonnet 5.5) bütün depoyu salt okunur taradı ve her bulguya dosya, satır ve kanıt ekledi.
-> Bulgular tekilleştirildi ve kod üzerinde doğrulandı. İki turda toplam 31 sorun düzeltildi (her turda yaklaşık 15); diğerleri aşağıda kayıtlıdır.
+> Bulgular tekilleştirildi ve kod üzerinde doğrulandı. Üç turda toplam 48 sorun düzeltildi (her turda 15–17); diğerleri aşağıda kayıtlıdır.
 
 ## 1. İncelenen ilkeler ve başlangıç puanları (0–10)
 
@@ -95,18 +95,55 @@ Kısmi kalanlar:
 - #23: `/api/experts/lint` için ek yetki ve eşzamanlı Claude çağrısı sınırı yok.
 - #29: Açık metin trafiği ve sunucu adresi değişince belirteç silme demo için bırakıldı.
 
+## 3c. Üçüncü tur düzeltmeler (17 sorun)
+
+| # | Sorun | İlke | Düzeltme |
+|---|---|---|---|
+| 32 | Şema sürümü ve göç mekanizması yoktu. Daha yeni bir yazılımın yazdığı veritabanı sessizce açılıyordu. | Bütünlük, işletilebilirlik | `db/migrations.ts`: `meta.schema_version` ve sıralı göç listesi. Eksik göçler tek işlemde uygulanıyor; biri hata verirse hepsi geri alınıyor. Daha yeni sürümlü veritabanı Türkçe hatayla reddediliyor ve tutamak kapatılıyor. |
+| 33 | Kimlik bakımı (reşitlik bayrağı, bekleyen başvuru imhası) iki ayrı yerden zamanlanıyordu. Yaşam döngüsü bunu sözleşme dışı bir tür dönüştürmeyle çağırıyordu. | SRP, DIP | Tek zamanlayıcı: bileşim kökünde `startIdentityMaintenance`. Yalnız sözleşmedeki iki işlev çağrılıyor. Her iş ayrı korunuyor ve hatası denetim günlüğüne yazılıyor. |
+| 34 | Yönetici kullanıcı listesi HTTP rotasında ham SQL ve kopya rol ayrıştırmayla yazılmıştı. | Sorumlulukların ayrılığı, DRY | `CommunityService.adminUsers` kullanılıyor; ortak kullanıcı izdüşümü yeniden kullanılıyor. Rota yalnız yetkilendirip devrediyor. |
+| 35 | KVKK dökümü başarısız olunca hata gövdesi `kvkk-verilerim.json` adıyla iniyordu. | Hata yönetimi | İndirme başlığı yalnız döküm başarılı olunca ekleniyor. |
+| 36 | `seed --reset`, `DB_PATH` ile verilen veritabanını silmiyordu. e2e kurulumu geliştiricinin `DB_PATH` ve `ANTHROPIC_API_KEY` değerlerini alt sürece geçiriyordu. | Test yalıtımı | `DB_PATH` dosyası ve `-wal`/`-shm` dosyaları kilit altında siliniyor. e2e tohumlama bu değişkenleri temizliyor. |
+| 37 | Kalite kapısı yoktu. | Test, işletilebilirlik | GitHub Actions iş akışı (tip denetimi, testler, derleme) eklendi. Mimari bağımlılık testi (`test/architecture`) katman kurallarını zorluyor: shared server/web'e bağlanamaz; forum YZ'ye bağlanamaz; rotalar veritabanına yalnız tür olarak erişir; web'in alt katmanları sayfalara bağlanamaz. |
+| 38 | Takma ad değişince ya da hesap imha edilince bildirim metinleri metin eşleştirmesiyle yeniden yazılıyordu. Takma adla aynı yazılan sözcükler de değişebiliyordu. | Bütünlük, KISS | Bildirimler `{{uye:<kimlik>}}` belirteci saklıyor. Belirteç okunurken güncel takma adla çözülüyor (`core/notification-text.ts`). Yeniden yazma kodu kaldırıldı. |
+| 39 | Öneri ayrıntısındaki defter kayıtları 1000 ile kesiliyordu. Çok oylu önerilerde "öneri oluşturuldu" gibi kayıtlar listeden düşüyordu. | Bütünlük | Yalnız oy taahhütleri en yeni 1000 ile sınırlanıyor; diğer türlerin hepsi veriliyor. Gerçek toplamlar `ledgerTxCounts` alanında. |
+| 40 | Kilit adım (lockstep) oy tespitinde bütün oy çiftleri bellekte tutuluyor ve diziler O(n²) kopyalanıyordu. | Performans | Kayan pencere ve akışlı değerlendirme kullanılıyor; yalnız kilitli kenarlar tutuluyor. 2 milyon çiftlik güvenlik tavanı var. Eski algoritmayla eşdeğerlik test edildi. |
+| 41 | YZ özeti, Claude başarılı olsa bile çevrimdışı özeti tüm mesajlar üzerinde hesaplıyordu. | Performans | Çevrimdışı özet yalnız gerektiğinde ve en yeni 400 mesajla hesaplanıyor. Sezgisel modüldeki ikinci dereceden kopyalama giderildi. |
+| 42 | Bilirkişi kurası bloğa girmeden önce panelde ve çekilme yanıtında kura kaydı görünmüyordu. | Bütünlük | Gönderilen kura kayıtları bekleyen listede tutuluyor ve işlenmiş kayıtlarla tekrar etmeden birleştiriliyor. |
+| 43 | Graf görünürlük politikası rotada, sözleşme dışı bir ek alanla uygulanıyordu. Hizmet varsayılan olarak özel kenarları ve siyasi görüş alanlarını verebiliyordu. | Güvenlik, kapsülleme | Sözleşmeye belgelenmiş `includePrivate` ve `viewerId` seçenekleri eklendi; varsayılan kapalı. Politika hizmette uygulanıyor; rota yalnız savunma derinliği olarak süzüyor. |
+| 44 | Web: düzenlemeden sonra sürüm geçmişi paneli sonsuza dek yükleniyordu. | Hata yönetimi | Yükleme saf bir yardımcıyla etkiye bağlandı. Bayat yanıtlar atılıyor; kapatıp açınca yeniden deneniyor. |
+| 45 | Web: yönetmelik sürümü değişince ontoloji önbelleği eski kalıyordu. | Bütünlük | Sistem bilgisi yenilenince sürüm farklıysa önbellek geçersiz kılınıp yeniden yükleniyor. |
+| 46 | Web: yanıt gövdesi okunurken zaman aşımı çalışmıyordu. Kullanıcı iptali "ağ hatası" olarak görünüyordu. | Hata yönetimi | Zamanlayıcı gövde okumasını da kapsıyor. İptal belgelendiği gibi `AbortError` olarak yeniden fırlatılıyor. |
+| 47 | Geliştirme vekili sabit 4000 portuna gidiyordu; `PORT` değişince çalışmıyordu. | Yapılandırma | Hedef `VITE_API_TARGET` ya da `localhost:$PORT`. `dev.mjs` gerçek hedefi yazdırıyor. |
+| 48 | Android şablon testleri anlamsızdı (`2+2` ve şablon paket adı). | Test kalitesi | Araç testi gerçek paket adını (`tr.edu.forumsistemi`) doğruluyor; anlamsız birim testi kaldırıldı. |
+
+Doğrulama (2 Ekim 2026, üçüncü tur sonrası):
+
+| Kontrol | Sonuç |
+|---|---|
+| Sunucu testleri | 85 dosya, 901/901 |
+| Web birim testleri | 9 dosya, 26/26 |
+| Tip denetimi | temiz |
+| Derleme | temiz |
+| e2e | 9/9 |
+| Android APK | derlendi (araç testi kaynakları da derlendi) |
+
+Kısmi kalanlar:
+- #38: Belirteç öncesinde yazılmış eski bildirimler eski takma adı taşımaya devam ediyor; yeni bildirimler etkilenmiyor.
+- #37: Mimari testte döngüsel bağımlılık denetimi yok. CI e2e ve Android derlemesini çalıştırmıyor.
+- #48: Android `FileProvider` / `file_paths.xml` temizliği yapılmadı.
+
 ## 4. Bilinçli olarak ertelenenler
 
-Bunlar kayıt altında; kullanım sınırları nedeniyle bu turda yapılmadı.
+Bunlar kayıt altında; kullanım sınırları nedeniyle bu turlarda yapılmadı.
 
 - **Büyük servislerin parçalanması (SRP, KISS).** Öneri servisi yaklaşık 1100 satır, bilirkişi servisi 930, kimlik servisi 740. `decide()` 284 satır, `ValidatorNode` 1000 satır.
-- **Kayıt (log) soyutlaması ve şema göç mekanizması.** Eksik indeksler 2. turda eklendi.
-- **Takma ad değişince bildirim metinlerinin metin eşleştirmesiyle yeniden yazılması.**
+- **Kayıt (log) soyutlaması.** Sunucu günlüğü hâlâ doğrudan `console` ve Fastify günlükçüsü üzerinden yazılıyor. Şema göç mekanizması 3. turda eklendi.
 - **Bilinçli tasarım kararı olarak bırakılanlar** (gerekçesi MIMARI.md'de):
   - modüllerin ortak SQLite tablolarını salt okunur sorgulaması (modüler monolit);
   - hata türünde HTTP durum kodunun taşınması;
   - tek `BALLOT_REVEAL` işleminin kapasite sınırı (yaklaşık 20 bin oy);
   - süreç içi 4 doğrulayıcılı defter.
-- **Kalite kapıları.** Sıkı derleyici bayrakları, mimari bağımlılık testleri, CI iş akışı ve belgelerdeki diğer sayı ve iddia uyumsuzlukları.
+- **Kalite kapıları.** Sıkı derleyici bayrakları ve belgelerdeki diğer sayı ve iddia uyumsuzlukları. CI iş akışı ve mimari bağımlılık testi 3. turda eklendi.
 
 Tam bulgu listesi (347 madde; dosya, satır, kanıt ve önerilen düzeltmeyle) inceleme oturumunda saklanmıştır. İstenirse sonraki turlarda öncelik sırasıyla işlenebilir.

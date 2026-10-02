@@ -36,7 +36,7 @@ Tarayıcıda **http://localhost:4000** adresini açın.
 ```bash
 npm run dev                          # ikisi birlikte: [sunucu] ve [web] önekli tek çıktı; Ctrl+C ikisini de kapatır
 npm run dev:server                   # yalnız API, port 4000
-npm run dev:web                      # yalnız Vite, port 5173 (/api → 4000 vekili)
+npm run dev:web                      # yalnız Vite, port 5173 (/api → VITE_API_TARGET ya da localhost:$PORT, varsayılan 4000)
 ```
 
 `npm run dev`, `scripts/dev.mjs` ile iki süreci başlatır (ek bağımlılık yok; Windows cmd/PowerShell, macOS ve Linux'ta aynı
@@ -46,7 +46,7 @@ npm run dev:web                      # yalnız Vite, port 5173 (/api → 4000 ve
 
 ```bash
 npm run typecheck                    # shared + server + web
-npm test                             # sunucu (863) + web (15) testleri
+npm test                             # sunucu (901) + web (26) testleri
 npm run sim -w server                # Monte Carlo simülasyonu → docs/SIMULASYON.md
 ```
 
