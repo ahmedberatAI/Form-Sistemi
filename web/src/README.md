@@ -9,7 +9,7 @@ Kontrol: `cd web && npx tsc -p tsconfig.json && npx vite build` (hatasız olmal�
 
 ```
 src/
-  main.tsx                 applySavedTheme() → <ToastProvider><AuthProvider><App/></AuthProvider></ToastProvider>
+  main.tsx                 applySavedTheme() → <DetailLevelProvider><ErrorBoundary><ToastProvider><AuthProvider><App/>…
   App.tsx                  HashRouter + rotalar (sayfalar React.lazy ile yüklenir)
   styles.css               tüm stiller (CSS değişkenleri, açık/koyu tema, sınıf kılavuzu dosya başında)
   api/client.ts            fetch sarmalayıcı, ApiError, sunucu adresi, belirteç, qs()
@@ -155,6 +155,9 @@ auth.hasRole("registrar"); auth.isVerified; auth.isVoter; auth.isExpert; auth.is
   `formatNumber(n, digits?)`, `formatRational({num,den})` "2/3 (%66,7)", `shortHash(h, n)`, `proposalRef(seq)` "#K-12", `topicRef(seq)` "#T-7",
   `truncate(s, max)`, `normalizeSearch(s)` (Türkçe duyarsız arama).
 - **prefs.ts:** `getPref/setPref/removePref(key)`, `getJsonPref/setJsonPref`, `isNativePlatform()`, `platformName()`, `PREF_KEYS`.
+- **detailLevel.tsx:** Görünüm yoğunluğu `"sade"` (varsayılan) | `"tam"` (`PREF_KEYS.detail` = `forum.detail`; Ayarlar › Görünüm). `useDetailLevel()` → `{ level, full, setLevel }`.
+  Yalnız açılır bölümlerin VARSAYILAN açıklığını değiştirir, içerik gizlemez: `resolveDefaultOpen(explicit, level, openInFull?)`. theme.ts gibi ilk çizimde eşzamanlı, sonra Android Preferences'tan okur.
+- **sectionParam.ts:** `useSectionParam(ready)` — `?bolum=<çapa>` varsa veri yüklendikten sonra o kartı/açılırı açar, kaydırır, odağı taşır ve parametreyi `replace` ile siler (`?mesaj=` gibi diğer parametreler kalır). Bağlantı: `routes.proposal(id, { bolum })`.
 - **native.ts:** `setupNativeBackButton()` (main.tsx çağırır). Android geri tuşu sırasıyla açık pencereyi/alt sayfayı kapatır, açık menüyü kapatır, uygulama içinde geri gider; geçmiş yoksa uygulamadan çıkar (`@capacitor/app`).
 - **receipts.ts:** `saveReceipt(receipt, {proposalTitle?, proposalSeq?})` — `vote()` yanıtını **her zaman** kaydedin;
   `listReceipts(proposalId?)` (en yeni önce, oturumdaki kullanıcının), `latestReceipt(proposalId, round?)`, `isLatest(r, list)`,
@@ -163,7 +166,7 @@ auth.hasRole("registrar"); auth.isVerified; auth.isVoter; auth.isExpert; auth.is
   doğrulamada **her zaman** `pinned.validators` kullanın: `verifyInclusionProof(proof, pinned.validators)`. `status === "changed"` ise
   `describeValidatorDiff(diff)` metniyle uyarı gösterin. Ayrıca `getPinnedValidators()`, `pinValidators(keys)`, `resetPinnedValidators(all?)`, `listPinnedValidators()`, `compareValidators()`.
 - **diff.ts:** `diffLines(a,b)`, `diffWords(a,b)` → `{type: "same"|"add"|"del", text}[]`; `diffText(a,b)` → satır + satır içi kelime farkı (`DiffLine.words`); `diffStats()`. Görsel: `<DiffView>`.
-- **routes.ts:** `routes.proposal(id)`, `routes.topic(id)`, `routes.user(id)`, `routes.block(h)`, `routes.tx(hash)`, `routes.newProposal({kind, parentTopicId, messageId})` (sorgu: `tur`, `konu`, `mesaj`), `routes.verifyVote({proposalId})` (`?oneri=`)…;
+- **routes.ts:** `routes.proposal(id, {bolum?})`, `routes.topic(id)`, `routes.user(id)`, `routes.block(h)`, `routes.tx(hash)`, `routes.newProposal({kind, parentTopicId, messageId})` (sorgu: `tur`, `konu`, `mesaj`), `routes.verifyVote({proposalId})` (`?oneri=`)…;
   `toAppPath(link)` sunucu bağlantısını (`/oneriler/x`, `/profile`, `/ledger/txs/h`, `#/…`) uygulama yoluna çevirir.
 - **download.ts:** `downloadText(name, text, mime?)`, `downloadJson(name, data)`, `canDownloadFiles()`. Android uygulamasında
   (Capacitor WebView) dosya indirilemez: indirme denenmez ve `false` döner. "İndir" düğmesini `canDownloadFiles()` ile gizleyin,
@@ -176,7 +179,7 @@ auth.hasRole("registrar"); auth.isVerified; auth.isVoter; auth.isExpert; auth.is
 |---|---|
 | `Button` | `variant?: "primary"\|"secondary"\|"danger"\|"ghost"` (vars. secondary), `size?: "sm"\|"md"`, `loading?`, `block?`, `icon?: IconName` + tüm `<button>` prop'ları (`type` vars. "button") |
 | `LinkButton` | `to` + `variant`, `size`, `block`, `icon` (react-router `Link`) |
-| `Card` | `title?`, `subtitle?`, `actions?`, `footer?`, `tone?: "default"\|"muted"\|"warning"\|"danger"\|"success"\|"accent"`, `headingLevel?: 2\|3\|4`, `id?` |
+| `Card` | `title?`, `subtitle?`, `actions?`, `footer?`, `tone?: "default"\|"muted"\|"warning"\|"danger"\|"success"\|"accent"`, `headingLevel?: 2\|3\|4`, `id?`. Katlanabilir: `collapsible?` (başlık `aria-expanded` düğmesi olur; `title` düz metin), `defaultOpen?` (verilmezse sade kipte kapalı, tam kipte açık), `openInFull?`, `summary?` (başlığın dışında tek satır hüküm, kapalıyken görünür), `summaryTone?`, `anchor?` (`?bolum=` çapası). Gövde DOM'da kalır (`hidden`). e2e'nin içine baktığı kartlar katlanmaz. |
 | `Badge` | `tone?: "neutral"\|"info"\|"success"\|"warning"\|"danger"\|"accent"`, `icon?`, `title?` |
 | `StatusBadge` `{status}` · `TierBadge` `{tier, short?}` · `KindBadge` `{kind}` · `VoteBadge` `{choice}` · `StanceBadge` `{stance}` · `OutcomeBadge` `{outcome}` · `RoleBadge` `{role}` · `UserStatusBadge` `{status}` · `ExpertStatusBadge` `{status}` | Etiketler `@forum/shared/labels`'tan. Ayrıca `statusTone(status)`, `OPEN_STATUSES`, `CLOSED_STATUSES`. |
 | `Tabs` | `tabs: {id, label, count?, disabled?}[]`, `value`, `onChange`, `label` (erişilebilir ad), `children` = etkin sekmenin içeriği (ok tuşlarıyla gezinme) |
@@ -201,7 +204,8 @@ auth.hasRole("registrar"); auth.isVerified; auth.isVoter; auth.isExpert; auth.is
 | `Stat`, `StatGrid` | `label`, `value`, `hint?`, `tone?`, `to?` |
 | `PageHeader` | `title`, `subtitle?`, `actions?`, `meta?` (rozet satırı), `back?: {to?, label?}`, `docTitle?` |
 | `Section` | `title`, `description?`, `actions?`, `headingLevel?` |
-| `Details` | `summary`, `children`, `open?` (yerel `<details>`) |
+| `Details` | `summary`, `children`, `open?` (yerel `<details>`; verilmezse sade kipte kapalı, tam kipte açık), `meta?` (özetin sağında gri sayı/hüküm), `id?` (`?bolum=` çapası), `openInFull?` |
+| `ClampText` | `text`, `lines?` (10), `wideLines?` (16, ≥900 px), `openInFull?` — uzun düz metni kırpar; düğme yalnız taşmada çıkar ("Tamamını göster (N kelime)" / "Kısalt"), metin DOM'da tam kalır |
 | `DiffView` | `before`, `after`, `mode?: "lines"\|"inline"`, `context?` (değişmeyen satırları daralt), `label?` |
 | `DropdownMenu` | `label`, `ariaLabel?`, `items: ({label, to?, onClick?, icon?, danger?, badge?} \| "divider" \| null)[]`, `align?` |
 | `Icon` | `name: IconName` (home, topics, proposals, verify, experts, graph, ledger, book, bell, user, users, registrar, admin, settings, more, menu, logout, login, plus, close, chevronDown, chevronRight, back, copy, check, search, info, warning, success, error, clock, ai, external, vote, refresh), `size?` |

@@ -8,12 +8,12 @@
 | Kontrol | Sonuç |
 |---|---|
 | `npm run typecheck` (shared + server + web) | ✔ 0 hata |
-| `npm test` (sunucu 85 dosya + web 9 dosya) | ✔ **901 / 901** sunucu ve **26 / 26** web testi geçti (Windows/Node 24; 2 Ekim 2026) |
+| `npm test` (sunucu 86 dosya + web 18 dosya) | ✔ **907 / 907** sunucu ve **148 / 148** web testi geçti (Windows/Node 24; 2 Ekim 2026) |
 | `npm run build` (web, Vite) | ✔ |
 | `npm run seed -- --reset` (tohum doğrulamaları, 18 kontrol) | ✔ (~30 sn, Windows) |
 | `npm run sim -w server` (Monte Carlo, belirlenimci) | ✔ (~30 sn) → [SIMULASYON.md](SIMULASYON.md) |
-| `npm run e2e` — tarayıcı uçtan uca test paketi (Playwright/Chromium, 5 dosya; Windows 11, Node 24) | ✔ **9 / 9** test (~2,2 dk; bkz. §3.1) |
-| 360 px'de 114 sayfa/sekme görünümü (7 rol): yatay taşma / sayfa-konsol hatası | ✔ 0 / 0 |
+| `npm run e2e` — tarayıcı uçtan uca test paketi (Playwright/Chromium, 5 dosya; Windows 11, Node 24) | ✔ **10 / 10** test (~2,8 dk; bkz. §3.1) |
+| 360 px'de 162 sayfa/sekme görünümü (7 rol; 53'ü 'Tam' görünümde, bütün açılırlar açık): yatay taşma / sayfa-konsol hatası | ✔ 0 / 0 |
 | Android: `npx cap sync android` + `gradlew assembleDebug` (JDK 21) | ✔ APK (~4,6 MB) derlendi, `Pixel_7_API_34` emülatöründe kuruldu ve `http://10.0.2.2:4000` sunucusuna bağlandı (bkz. §3.3) |
 
 ## 2. Birim ve entegrasyon testleri (modül bazında)
@@ -54,7 +54,8 @@ iz (trace) ve sunucu günlüğü rapora eklenir (`e2e/playwright-report`).
 
 | Dosya | Test | Doğrulananlar | Süre |
 |---|---|---|---|
-| `01-tarama.spec.ts` | ziyaretçi | 360 px'de tüm genel sayfalar, tohumdaki **33 önerinin her biri** (her evre), sekmeli sayfaların her sekmesi, "Daha fazla" alt sayfası, bulunamadı sayfası — 72 görünüm | 34,5 sn |
+| `01-tarama.spec.ts` | ziyaretçi | 360 px'de tüm genel sayfalar, tohumdaki **33 önerinin her biri** (her evre), sekmeli sayfaların her sekmesi, "Daha fazla" alt sayfası, bulunamadı sayfası — 67 görünüm | 35,8 sn |
+| | ziyaretçi (Tam görünüm) | Ayarlar'daki "Tam — tüm ayrıntılar açık" tercihiyle (sade görünümde kapalı gelen bütün kartlar ve açılırlar açık): 33 önerinin her biri, ana sayfa, iki konu ayrıntısı, Bilirkişiler, Graf, Defter ve Yönetmelik sekmeleri; tercihin gerçekten uygulandığı da denetlenir — 53 görünüm | 29,5 sn |
 | | üye ve bekleyen üye | profil, bildirimler, 5 öneri türünün formu, oy paneli, kendi görüş haritası; bekleyen hesap şeridi ve "doğrulama gerekli" — 19 görünüm | 14,2 sn |
 | | görevliler | kayıt memuru (amaçlı kişisel veri penceresi dahil), denetçi, yönetici (tüm sekmeler, kurcalama demosu), bilirkişi — 23 görünüm | 13,9 sn |
 | `02-oylama.spec.ts` | kayıttan kesin sayıma | `/kayit` formu (aydınlatma ≠ açık rıza, YZ rızası kapalı) → kayıt memuru: amaçsız erişim engellenir, amaçla kişisel veri (TCKN maskeli) → onay; `identity.pii_access` kaydında amaç var, TCKN yok → `/giris` → yeni konu önerisi: canlı ön denetim **T0 · Yönetmeliğe uygun**, K_s = 4 → "Destekle" (arayüz) + 3 destek → tartışma → yönetici **+72 sa** (hâlâ tartışma) ve **+24 sa** (oylama; geçiş listesinde "Tartışmada → Oylamada") → "Kabul" + "Oyumu ver": makbuz `localStorage["forum.receipts"]`'ta, sonuç gizli → 12 oy (API, her bloktan ≥ 2) → "Oyum kayıtlı mı?": **4 ✔ + 2 henüz** → **+72 sa**: kabul (yeter sayı ✔, eşik ✔; vekâletle sayılanlar dahil) → "Sayımı kendim doğrulayayım": **1. tur: sayım doğrulandı**, hiç ✘ yok → `/oy-dogrula` **6/6 ✔**; makbuz kurcalanınca "Kurcalama yakalandı" ✘ | 13,2 sn |
@@ -64,8 +65,8 @@ iz (trace) ve sunucu günlüğü rapora eklenir (`e2e/playwright-report`).
 | | saat ileri | uzlaşma süresi biten #K-28 benimsenen metinle **yeniden oylamaya** girer ("Sonuç kesindir."); #K-29'un uzlaşması sürer | 1,1 sn |
 | `05-defter.spec.ts` | defter | kurcalama demosu: v2'de #120 → **✘ bozuk** (diğer düğümler ✔) → "Düğümü onar" → **✔ Zincir yeniden geçerli** → zincir doğrulama 4/4 ✔ → v3 **çökertilir** → yeni işlemle bloklar 3 düğümle üretilir ("hata sürerken N yeni blok üretildi", v3 geride) → "Normale döndür" → v3 yetişir (yükseklik eşit, sağlıklı) → 4/4 ✔ | 10,7 sn |
 
-**Sonuç (1 Ekim 2026, Windows 11, Node 24.15, Playwright 1.63 / Chromium):** 9 / 9 test geçti, toplam ~2,2–2,4 dk (küresel
-kurulum ~20–30 sn dahil); art arda 4 tam koşunun (biri `E2E_BUILD=1` ile web derlemesi dahil) hepsi yeşil. 360 px'de **114 görünüm,
+**Sonuç (2 Ekim 2026, Windows 11, Node 24.15, Playwright 1.63 / Chromium):** 10 / 10 test geçti, toplam ~2,8 dk (küresel
+kurulum ~20–30 sn dahil); arayüz hafifletme Faz 1 sonrası iki ayrı tam koşunun ikisi de yeşil. 360 px'de **162 görünüm,
 yatay taşma 0, sayfa/konsol hatası 0**. Koşu sonunda geçici klasör silinir, 4100 portunda dinleyen süreç kalmaz.
 
 Gözlem (uygulama, düzeltilmedi): oylama kapandıktan hemen sonra (yaklaşık bir blok aralığı, ~0,5 sn) bültendeki TALLY/BALLOT_REVEAL
