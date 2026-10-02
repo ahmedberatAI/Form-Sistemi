@@ -8,7 +8,7 @@
 | Kontrol | Sonuç |
 |---|---|
 | `npm run typecheck` (shared + server + web) | ✔ 0 hata |
-| `npm test` (sunucu, 48 dosya) | ✔ **674 / 674** test geçti (Windows/Node 24'te art arda 6 çalıştırmada kararlı) |
+| `npm test` (sunucu 63 dosya + web 3 dosya) | ✔ **792 / 792** sunucu ve **9 / 9** web testi geçti (Windows/Node 24; 2 Ekim 2026) |
 | `npm run build` (web, Vite) | ✔ |
 | `npm run seed -- --reset` (tohum doğrulamaları, 18 kontrol) | ✔ (~30 sn, Windows) |
 | `npm run sim -w server` (Monte Carlo, belirlenimci) | ✔ (~30 sn) → [SIMULASYON.md](SIMULASYON.md) |
@@ -31,7 +31,7 @@
 | `forum` (çekirdek) | 11 | 66 | §8'in 10 senaryosu: tam akış (öneri → yürürlük, gerçek BFT defterle), tartışmalı → uzlaşma → yeniden oylama (ω), itiraz yolu (bütçe, "no" şartı, kural a, ρ), silme yolu (acil daraltma, DEL, mezar taşı, tek cevap, denetçi okuma kaydı, "Görüş ayrılığı" → inadmissible, talep sınırı), yönetmelik yaması (T2, yeni sürüm, BYLAW_VERSION; değiştirilemez hedef → inadmissible), sürüm çakışması, uzatma ve oylama sürerken sonuç gizliliği, vekâlet + cap, kişisel veri 422, **defter taraması (hiçbir kayıtta kullanıcı kimliği/takma ad/yasak anahtar yok)**, itiraz imzacılarının anonimliği; her kesin turda `verifyTally(bülten)` ✔ |
 | `http` | 6 | 169 | API.md'deki 95 uç noktanın her birinin kayıtlı olduğu (ve belgelenmemiş uç olmadığı), hata biçimi (400/401/403/404/409/413/415/422/429/500 — yığın izi yok), yetki matrisi, CORS (`http://localhost`, `capacitor://localhost`), SPA geri dönüşü, HTTP üzerinden tam öneri akışı + istemci tarafı `verifyTally` + makbuz kanıtı, saat kalıcılığı, görüş/oy gizliliği (küme haritası ve graf düğümleri yalnız kişinin kendisine) |
 | `seed` | 2 | 5 | küçültülmüş tohumun bellek içinde zincir ve sayım doğrulaması |
-| **Toplam** | **48** | **674** | |
+| **Toplam (1 Ekim)** | **48** | **674** | 2 Ekim itibarıyla ilke incelemesi düzeltmeleriyle 63 dosya / 792 test; ayrıntı [MUHENDISLIK.md](MUHENDISLIK.md) |
 
 ## 3. Tarayıcıda uçtan uca senaryo (Playwright, tohumlanmış sunucu)
 

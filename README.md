@@ -14,7 +14,7 @@ Sistemin bileşenleri:
 
 > **Belgeler:** [Karar algoritması (bağlayıcı)](docs/ALGORITMA.md) · [Mimari](docs/MIMARI.md) · [REST API](docs/API.md) ·
 > [Yönetmelik ontolojisi](docs/YONETMELIK.md) · [KVKK](docs/KVKK.md) · [Simülasyon](docs/SIMULASYON.md) ·
-> [Test raporu](docs/TEST_RAPORU.md) · [Araştırma raporu](docs/ARASTIRMA.md)
+> [Test raporu](docs/TEST_RAPORU.md) · [Araştırma raporu](docs/ARASTIRMA.md) · [Mühendislik ilkeleri incelemesi](docs/MUHENDISLIK.md)
 
 ---
 
@@ -46,7 +46,7 @@ npm run dev:web                      # yalnız Vite, port 5173 (/api → 4000 ve
 
 ```bash
 npm run typecheck                    # shared + server + web
-npm test                             # sunucu testleri (674 test)
+npm test                             # sunucu (792) + web (9) testleri
 npm run sim -w server                # Monte Carlo simülasyonu → docs/SIMULASYON.md
 ```
 
