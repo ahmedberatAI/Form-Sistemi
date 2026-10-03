@@ -18,7 +18,8 @@ src/
   auth/guards.tsx          RequireAuth, RequireRole
   ui/                      yeniden kullanılabilir bileşenler (hepsi `../ui`'dan içe aktarılır)
   lib/                     format, prefs, receipts, validators, diff, useAsync, categories, hooks, routes, download
-  components/              RegistrationForm, CategoryPicker, UserLink, KvkkNotice, PlaceholderPage, layout/, system/theme.ts
+  components/              RegistrationForm, CategoryPicker, UserLink, KvkkNotice, PlaceholderPage, layout/, system/theme.ts,
+                           common/ (NextStepCard), home/ (Ana sayfa parçaları), participation/ (öneri sayfası kartları ve panelleri), proposals/
   pages/                   rota başına bir sayfa (varsayılan dışa aktarım)
 ```
 
@@ -154,10 +155,11 @@ auth.hasRole("registrar"); auth.isVerified; auth.isVoter; auth.isExpert; auth.is
   `formatRelative(ms, now)` "3 dakika önce", `formatDuration(ms)` "2 sa 13 dk", `formatHours(h)`, `formatPercent(0.615)` "%61,5",
   `formatNumber(n, digits?)`, `formatRational({num,den})` "2/3 (%66,7)", `shortHash(h, n)`, `proposalRef(seq)` "#K-12", `topicRef(seq)` "#T-7",
   `truncate(s, max)`, `normalizeSearch(s)` (Türkçe duyarsız arama).
-- **prefs.ts:** `getPref/setPref/removePref(key)`, `getJsonPref/setJsonPref`, `isNativePlatform()`, `platformName()`, `PREF_KEYS`.
+- **prefs.ts:** `getPref/setPref/removePref(key)`, `getJsonPref/setJsonPref`, `isNativePlatform()`, `platformName()`, `PREF_KEYS`. Gizlenen notlar (`PREF_KEYS.dismissed` = `forum.dismissed`, Ana sayfa 'Notu gizle'): `getDismissedSync()` (ilk çizim), `getDismissed()` (kalıcı depo + ayna), `addDismissed(keys)` (tekrarsız, en çok 50); hiçbiri fırlatmaz.
 - **detailLevel.tsx:** Görünüm yoğunluğu `"sade"` (varsayılan) | `"tam"` (`PREF_KEYS.detail` = `forum.detail`; Ayarlar › Görünüm). `useDetailLevel()` → `{ level, full, setLevel }`.
   Yalnız açılır bölümlerin VARSAYILAN açıklığını değiştirir, içerik gizlemez: `resolveDefaultOpen(explicit, level, openInFull?)`. theme.ts gibi ilk çizimde eşzamanlı, sonra Android Preferences'tan okur.
 - **sectionParam.ts:** `useSectionParam(ready)` — `?bolum=<çapa>` varsa veri yüklendikten sonra o kartı/açılırı açar, kaydırır, odağı taşır ve parametreyi `replace` ile siler (`?mesaj=` gibi diğer parametreler kalır). Bağlantı: `routes.proposal(id, { bolum })`.
+- **nextStep.ts:** `proposalNextStep(p, viewerOf(auth))` → `{ tone, headline, detail?, cta?, links (≤ 2) }`: öneri sayfasının 'Sıradaki adım' kartının içeriği (SAF, birim testli). Karar mantığı sunucuda kalır: yalnız sunucu bayraklarını (`canVote`, `canObject`, `canWriteMinorityReport`, `myBallot`) ve `ProposalDetail` alanlarını okur, uygunluk tahmin etmez. Bağlantılar `?bolum=` çapasıdır (`nextStepHref`); etiketlerde 'Destekle', 'Oyumu ver', 'Daha fazla', 'Sayımı kendim doğrulayayım', 'Kapat' geçmez (e2e sözleşmesi).
 - **native.ts:** `setupNativeBackButton()` (main.tsx çağırır). Android geri tuşu sırasıyla açık pencereyi/alt sayfayı kapatır, açık menüyü kapatır, uygulama içinde geri gider; geçmiş yoksa uygulamadan çıkar (`@capacitor/app`).
 - **receipts.ts:** `saveReceipt(receipt, {proposalTitle?, proposalSeq?})` — `vote()` yanıtını **her zaman** kaydedin;
   `listReceipts(proposalId?)` (en yeni önce, oturumdaki kullanıcının), `latestReceipt(proposalId, round?)`, `isLatest(r, list)`,
@@ -218,6 +220,31 @@ auth.hasRole("registrar"); auth.isVerified; auth.isVoter; auth.isExpert; auth.is
 - `KvkkNotice` — aydınlatma metni (Profil sayfasında da gösterin).
 - `PlaceholderPage` — `title`, `description?`.
 
+## Öneri sayfası ve Ana sayfa (Faz 2)
+
+**Öneri sayfası** (`pages/ProposalDetailPage.tsx`) sekmesiz tek akıştır; DOM sırası okuma sırasıdır: başlık (`.proposal-head`: `#K-n`, durum, tür; T0 dışı katman, uzatma ve bütünlük uyarısı koşullu; kategorilerin ilk 3'ü ve '+n') → evre şeridi
+(`PhaseStrip`; 600 px altında kompakt) → **Sıradaki adım** (`components/common/NextStepCard`: tek cümle, kalan süre, birincil eylem BAĞLANTISI, ≤ 2 soru bağlantısı; kartta `<button>` yoktur) → **Bu sayfada**
+(`participation/OnThisPage`: yalnız var olan bölümler, `?bolum=` + `replace`) → ana akış → **Kanıtlar ve denetim** (`participation/EvidenceColumn`: `aside#kanitlar`, 'Tümünü aç/katla').
+Ana akış: Öneri metni (`#metin`, `ClampText`) → eylem alanı (`#eylem`: evrenin paneli, 'eylem önce') → Sonuçlar (`#sonuclar`, içinde `#dogrula`) → pasif itiraz/uzlaşma → Bilirkişi (`#bilirkisi`) →
+(terminalde) Metin önerileri → YZ özeti (`#yz`) → Tartışma (`#tartisma`, hep bağlı, Details içine alınmaz). Kanıt kartları: `#butunluk` (varsa en üstte, açık), `#destekciler` (hep açık), `#evreler`, `#ontoloji`
+(aykırılık/ihlalde Destekçiler'in önüne çıkar, açık), `#parametreler`, `#surumler`, `#defter`. `?bolum=<çapa>` kartı açar, kaydırır, odağı taşır (`?bolum=eylem`: oylamada ilk radyo, itirazda 'Gerekçe', tartışma evresinde
+yazarın bekleyen önerisinin 'Kabul et' düğmesi) ve parametreyi siler; `?mesaj=` ayrıdır ve korunur. Saf mantık (`proposalPageSections`, `hasActionArea`, `showsExpertCard`, `actionFocusSelector`, `evidenceOrder`,
+`allSectionsOpen`) bileşen dosyalarında dışa aktarılır ve `participation/proposalPage.test.tsx` ile sınanır. Stiller: `proposal-page.css` (iskelet), `panels.css` (eylem panelleri), `results.css` (sonuç kartı),
+`expert-ai.css` (bilirkişi ve YZ özeti), `discussion.css` (tartışma). Kapalı kart başlığının yanındaki tek satır hüküm başlığın DIŞINDADIR (`Card summary`), bölge adı değişmez.
+
+**Eylem panelleri 'eylem önce'dir:** oy formu bilgi kutularının, 'Destekle' formülün, itiraz formu değerlendirme tablosunun üstündedir; açıklayıcı paragraflar adlandırılmış `Details` içindedir
+('Kaç destekçi gerekir?', 'Geçerlilik nasıl hesaplanır?', 'Makbuz ayrıntıları (pusula, taahhüt, defter işlemi)', 'Gizli oy ve vekâlet nasıl işler?', 'Neyi denetler?', 'Köprü taslak setleri (n)' …).
+e2e'nin içine baktığı bölümler (Oylama, Yeniden oylama, 1. tur sonucu, Sayımı kendim doğrulayayım, Azınlık itirazı, Uzlaşma turu, Azınlık raporları, Köprü taslakları, Destekçiler (n/m)) asla kapalı başlamaz.
+Tartışmada yazma kutusu doğrulanmış üyede KAPALI başlar ('Görüşünüzü yazın…', `aria-expanded=false`; dokununca formla yer değiştirir ve odak metin alanına geçer, bu yüzden `aria-controls` yoktur); 'Tam' görünümde açıktır. Mesaj alt satırı tek sessiz satırdır ('özet … · defter … ›').
+
+**Ana sayfa** (`pages/HomePage.tsx` yalnız veriyi bağlar; düzen `components/home/HomeLayout.tsx`, birim testli): üyede 'Merhaba, @ad' + canlı özet, 'Sizi bekleyenler (n)' (`TaskList`, ilk 3, 'Tümünü göster (n)'; bağlantılar `?bolum=eylem`,
+bilirkişi görevi `?bolum=bilirkisi`), görev yoksa role göre ipucu (`RoleHint`), oy hakkı notu (`SetupNotes`, 'Notu gizle' → `forum.dismissed`), hızlı eylemler (`QuickActions`), 'Şu an açık (n)' ve 'Son kararlar'
+(`ProposalRow` / `ProposalRowList`, `proposals/ProposalCard.tsx`); yan sütunda Topluluk durumu ve vitrin (≥ 900 px'de `.split`: yan sütunda önce vitrin, sonra Topluluk durumu; hızlı eylemler selamın sağına DOM'da taşınır). Ziyaretçide başlık + slogan + Giriş/Kayıt,
+'Neden kayıt gerekir?' açılırı, ardından vitrin → açık → son kararlar → topluluk durumu → ilkeler. Yeni 'Ana sayfa' düğme/bağlantı adlarında 'Daha fazla' ve 'Kapat' geçmez.
+
+**Testler:** `e2e/tests/06-sadelik.spec.ts` bu sözleşmeleri kilitler (ilk ekranda sıradaki adım, 'Bu sayfada' kısa yolları, `?bolum=`, kapalı kartların hükümleri, 'Tam' görünüm, kapalı yazma kutusu, uyarının kendiliğinden açılması)
+ve ekran boyu/kelime/tıklanabilir öğe sayılarını annotation olarak kaydeder; `e2e/support/sade.ts` ortak yardımcılardır. `01-tarama` 'Bu sayfada' bağlantılarına tıklar (sade ve 'Tam' görünümde).
+
 ## CSS sınıfları (`styles.css`)
 
 - **Sayfa:** her sayfanın kökü `<div className="page">` (dikey boşluklu). Dar içerik: `page page-narrow` (≤ 720 px).
@@ -238,7 +265,11 @@ auth.hasRole("registrar"); auth.isVerified; auth.isVoter; auth.isExpert; auth.is
 
 `components/layout/AppLayout.tsx`: üst çubuk (logo, bildirim zili + sayı, kullanıcı menüsü), ≥ 900 px'de üst gezinme, mobilde alt gezinme
 (Ana sayfa, Konular, Öneriler, Oy doğrula, Daha fazla) ve "Daha fazla" alt sayfası. Gezinme öğeleri: `components/layout/nav.ts`.
-Bekleyen hesap, oturum süresi dolması ve bağlantı hatası şeritleri otomatik gösterilir.
+Bekleyen hesap, oturum süresi dolması ve bağlantı hatası şeritleri otomatik gösterilir (bekleyen/askıdaki/reddedilmiş hesap şeridi `/` rotasında gizlidir: Ana sayfa bunu kendi kartında söyler).
+Masaüstü üst gezinmede 'Katılım' ile 'Keşfet ve doğrula' grupları arasında görsel ayraç (`span.nav-divider`, aria-hidden) vardır; öğe ve etiketler aynıdır. 'Daha fazla' sayfasının
+en altındaki 'Sistem durumu' bloğu (`SystemStatus`, veri `auth.system`; satırların biçimi `nav.ts › systemRows`) masaüstü alt bilgisinin mobildeki karşılığıdır: her sayfadan 1 dokunuşla defter,
+YZ kipi, simüle saat, yönetmelik ve istemci sürümü. Sabit başlık yüksekliği `--sticky-h` (= `--header-h` + masaüstünde gezinme satırı `--nav-h`); `?bolum=` hedefleri
+`scroll-margin-top: calc(var(--sticky-h) + 12px)` ile bunun altında kalmaz (yeni kaydırma hedefi eklerken aynı kuralı kullanın).
 
 | Yol | Sayfa | Koruma |
 |---|---|---|

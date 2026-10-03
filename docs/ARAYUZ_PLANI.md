@@ -6,7 +6,7 @@
 
 ## Verilen kararlar
 
-- Kapsam: önce Faz 1 (uygulandı); Faz 2 ve Faz 3 sonucu görüldükten sonra.
+- Kapsam: Faz 1 ve Faz 2 uygulandı (Faz 2 sonrası üç bağımsız inceleme ve düzeltme turu yapıldı); Faz 3 bekliyor.
 - Görünüm yoğunluğu: varsayılan **Sade**; Ayarlar › Görünüm'de **Tam — tüm ayrıntılar açık** (gösterimde her şeyi tek seçimle açar).
 - Ana sayfa görevleri ile öneri sayfası bayrakları sunucuda aynı kurala bağlandı (`server/src/forum/eligibility.ts`).
 - Demo verisine dokunulmadı; doğrulama e2e'nin kendi geçici verisiyle yapıldı.
@@ -21,15 +21,30 @@
 6. Keşif sayfalarındaki sabit açıklayıcılar sayfa başına ve kapalı; Yönetmelik maddeleri bölüm bölüm
 7. Test kapsamı: 'Tam' görünümde tarama ve saf fonksiyon testleri
 
-Ölçüm (aynı veri, aynı tarayıcı betiği; önce → sonra):
+## Faz 2 — uygulandı
 
-| Görünüm | Önce | Sonra |
-|---|---|---|
-| Ana sayfa, telefon 375×812 | 6,3 ekran; ilk ekran sistem kutuları; işler 1., açık öneriler 2,5. ekranda | 3,9 ekran; işler 0,3., açık öneriler 0,8. ekranda |
-| Ana sayfa, masaüstü 1280×860 | 3,1 ekran, 632 kelime | 2,4 ekran, 374 kelime |
-| Öneriler listesi | 9 sekme; 33 öneri varken boş açılıyor | 4 sekme + evre çipleri; boş açılmaz (Sonuçlanan, 33 kart) |
-| Öneri #K-7, telefon | 13,5 ekran; tartışma 11,5. ekranda | 9,4 ekran; tartışma 7,4. ekranda |
-| Öneri #K-7, masaüstü | 6,2 ekran, 1439 kelime | 5,8 ekran, 988 kelime; 5 denetim kartı tek satır hükümle kapalı |
+Sıradaki adım motoru (`web/src/lib/nextStep.ts`), öneri sayfasında tek akış (Sıradaki adım kartı, "Bu sayfada" kısa yolları,
+kanıt sütunu, `?bolum=` derin bağlantıları), "eylem önce" paneller, hükümle açılan sonuç kartı, sade bilirkişi/YZ kartları,
+kapalı yazma kutusuyla tartışma, role göre "Sizi bekleyenler" ana sayfası, "Daha fazla" sayfasında sistem durumu bloğu ve
+masaüstü gezinme ayracı. Testler: `e2e/tests/06-sadelik.spec.ts` (23 test; kontrast dahil). Uygulamadan sonra üç bağımsız
+inceleyici (doğruluk, özellik/sözleşme, telefon/görsel) yalnız düşük önemde 8 bulgu çıkardı; hepsi doğrulanıp düzeltildi.
+
+## Ölçüm
+
+Aynı veri (sonuçlanmış demo, @admin) ve aynı tarayıcı betiği; ekran = görünür yükseklik katı:
+
+| Görünüm | Önce | Faz 1 sonrası | Faz 2 sonrası |
+|---|---|---|---|
+| Ana sayfa, telefon 375×812 | 6,3 ekran; ilk ekran sistem kutuları; açık öneriler 2,5. ekranda | 3,9 ekran; açık öneriler 0,8. ekranda | 2,9 ekran, 283 kelime; ilk ekranda selam + bekleyen işler + hızlı eylemler + son kararlar |
+| Ana sayfa, masaüstü 1280×860 | 3,1 ekran, 632 kelime | 2,4 ekran, 374 kelime | 1,5 ekran, 283 kelime |
+| Öneriler listesi | 9 sekme; 33 öneri varken boş açılıyor | 4 sekme + evre çipleri; boş açılmaz | aynı |
+| Öneri #K-7 (kabul), telefon | 13,5 ekran; tartışma 11,5. ekranda | 9,4 ekran; tartışma 7,4. ekranda | 6,5 ekran; tartışma 4. ekranda |
+| Öneri #K-7 (kabul), masaüstü | 6,2 ekran, 1439 kelime | 5,8 ekran, 988 kelime | 4,1 ekran, 670 kelime; tartışma 3. ekranda |
+
+Taze tohumda oylamadaki öneri (#K-31, oy bekleyen üye @ayse): telefonda 5,2 ekran, tartışma 2,5. ekranda; ilk ekranda
+"Oyunuz bekleniyor · kalan süre · Oy bölümüne git" ve "Bu sayfada: Metin · Oy ver · Tartışma (5) · Kanıtlar". Ana sayfa
+görevine dokunmak öneriyi oylama paneline kaydırarak açar. Sonuçlanmış önerilerde tartışmadan önce sonuç kartı, sayım
+doğrulama, bilirkişi ve YZ özeti geldiği için tartışma 4. ekranda kalıyor; "Bu sayfada" ile 1 dokunuştur.
 
 ## Yol gösteren ilkeler
 

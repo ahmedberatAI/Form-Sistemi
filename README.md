@@ -47,7 +47,7 @@ npm run dev:web                      # yalnız Vite, port 5173 (/api → VITE_AP
 
 ```bash
 npm run typecheck                    # shared + server + web
-npm test                             # sunucu (907) + web (148) testleri
+npm test                             # sunucu (907) + web (398) testleri
 npm run sim -w server                # Monte Carlo simülasyonu → docs/SIMULASYON.md
 ```
 
@@ -55,7 +55,7 @@ npm run sim -w server                # Monte Carlo simülasyonu → docs/SIMULAS
 
 ```bash
 npx playwright install chromium      # bir kez: test tarayıcısı
-npm run e2e                          # Playwright, 5 senaryo dosyası (≈2–3 dk)
+npm run e2e                          # Playwright, 6 senaryo dosyası, 33 test (≈5 dk)
 npm run e2e:typecheck                # e2e/ kaynaklarının tip denetimi
 ```
 
@@ -63,7 +63,8 @@ npm run e2e:typecheck                # e2e/ kaynaklarının tip denetimi
 kaynaklardan eskiyse web'i derler, geçici bir klasörde demo verisini tohumlar (`DATA_DIR=<geçici> npm run seed -- --reset`); her test
 dosyası bu verinin taze bir kopyasıyla **4100** portunda kendi sunucusunu açar (`TIME_SCALE=1`, yüksek `RATE_LIMIT_*`) ve sonunda
 kapatır (Windows'ta `taskkill /T /F`). 4000'deki sunucunuza ve `server/data`'ya dokunulmaz. Senaryolar: 360 px'de tüm sayfaların
-taraması, kayıttan kesin sayıma oylama akışı, silme talebi, itiraz/uzlaşma, defter kurcalama ve düğüm çökmesi
+taraması, kayıttan kesin sayıma oylama akışı, silme talebi, itiraz/uzlaşma, defter kurcalama ve düğüm çökmesi, sade arayüz
+sözleşmeleri (Sıradaki adım, 'Bu sayfada', derin bağlantılar, 'Tam' görünüm, kontrast)
 ([TEST_RAPORU §3](docs/TEST_RAPORU.md)). Seçenekler: `E2E_PORT` (taban port), `E2E_BUILD=1|0` (web'i her zaman derle / yalnız `web/dist` yoksa derle),
 `E2E_KEEP=1` (geçici klasörü ve sunucu günlüklerini bırak). Rapor: `e2e/playwright-report/index.html`.
 
