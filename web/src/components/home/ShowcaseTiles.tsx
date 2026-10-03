@@ -1,5 +1,6 @@
 // Ana sayfa vitrini "Neyi doğrulayabilirsiniz?": sistemin altı bileşeni (defter, oy doğrulama, bilirkişi, yapay zekâ, graf,
-// yönetmelik) canlı bilgisiyle ve bir dokunuşla (yedincisi, azınlık koruması, Topluluk durumu'ndadır). Eski sistem şeridinin
+// yönetmelik) canlı bilgisiyle ve bir dokunuşla (yedincisi, azınlık koruması, Topluluk durumu'ndadır). Başlığın yanındaki
+// 'Gösterim rehberi ›' yedisini sırayla gösteren 'Keşfet ve doğrula' sayfasının rehber bölümüne gider. Eski sistem şeridinin
 // bütün bilgisi burada kalır: saat ve ölçek, ileri alma, YZ kipi ve modeli, defter yüksekliği ve doğrulayıcı sağlığı,
 // yönetmelik sürümü, üye sayıları, istemci sürümü. Saniyelik saat yalnız alt satırı yeniden çizer.
 import type { ReactNode } from "react";
@@ -131,7 +132,16 @@ export interface ShowcaseTilesProps {
 
 export function ShowcaseTiles({ system, dashboard, onRetry }: ShowcaseTilesProps) {
   return (
-    <Section id="vitrin" title="Neyi doğrulayabilirsiniz?">
+    <Section
+      id="vitrin"
+      title="Neyi doğrulayabilirsiniz?"
+      actions={
+        // Yedi bileşeni sırayla gösteren 'Keşfet ve doğrula' sayfasının rehber bölümü (sayfa bir gezinme öğesi değildir).
+        <Link to={routes.kesfet({ bolum: "rehber" })} className="home-inline-link small">
+          Gösterim rehberi <Icon name="chevronRight" size={14} />
+        </Link>
+      }
+    >
       <ul className="showcase-tiles">
         {showcaseTiles(system, dashboard).map((t) => (
           <li key={t.key}>

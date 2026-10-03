@@ -281,11 +281,11 @@ describe("sade öneri kartı (rozet bütçesi)", () => {
     expect(html).not.toMatch(/class="badge[^>]*>[^<]*Düzenleme Teklifi/);
   });
 
-  it("T0 dışı katman rozeti görünür; 'Sizin' nötr olduğundan renkli rozet en çok 2'dir", () => {
+  it("T0 dışı katman rozeti görünür; katman (T3 dışı) ve 'Sizin' nötr olduğundan renkli rozet yalnız durumdur (rozet bütçesi)", () => {
     const html = card({ status: "voting", tier: "T1", authorId: "u1" }, { myId: "u1" });
     const all = badges(html);
     expect(all).toHaveLength(3); // durum + katman + Sizin
-    expect(all.filter((b) => !b.endsWith("badge-neutral"))).toHaveLength(2);
+    expect(all.filter((b) => !b.endsWith("badge-neutral"))).toEqual(['class="badge badge-info']);
     expect(html).toContain("pcard-mine");
     expect(html).toContain("Sizin");
   });

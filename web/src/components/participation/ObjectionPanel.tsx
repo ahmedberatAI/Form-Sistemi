@@ -27,7 +27,10 @@ export function objectionRules(crossClusterRequired?: number | null): string[] {
   ];
 }
 
-/** Değerlendirme hükmü: rozet satırı, toplam geçerli imza ve sunucunun açıklama cümlesi. */
+/**
+ * Değerlendirme hükmü: rozet satırı, toplam geçerli imza ve sunucunun açıklama cümlesi. Rozet bütçesi: satırdaki tek renkli
+ * rozet geçerlilik hükmüdür; hangi kuralın sağlandığı (sınıflandırma) ve 'Güçlü itiraz' (bilgi) gri rozettir.
+ */
 export function ObjectionVerdict({ evaluation: ev }: { evaluation: ObjectionEvaluation }) {
   return (
     <div className="stack-sm objection-verdict">
@@ -35,8 +38,8 @@ export function ObjectionVerdict({ evaluation: ev }: { evaluation: ObjectionEval
         <Badge tone={ev.valid ? "warning" : "neutral"} icon={ev.valid ? "warning" : "info"}>
           {ev.valid ? "İtiraz geçerli — uzlaşma turu" : "İtiraz henüz geçerli değil"}
         </Badge>
-        {ev.rule ? <Badge tone="info">{ev.rule === "cluster" ? "Küme kuralı (a)" : "Çapraz küme kuralı (b)"}</Badge> : null}
-        {ev.strong ? <Badge tone="danger">Güçlü itiraz</Badge> : null}
+        {ev.rule ? <Badge tone="neutral">{ev.rule === "cluster" ? "Küme kuralı (a)" : "Çapraz küme kuralı (b)"}</Badge> : null}
+        {ev.strong ? <Badge tone="neutral">Güçlü itiraz</Badge> : null}
         <span className="small muted">Toplam geçerli imza: {formatNumber(ev.signers)}</span>
       </div>
       <p className="small">{ev.explanation}</p>

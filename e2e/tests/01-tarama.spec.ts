@@ -4,8 +4,11 @@
 // Faz 2 ekleri: tartışmadaki, oylamadaki ve kabul edilmiş birer öneride (sade ve 'Tam' görünümde) 'Bu sayfada' gezinmesinin her
 // bağlantısına tıklanır (hedef bölüm görünür alana gelir, üst çubuğun altında kalmaz, odak içine taşınır, ?bolum silinir) ve
 // 'Daha fazla' sayfasında Sistem durumu bloğu aranır.
+// Faz 3 ekleri: 'Keşfet ve doğrula' (/kesfet; ziyaretçi, 'Tam' görünüm ve yönetici; 'Bu sayfada' tıklamaları, sözlük araması, Term
+// penceresi), Term pencereleri ve sembol/formül anahtarı açıkken Karar parametreleri, Konular 'Süz' açılırı, konu ayrıntısı çapaları
+// (?bolum=surumler|alt-konular), Profil/Ayarlar çapaları, canlı ön denetim paneli, silme talebi formu ve üyenin 'Tam' görünümü.
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import type { CommittedTxView, LedgerStatus, ProposalSummary, PublicUser, TopicSummary } from "@forum/shared";
+import type { CommittedTxView, LedgerStatus, ProposalSummary, PublicUser, ThreadResponse, TopicSummary } from "@forum/shared";
 import { useSeededServer } from "../support/fixtures";
 import { clickEveryOnThisPage } from "../support/sade";
 import { gotoApp, measureOverflow, openSession, waitSettled, type Session } from "../support/ui";
@@ -88,6 +91,75 @@ const onThisPageLinks: View["extra"] = {
   },
 };
 
+/** Açık bir sözlük terimi penceresi (Term): ilk eşleşen terim düğmesine dokunulur; açık pencere de 360 px'e sığmalı (measureOverflow pencereyi de ölçer). */
+function openTerm(selector: string): View["extra"] {
+  return {
+    label: "Term penceresi açık",
+    run: async (page) => {
+      await page.locator(selector).first().click();
+      await expect(page.getByRole("dialog")).toBeVisible();
+    },
+  };
+}
+
+/** Yeni konu formunu doldurur: tür kompakt şeride iner ve canlı ön denetim paneli (hüküm, açılırlar) dolar. Hiçbir şey kaydedilmez. */
+const fillPrecheck: View["extra"] = {
+  label: "canlı ön denetim paneli dolu",
+  run: async (page) => {
+    await page.getByRole("radio", { name: /Yeni Konu/ }).click();
+    await page.getByLabel("Başlık").fill("Mahalle Kütüphanesinde Haftalık Ücretsiz Satranç Atölyesi");
+    await page
+      .getByLabel("Öneri metni")
+      .fill(
+        "Mahalle kütüphanesinin çok amaçlı salonunda her cumartesi öğleden sonra iki saatlik ücretsiz satranç atölyesi düzenlenmesini öneriyorum. " +
+          "Atölye her yaştan katılımcıya açık olur, gönüllü eğitmenlerle yürütülür ve kütüphanenin mevcut masaları kullanılır; ek bütçe gerekmez.",
+      );
+    await page.getByLabel("Kütüphane ve yaşam boyu öğrenme", { exact: true }).check();
+    await expect(page.locator(".pre-summary")).toContainText("Yönetmeliğe uygun", { timeout: 30_000 });
+  },
+};
+
+/** 'Karar parametreleri' kartında 'Sembolleri ve formülleri göster' anahtarı açık: Yunan harfleri ve formüller 360 px'e sığmalı. */
+const symbolsOn: View["extra"] = {
+  label: "semboller ve formüller açık",
+  run: async (page) => {
+    await page.getByRole("switch", { name: "Sembolleri ve formülleri göster" }).click();
+    await expect(page.locator(".param-symbol").first()).toBeVisible();
+  },
+};
+
+/** Konular sayfasında telefon genişliğinde 'Süz' açılırı (Kategori ve Arşiv süzgeçleri) açık. */
+const filtersOpen: View["extra"] = {
+  label: "‘Süz’ açılırı açık",
+  run: async (page) => {
+    await page.getByRole("search").locator("summary", { hasText: /^Süz/ }).click();
+    await expect(page.getByRole("search").locator("details[open]")).toHaveCount(1);
+  },
+};
+
+/** Sözlük araması: eşleşen konuların hepsi açılır (terim gövdeleri 360 px'e sığmalı). */
+const glossarySearch: View["extra"] = {
+  label: "sözlük araması (konular açık)",
+  run: async (page) => {
+    await page.getByLabel("Sözlükte ara").fill("köprü");
+    await expect(page.getByRole("region", { name: "Sözlük", exact: true }).getByRole("status")).toHaveText(/terim bulundu/);
+  },
+};
+
+/** Tercih belge yüklenmeden yazılır: arayüz ilk çizimde 'tam' kipini eşzamanlı aynadan (localStorage) okur. */
+async function enableFullView(s: Session): Promise<void> {
+  await s.context.addInitScript(
+    ([key, value]) => {
+      try {
+        window.localStorage.setItem(key, value);
+      } catch {
+        /* erişilemezse sade kalır; Ayarlar denetimi bunu yakalar */
+      }
+    },
+    [DETAIL_KEY, DETAIL_FULL],
+  );
+}
+
 const sessions: Session[] = [];
 let data: {
   topics: TopicSummary[];
@@ -96,6 +168,8 @@ let data: {
   expert: PublicUser;
   height: number;
   tx: CommittedTxView;
+  /** Silme talebi formunun ?mesaj= ile açılacağı görünür gövdeli bir mesaj */
+  messageId: string;
 };
 
 test.beforeAll(async () => {
@@ -115,8 +189,12 @@ test.beforeAll(async () => {
     expert: experts.find((u) => u.nickname === "bk_saglik1")!,
     height: status.height,
     tx: txs[0],
+    messageId: "",
   };
   expect(data.proposals.length).toBeGreaterThan(30);
+  const thread = await api.get<ThreadResponse>(`/api/threads/topic/${data.topics[0].id}`);
+  data.messageId = thread.messages.find((m) => m.visibility === "visible" && !!m.body)?.id ?? "";
+  expect(data.messageId, "ilk konunun tartışmasında görünür bir mesaj olmalı").toBeTruthy();
 });
 
 /** 'Bu sayfada' tıklamaları için tartışmadaki, oylamadaki ve kabul edilmiş birer öneri. */
@@ -153,20 +231,32 @@ test("ziyaretçi: tüm genel sayfalar ve her öneri (360 px)", async ({ browser 
   const t = data.topics;
   const withSub = t.find((x) => t.some((y) => y.parentId === x.id)) ?? t[0];
   const pick = featured();
+  const enacted = data.proposals.find((p) => p.status === "enacted")!;
   const views: View[] = [
     { label: "Ana sayfa", path: "/", extra: moreSheet },
     { label: "Giriş", path: "/giris" },
     { label: "Kayıt", path: "/kayit" },
     { label: "Konular", path: "/konular" },
+    { label: "Konular: Süz açılırı", path: "/konular", extra: filtersOpen },
+    { label: "Konular: kategori süzgeci (adresten)", path: `/konular?kategori=${encodeURIComponent(t.find((x) => x.categories.length)?.categories[0] ?? "")}` },
     { label: "Konu ayrıntısı (gizlenmiş mesajlı)", path: `/konular/${t[0].id}` },
     { label: "Konu ayrıntısı (alt konulu)", path: `/konular/${withSub.id}` },
+    { label: "Konu ayrıntısı (sürüm geçmişi açık)", path: `/konular/${withSub.id}?bolum=surumler` },
+    { label: "Konu ayrıntısı (alt konular çapası)", path: `/konular/${withSub.id}?bolum=alt-konular` },
     { label: "Öneriler", path: "/oneriler", tabs: true },
     ...data.proposals.map((p): View => ({ label: `Öneri #K-${p.seq} (${p.status})`, path: `/oneriler/${p.id}`, ...(pick.has(p.id) ? { extra: onThisPageLinks } : {}) })),
+    { label: "Kabul edilmiş öneri › Karar parametreleri: semboller ve formüller", path: `/oneriler/${enacted.id}?bolum=parametreler`, extra: symbolsOn },
+    { label: "Kabul edilmiş öneri › Karar parametreleri: Term penceresi", path: `/oneriler/${enacted.id}?bolum=parametreler`, extra: openTerm("button.term") },
     { label: "Oyum kayıtlı mı?", path: "/oy-dogrula" },
     { label: "Bilirkişiler", path: "/bilirkisiler", tabs: true },
     { label: "Üye profili", path: `/uyeler/${data.ayse.id}` },
     { label: "Bilirkişi profili", path: `/uyeler/${data.expert.id}` },
     { label: "Ayarlar", path: "/ayarlar" },
+    { label: "Ayarlar: Doğrulayıcı anahtarları açık", path: "/ayarlar?bolum=anahtarlar" },
+    { label: "Keşfet ve doğrula", path: "/kesfet", extra: onThisPageLinks },
+    { label: "Keşfet ve doğrula › Term penceresi", path: "/kesfet", extra: openTerm("ol.kesfet-steps button.term") },
+    { label: "Keşfet ve doğrula › sözlük araması", path: "/kesfet?bolum=sozluk", extra: glossarySearch },
+    { label: "Keşfet ve doğrula › sözlükte terim (derin bağlantı)", path: "/kesfet?bolum=terim-kopru-testi" },
     { label: "Graf", path: "/graf", tabs: true },
     { label: "Defter", path: "/defter", tabs: true },
     { label: "Blok", path: `/defter/blok/${data.height}` },
@@ -212,6 +302,11 @@ test("ziyaretçi (Tam görünüm): her öneri ve açık ayrıntılı sayfalar (3
     { label: "Graf", path: "/graf", tabs: true },
     { label: "Defter", path: "/defter", tabs: true },
     { label: "Yönetmelik", path: "/yonetmelik", tabs: true },
+    // Faz 3: 'Tam' görünümde sözlüğün bütün konuları, Karar parametreleri sembolleri/formülleri ve Konular süzgeçleri açık gelir
+    { label: "Keşfet ve doğrula", path: "/kesfet", extra: onThisPageLinks },
+    { label: "Keşfet ve doğrula › Term penceresi", path: "/kesfet", extra: openTerm("ol.kesfet-steps button.term") },
+    { label: "Konular", path: "/konular" },
+    { label: "Ayarlar", path: "/ayarlar" },
   ];
   await scan(s, "ziyaretçi (Tam)", views);
 
@@ -225,6 +320,12 @@ test("ziyaretçi (Tam görünüm): her öneri ve açık ayrıntılı sayfalar (3
   // Aynı sayfadaki "Ayrıntı" açılırları (Details) de açık gelir; en az biri var ve hiçbiri kapalı kalmaz.
   await expect(s.page.locator("main details").first()).toBeAttached();
   await expect(s.page.locator("main details:not([open])")).toHaveCount(0);
+  // Faz 3: Keşfet sözlüğünün bütün konuları, Ayarlar › Gelişmiş kartları ve Karar parametreleri anahtarı 'Tam' kipte açık gelir
+  await gotoApp(s.page, "/kesfet");
+  await expect(s.page.locator("details.kesfet-gloss-group")).not.toHaveCount(0);
+  await expect(s.page.locator("details.kesfet-gloss-group:not([open])")).toHaveCount(0);
+  await gotoApp(s.page, "/ayarlar");
+  await expect(s.page.locator("button.card-toggle[aria-expanded=false]")).toHaveCount(0);
 
   expect(scanned - n0).toBeGreaterThan(data.proposals.length + 10);
   expectNoProblems(p0, n0);
@@ -238,12 +339,18 @@ test("üye ve bekleyen üye: profil, bildirimler, yeni öneri formları, oy pane
   await scan(s, "üye (ayse)", [
     { label: "Ana sayfa (görevler)", path: "/", extra: moreSheet },
     { label: "Profil", path: "/profil" },
+    { label: "Profil: Kişisel verilerim (KVKK) açık", path: "/profil?bolum=kvkk" },
+    { label: "Profil: Kimlik bilgilerimi düzelt açık", path: "/profil?bolum=duzeltme" },
     { label: "Bildirimler", path: "/bildirimler", tabs: true },
+    { label: "Keşfet ve doğrula", path: "/kesfet", extra: onThisPageLinks },
+    { label: "Öneriler: oylamadakiler (Sizden bekleniyor)", path: "/oneriler?sekme=oylama" },
     { label: "Yeni öneri", path: "/oneriler/yeni" },
     { label: "Yeni öneri: yeni konu", path: "/oneriler/yeni?tur=topic" },
+    { label: "Yeni öneri: ön denetim paneli", path: "/oneriler/yeni", extra: fillPrecheck },
     { label: "Yeni öneri: alt konu", path: `/oneriler/yeni?tur=subtopic&konu=${data.topics[0].id}` },
     { label: "Yeni öneri: düzenleme teklifi", path: `/oneriler/yeni?tur=amendment&konu=${data.topics[0].id}` },
     { label: "Yeni öneri: silme talebi", path: "/oneriler/yeni?tur=deletion" },
+    { label: "Yeni öneri: silme talebi (mesajdan)", path: `/oneriler/yeni?tur=deletion&mesaj=${data.messageId}` },
     { label: "Yeni öneri: yönetmelik değişikliği", path: "/oneriler/yeni?tur=regulation" },
     { label: `Oylamadaki öneri #K-${voting.seq} (oy paneli)`, path: `/oneriler/${voting.id}`, extra: onThisPageLinks },
     { label: "Oyum kayıtlı mı?", path: "/oy-dogrula" },
@@ -255,6 +362,32 @@ test("üye ve bekleyen üye: profil, bildirimler, yeni öneri formları, oy pane
     { label: "Yeni öneri (doğrulama gerekli)", path: "/oneriler/yeni" },
     { label: "Profil", path: "/profil" },
   ]);
+  expectNoProblems(p0, n0);
+});
+
+test("üye (Tam görünüm): profil, ayarlar, bildirimler, yeni öneri formları, ön denetim paneli ve Keşfet (360 px)", async ({ browser }) => {
+  test.setTimeout(300_000);
+  const [p0, n0] = [problems.length, scanned];
+  const s = await phone(browser, "ayse");
+  await enableFullView(s);
+  await scan(s, "üye (ayse, Tam)", [
+    { label: "Ana sayfa (görevler)", path: "/", extra: moreSheet },
+    { label: "Profil", path: "/profil" },
+    { label: "Ayarlar", path: "/ayarlar" },
+    { label: "Bildirimler", path: "/bildirimler", tabs: true },
+    { label: "Konular", path: "/konular" },
+    { label: "Öneriler: oylamadakiler", path: "/oneriler?sekme=oylama" },
+    { label: "Yeni öneri: yeni konu (ön denetim paneli)", path: "/oneriler/yeni", extra: fillPrecheck },
+    { label: "Yeni öneri: alt konu", path: `/oneriler/yeni?tur=subtopic&konu=${data.topics[0].id}` },
+    { label: "Yeni öneri: düzenleme teklifi", path: `/oneriler/yeni?tur=amendment&konu=${data.topics[0].id}` },
+    { label: "Yeni öneri: silme talebi (mesajdan)", path: `/oneriler/yeni?tur=deletion&mesaj=${data.messageId}` },
+    { label: "Yeni öneri: yönetmelik değişikliği", path: "/oneriler/yeni?tur=regulation" },
+    { label: "Keşfet ve doğrula", path: "/kesfet", extra: onThisPageLinks },
+  ]);
+  // Tarama gerçekten 'Tam' kipte yapıldı mı? Profil'de katlı kartların hiçbiri kapalı kalmaz.
+  await gotoApp(s.page, "/profil");
+  await expect(s.page.locator("button.card-toggle").first()).toBeVisible();
+  await expect(s.page.locator("button.card-toggle[aria-expanded=false]")).toHaveCount(0);
   expectNoProblems(p0, n0);
 });
 
@@ -289,6 +422,7 @@ test("görevliler: kayıt memuru, denetçi, yönetici, bilirkişi (360 px)", asy
   ]);
   const admin = await phone(browser, "yonetici");
   await scan(admin, "yönetici", [
+    { label: "Keşfet ve doğrula (Kurcalama demosu bağlantısı)", path: "/kesfet?bolum=rehber" },
     { label: "Yönetim", path: "/yonetim", tabs: true },
     { label: "Defter (kurcalama demosu dahil)", path: "/defter", tabs: true },
     { label: "Bilirkişiler (yönetim)", path: "/bilirkisiler", tabs: true },

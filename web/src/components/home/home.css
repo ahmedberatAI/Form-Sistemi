@@ -435,7 +435,7 @@ a.home-task:hover .home-task-title {
   border-radius: 999px;
   background: var(--primary-soft);
   color: var(--primary);
-  font-size: 0.775rem;
+  font-size: var(--fs-xs);
   font-weight: 700;
 }
 

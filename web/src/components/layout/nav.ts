@@ -1,5 +1,7 @@
 // Gezinme öğeleri (üst gezinme, alt gezinme ve "Daha fazla" menüsü aynı listeden beslenir), masaüstü üst gezinmenin
 // grup sırası ve "Daha fazla" sayfasındaki "Sistem durumu" bloğunun saf biçimlendirmesi (görünümden ayrı, birim testli).
+// 'Keşfet ve doğrula' sayfası (/kesfet) bir gezinme öğesi DEĞİLDİR (topNav: false): üst gezinme 8 öğe kalır; sayfaya Ana sayfa
+// vitrininden ('Gösterim rehberi'), masaüstü alt bilgisinden ve mobil 'Daha fazla' sayfasının 'Keşfet ve doğrula' grubundan gidilir.
 import type { SystemInfo } from "@forum/shared";
 import type { AuthContextValue } from "../../auth/AuthContext";
 import { formatDateTime, formatDuration, formatNumber } from "../../lib/format";
@@ -17,6 +19,8 @@ export interface NavItem {
   group: "main" | "explore" | "duty" | "account";
   /** Mobil alt gezinmede gösterilsin mi */
   bottom?: boolean;
+  /** false → masaüstü üst gezinmede yok (yalnız 'Daha fazla' sayfasında ve sayfa içi bağlantılarda) */
+  topNav?: boolean;
   visible?: (a: AuthContextValue) => boolean;
 }
 
@@ -29,6 +33,8 @@ export const NAV_ITEMS: NavItem[] = [
   { to: "/graf", label: "Graf", icon: "graph", group: "explore" },
   { to: "/defter", label: "Defter", icon: "ledger", group: "explore" },
   { to: "/yonetmelik", label: "Yönetmelik", icon: "book", group: "explore" },
+  // Gösterim rehberi ve sözlük: grubun SONUNDA durur (üst gezinmedeki 4+4 öğe ve sıraları değişmez).
+  { to: routes.kesfet(), label: "Gösterim rehberi ve sözlük", icon: "info", group: "explore", topNav: false },
   { to: "/kayit-memuru", label: "Kayıt memuru", icon: "registrar", group: "duty", visible: (a) => a.can("R") || a.can("D") },
   { to: "/yonetim", label: "Yönetim", icon: "admin", group: "duty", visible: (a) => a.can("A") || a.can("D") },
   { to: "/profil", label: "Profil", icon: "user", group: "account", visible: (a) => !!a.user },
@@ -51,11 +57,11 @@ export function visibleItems(a: AuthContextValue): NavItem[] {
 export const TOP_NAV_GROUPS: ReadonlyArray<NavItem["group"]> = ["main", "explore"];
 
 /**
- * Üst gezinme öğelerini grup grup verir (boş gruplar atılır); gruplar arasına görsel ayraç çizilir.
+ * Üst gezinme öğelerini grup grup verir (boş gruplar ve `topNav: false` öğeler atılır); gruplar arasına görsel ayraç çizilir.
  * Öğelerin hiçbiri kalkmaz, etiketleri değişmez; yalnız araya çizgi girer.
  */
 export function topNavSections(items: NavItem[]): NavItem[][] {
-  return TOP_NAV_GROUPS.map((g) => items.filter((i) => i.group === g)).filter((s) => s.length > 0);
+  return TOP_NAV_GROUPS.map((g) => items.filter((i) => i.group === g && i.topNav !== false)).filter((s) => s.length > 0);
 }
 
 // ───────────── "Daha fazla" sayfası: Sistem durumu bloğu ─────────────

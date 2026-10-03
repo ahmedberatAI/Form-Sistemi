@@ -1,0 +1,221 @@
+/* ── Yeni öneri formu (Faz 3 / madde 3): kompakt tür seçici, hüküm önce ön denetim, kurallar duruma göre açık ──
+   Yeni renk belirteci yok: yalnız styles.css'teki belirteçler (--primary, --primary-soft, --border-strong, --warning, --warning-soft …)
+   ve boşluk/yazı belirteçleri (--sp-*, --fs-*); koyu tema bunlarla kendiliğinden uyar. Dosya yeni öneri sayfasıyla (ve CategoryPicker ile)
+   yüklenir. styles.css'teki bir kuralı değiştiren seçiciler bilerek daha özgüldür: yükleme sırasına dayanmaz. */
+
+/* ───────────── Tür seçici (KindPicker) ─────────────
+   Seçimden sonra tek satırlık küçük radyolar (hap). Hapın tamamı tıklanır (etiketin ::after katmanı hapı kaplar); seçili hap kalın
+   mavi çerçeve, mavi zemin, kalın yazı ve dolu radyo ile ayrılır (yalnız renk değil). Haplar sarar: 360 px'de yatay taşma olmaz. */
+.kind-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.kind-picker.kind-picker-compact .radio-options {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+/* Ölçüler 360 px'de ilk iki hap ('Yeni Konu', 'Alt Konu') yan yana sığacak biçimde seçildi (5 hap 4 satır; masaüstünde 1-2 satır). */
+.kind-picker.kind-picker-compact .radio {
+  position: relative;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 36px;
+  max-width: 100%;
+  padding: var(--sp-1) 0.6rem var(--sp-1) 0.45rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface);
+}
+/* Radyo, hapı kaplayan etiket katmanının üstünde durur: radyonun kendisine tıklama (ve otomasyonun isabet denetimi) radyoya düşer */
+.kind-picker.kind-picker-compact .radio input {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+}
+.kind-picker.kind-picker-compact .radio-checked {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+  background: var(--primary-soft);
+}
+.kind-picker.kind-picker-compact .check-label::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+}
+/* Klavye odağı hapın çevresinde de görünür (radyonun kendi halkasına ek) */
+.kind-picker.kind-picker-compact .radio:has(input:focus-visible) {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.kind-picker.kind-picker-compact .kind-label {
+  gap: var(--sp-1) 0.4rem;
+  font-size: var(--fs-sm);
+  line-height: 1.3;
+}
+.kind-picker.kind-picker-compact .radio-checked .kind-label {
+  font-weight: 700;
+}
+
+/* 'Türler ne demek?': özet satırı sakin; içerik tanım listesi */
+.details.kind-help > summary {
+  padding-block: var(--sp-2);
+  font-size: var(--fs-sm);
+}
+.kind-help-list {
+  margin: 0;
+  display: grid;
+  gap: var(--sp-3);
+  font-size: var(--fs-sm);
+}
+.kind-help-item dt {
+  font-weight: 650;
+}
+.kind-help-item dd {
+  margin: var(--sp-1) 0 0;
+}
+.kind-help-mark {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+.kind-help-tier {
+  display: block;
+  margin-top: var(--sp-1);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+/* ───────────── Kategori seçici: isteğe bağlı 'Ek kategoriler' açılırı ───────────── */
+.details.cat-picker-details > summary {
+  font-weight: 600;
+}
+/* Açılırın içinde seçicinin kendi çerçevesi tekrarlanmaz */
+.cat-picker.cat-picker-inner {
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+.cat-expert-key {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-2);
+}
+
+/* ───────────── Ön denetim paneli (PrecheckPanel) ─────────────
+   Hep görünen satırlar (katman, bilirkişi, gerekli destekçi) ve altında adlandırılmış açılırlar. */
+.pre-more {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+/* Hep görünen kısa satırlar: telefonda da etiket | değer yan yana (styles.css › .kv-row dar ekranda alt alta dizer) */
+.pre-key-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.pre-key .kv-row {
+  grid-template-columns: minmax(0, 9.5rem) minmax(0, 1fr);
+  column-gap: var(--sp-3);
+  align-items: baseline;
+}
+.pre-tier-explain {
+  margin: 0;
+}
+.details.pre-details > summary {
+  padding-block: var(--sp-2);
+}
+.details.pre-details > .details-body {
+  padding: var(--sp-3);
+}
+.pre-summary-counts {
+  color: var(--text);
+}
+.pre-empty {
+  margin: 0;
+  padding-inline: var(--sp-1);
+}
+/* ───────────── Gönderim ───────────── */
+.details.np-submit-more > summary {
+  padding-block: var(--sp-2);
+  font-size: var(--fs-sm);
+}
+
+/* ───────────── Silme talebi formu (DeletionForm) ───────────── */
+/* 'Tartışma silinmez' uyarısının içindeki ayrıntı açılırı: çerçevesiz, uyarının zemininde */
+.details.del-more {
+  margin-top: var(--sp-2);
+  border: 0;
+  background: transparent;
+}
+.details.del-more > summary {
+  padding: var(--sp-1) 0;
+}
+.details.del-more[open] > summary {
+  border-bottom: 0;
+}
+.details.del-more > .details-body {
+  padding: var(--sp-1) 0 0;
+}
+/* Aynı yazarın diğer mesajları: 'Ekle' düğmesi dar ekranda daralıp harf harf kırılmasın */
+.del-siblings > li > .btn {
+  flex: none;
+}
+.del-urgent-note {
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* Kurallar: tek satır + canlı sayaç; sınıra 1 kala ya da sınırda turuncu kenar ve zemin (metin ve simgeyle birlikte) */
+.del-limits {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  min-width: 0;
+}
+.del-limits.del-limits-warning {
+  border-color: var(--warning);
+  border-left-width: 4px;
+  background: var(--warning-soft);
+}
+.del-limits-line {
+  margin: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+.del-limits-icon {
+  margin-top: 0.1rem;
+  color: var(--text-muted);
+}
+.del-limits-warning .del-limits-icon {
+  color: var(--warning);
+}
+.del-limits-at {
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+.details.del-rules > summary {
+  padding-block: var(--sp-2);
+  font-size: var(--fs-sm);
+}
+.del-rules-list {
+  margin: 0;
+  padding-inline-start: 1.1rem;
+  display: grid;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+}

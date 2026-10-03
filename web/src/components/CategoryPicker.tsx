@@ -1,10 +1,19 @@
 // Ontoloji kategori ağacından çoklu seçim (arama + ağaç + seçili çipler).
 // Üst kategoriler ontoloji tarafından zaten çıkarıldığı için en özel kategoriyi seçmek yeterlidir.
-import { useId, useMemo, useState } from "react";
+// İsteğe bağlı seçimde (alt konu, düzenleme teklifi: 'Ek kategoriler') `collapsible` ile kapalı bir açılırda başlar: özet satırı
+// seçili kategori ve YZ önerisi sayısını söyler; 'Tam' görünümde ve bir hata gösterilince açık gelir. Zorunlu seçimde (yeni konu)
+// ağaç her zaman açıktır.
+import { useEffect, useId, useMemo, useState } from "react";
 import { expandIri } from "@forum/shared";
 import { useOntology } from "../lib/categories";
 import { normalizeSearch } from "../lib/format";
-import { Badge, Button, cx, ErrorView, Icon, Spinner } from "../ui";
+import { Badge, Button, cx, Details, ErrorView, Icon, Spinner } from "../ui";
+import "./proposals/new-proposal.css";
+
+/** Kapalı seçicinin özet satırı (saf): "2 seçili · 1 YZ önerisi" ya da "seçilmedi". */
+export function categoryPickerMeta(selectedCount: number, pendingSuggestions: number): string {
+  return [selectedCount ? `${selectedCount} seçili` : "seçilmedi", pendingSuggestions ? `${pendingSuggestions} YZ önerisi` : null].filter(Boolean).join(" · ");
+}
 
 export interface CategoryPickerProps {
   value: string[];
@@ -18,9 +27,14 @@ export interface CategoryPickerProps {
   /** YZ/sezgisel öneriler: tek tıkla eklenebilir (danışma) */
   suggestions?: { iri: string; label?: string; confidence?: number }[];
   required?: boolean;
+  /**
+   * true → seçici `label` başlıklı bir açılırın içinde kapalı başlar (sade görünümde; 'Tam' görünümde açık). İsteğe bağlı seçimler
+   * içindir; zorunlu seçimde kullanmayın. Hata gösterilince açılır ve açık kalır.
+   */
+  collapsible?: boolean;
 }
 
-export function CategoryPicker({ value, onChange, label = "Kategoriler", hint, error, max, disabled, suggestions, required }: CategoryPickerProps) {
+export function CategoryPicker({ value, onChange, label = "Kategoriler", hint, error, max, disabled, suggestions, required, collapsible }: CategoryPickerProps) {
   const { flat, categoryLabel, categoryPath, loading, error: loadError, reload } = useOntology();
   const [q, setQ] = useState("");
   const id = useId();
@@ -55,10 +69,18 @@ export function CategoryPicker({ value, onChange, label = "Kategoriler", hint, e
   }, [flat, nq]);
 
   const pendingSuggestions = (suggestions ?? []).filter((s) => !isSel(s.iri));
+  // Hata bir kez gösterilince açılır ve açık kalır (hata silinince kendiliğinden kapanıp kullanıcının elinden kaçmasın).
+  const [errorShown, setErrorShown] = useState(false);
+  useEffect(() => {
+    if (error) setErrorShown(true);
+  }, [error]);
+  // Rozet anahtarı yalnız listede 'bilirkişi' rozetli bir alan görünüyorsa yazılır.
+  const anyExpert = visible.some((c) => c.requiresExpert);
 
-  return (
-    <fieldset className={cx("cat-picker", error && "field-invalid")} disabled={disabled} aria-describedby={hint ? id + "-hint" : undefined}>
-      <legend className="field-label">
+  const picker = (
+    <fieldset className={cx("cat-picker", error && "field-invalid", collapsible && "cat-picker-inner")} disabled={disabled} aria-describedby={hint ? id + "-hint" : undefined}>
+      {/* Açılırda görünür ad özet satırıdır; grubun adı ekran okuyucu için legend'da kalır. */}
+      <legend className={collapsible ? "sr-only" : "field-label"}>
         {label}
         {required ? <span className="sr-only"> (zorunlu)</span> : null}
       </legend>
@@ -114,7 +136,7 @@ export function CategoryPicker({ value, onChange, label = "Kategoriler", hint, e
                 <label htmlFor={cid}>
                   {c.label}
                   {c.requiresExpert ? (
-                    <Badge tone="info" className="cat-expert" title="Bu alandaki öneriler için bilirkişi görüşü gerekir">
+                    <Badge tone="neutral" className="cat-expert" title="Bu alandaki öneriler için bilirkişi görüşü gerekir">
                       bilirkişi
                     </Badge>
                   ) : null}
@@ -125,6 +147,12 @@ export function CategoryPicker({ value, onChange, label = "Kategoriler", hint, e
           {!visible.length ? <li className="muted cat-item">“{q}” ile eşleşen kategori yok.</li> : null}
         </ul>
       ) : null}
+      {/* 'bilirkişi' rozetinin anlamı görünür metin olarak da yazar (title yalnız masaüstünde okunur). */}
+      {anyExpert ? (
+        <p className="field-hint cat-expert-key">
+          <Badge tone="neutral">bilirkişi</Badge> işaretli alanlardaki öneriler için bilirkişi görüşü gerekir.
+        </p>
+      ) : null}
 
       {full ? <div className="field-hint">En fazla {max} kategori seçebilirsiniz.</div> : null}
       {error ? (
@@ -133,6 +161,13 @@ export function CategoryPicker({ value, onChange, label = "Kategoriler", hint, e
         </div>
       ) : null}
     </fieldset>
+  );
+
+  if (!collapsible) return picker;
+  return (
+    <Details summary={label} meta={categoryPickerMeta(value.length, pendingSuggestions.length)} open={errorShown ? true : undefined} className="cat-picker-details">
+      {picker}
+    </Details>
   );
 }
 

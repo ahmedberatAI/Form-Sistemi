@@ -78,7 +78,7 @@ export default function OntologyPage() {
         meta={
           o ? (
             <>
-              <Badge tone="accent">Sürüm v{o.version.version}</Badge>
+              <Badge tone="neutral">Sürüm v{o.version.version}</Badge>
               <span className="small muted">{formatDateTime(o.version.createdAt, true)}</span>
               <HashText hash={o.version.hash} label="Sürüm özeti" />
             </>

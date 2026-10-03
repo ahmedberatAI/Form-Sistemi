@@ -56,7 +56,7 @@ export default function RegistrarPage() {
       <PageHeader
         title="Kayıt memuru"
         subtitle="Her kişinin tek hesapla katılması için kimlik doğrulaması. Kişisel verilere yalnızca amaç belirtilerek erişilir; her erişim kayıt altına alınır."
-        meta={!canWrite ? <Badge tone="accent">Denetçi — yalnızca okuma</Badge> : undefined}
+        meta={!canWrite ? <Badge tone="neutral">Denetçi — yalnızca okuma</Badge> : undefined}
       />
       <Tabs
         label="Kayıt memuru bölümleri"

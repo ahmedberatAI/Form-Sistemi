@@ -106,6 +106,25 @@
 .pcard-part .progress-labels {
   flex-wrap: wrap;
 }
+/* 'Sizden bekleniyor' (lib/taskStore): rozet değil düz metin (rozet bütçesi: kartta tek renkli durum rozeti kalır). Renk yalnız
+   simgede: mavi eylem, turuncu dikkat (itiraz, uzlaşma) — Ana sayfadaki görev satırlarıyla aynı. */
+.pcard-expect {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.pcard-expect-icon {
+  flex: none;
+  align-self: center;
+  color: var(--primary);
+}
+.pcard-expect-attention .pcard-expect-icon {
+  color: var(--warning);
+}
 
 /* ── Satır görünümü (ProposalRow): ana sayfada 'Şu an açık' ve 'Son kararlar' ──
    Satırın tamamı bağlantıdır. Telefonda: işaret | başlık (tek satır, …) / alt satırda durum · ilerleme · kalan süre.
@@ -210,6 +229,16 @@
     grid-row: 1;
     flex-wrap: nowrap;
     white-space: nowrap;
+  }
+  /* Ayrıntılı satır (konu sayfası: tür ve yazar da yazılır): meta her genişlikte başlığın altında kalır, başlık daralmaz */
+  .prow-detailed {
+    grid-template-columns: 1rem minmax(0, 1fr);
+  }
+  .prow-detailed .prow-meta {
+    grid-column: 2;
+    grid-row: auto;
+    flex-wrap: wrap;
+    white-space: normal;
   }
 }
 /* Mavi: şu an · turuncu: dikkat · yeşil ve kırmızı: sonuç · gri: nötr kapanış (koyu temada belirteçler kendiliğinden uyar) */

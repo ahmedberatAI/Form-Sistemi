@@ -9,7 +9,10 @@
               .grid-2 .grid-3 .grid-auto (duyarlı ızgara) · .split (ana + yan sütun) · .mt .mb .mt-0
    Metin      .muted .small .mono .nowrap .truncate .prose .h3 .lead · .ta-left .ta-right .ta-center
    Erişim     .sr-only .hide-mobile .show-mobile
-   Bileşen    .card(-header/-title/-subtitle/-actions/-body/-footer, -muted/-warning/-danger/-success/-accent)
+   Belirteç   boşluk --sp-1…--sp-6 · yazı --fs-xs/-sm/-md/-lg/-xl · satır uzunluğu --measure (renk değil: tema bloklarında yok)
+   Renk rolü  mavi (--primary = --info) eylem ve 'şu an' · yeşil/kırmızı (--success/--danger) sonuç · turuncu (--warning) dikkat
+              ve süre · mor (--accent) YALNIZ yapay zekâ · gri her şey · nesne başına en çok 1 renkli durum rozeti (src/README.md › Görsel dil)
+   Bileşen    .card(-header/-title/-subtitle/-actions/-body/-footer, -muted/-action/-warning/-danger/-success/-accent)
               .btn .btn-primary .btn-secondary .btn-danger .btn-ghost .btn-sm .btn-block · .icon-btn
               .badge .badge-{neutral|info|success|warning|danger|accent} · .count-badge · .chip .chips
               .alert .alert-{info|success|warning|error} · .empty · .spinner .spinner-block
@@ -46,8 +49,10 @@
   --danger: #b91c1c;
   --danger-soft: #fcebeb;
   --danger-contrast: #ffffff;
-  --info: #0369a1;
-  --info-soft: #e3f1fa;
+  /* Tek mavi: 'bilgi' tonu birincil mavinin takma adıdır (ayrı bir gök mavisi yok). Üç tema bloğunda da aynı eşleme durur. */
+  --info: var(--primary);
+  --info-soft: var(--primary-soft);
+  /* Mor YALNIZ yapay zekâ içindir (AiLabel, .ai-*, YZ alıntıları); başka hiçbir durum, rol ya da tür mor olmaz. */
   --accent: #6d28d9;
   --accent-soft: #f0e9fd;
   --focus: #2563eb;
@@ -66,6 +71,19 @@
   --sticky-h: calc(var(--header-h) + var(--nav-h));
   --bottom-nav-h: 62px;
   --gutter: 12px;
+  /* Boşluk ölçeği (4 px tabanlı) ve yazı boyutları. Renk olmadıkları için koyu tema bloklarında yeniden tanımlanmazlar. */
+  --sp-1: 0.25rem;
+  --sp-2: 0.5rem;
+  --sp-3: 0.75rem;
+  --sp-4: 1rem;
+  --sp-5: 1.5rem;
+  --sp-6: 2rem;
+  --fs-xs: 0.75rem; /* rozet, küçük sayı */
+  --fs-sm: 0.875rem; /* .small, meta ve hüküm satırları */
+  --fs-md: 1rem; /* gövde */
+  --fs-lg: 1.15rem; /* bölüm başlığı */
+  --fs-xl: 1.45rem; /* sayfa başlığı (telefonda; masaüstünde 1.7rem) */
+  --measure: 70ch; /* uzun metnin okunur satır uzunluğu */
   color-scheme: light;
 }
 
@@ -89,8 +107,8 @@
   --danger: #f87171;
   --danger-soft: #3a1818;
   --danger-contrast: #1a0b0b;
-  --info: #4cc3f7;
-  --info-soft: #0f2a3a;
+  --info: var(--primary);
+  --info-soft: var(--primary-soft);
   --accent: #b996f8;
   --accent-soft: #291f44;
   --focus: #93b5ff;
@@ -121,9 +139,9 @@
     --warning-soft: #33270f;
     --danger: #f87171;
     --danger-soft: #3a1818;
-  --danger-contrast: #1a0b0b;
-    --info: #4cc3f7;
-    --info-soft: #0f2a3a;
+    --danger-contrast: #1a0b0b;
+    --info: var(--primary);
+    --info-soft: var(--primary-soft);
     --accent: #b996f8;
     --accent-soft: #291f44;
     --focus: #93b5ff;
@@ -298,7 +316,7 @@ a:focus:not(:focus-visible) {
   color: var(--text-muted);
 }
 .small {
-  font-size: 0.875rem;
+  font-size: var(--fs-sm);
 }
 .lead {
   font-size: 1.075rem;
@@ -335,26 +353,26 @@ a:focus:not(:focus-visible) {
 .stack {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: var(--sp-4);
   min-width: 0;
 }
 .stack-sm {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: var(--sp-2);
   min-width: 0;
 }
 .stack-lg {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: var(--sp-5);
   min-width: 0;
 }
 .row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--sp-2);
   min-width: 0;
 }
 .row-between {
@@ -625,6 +643,14 @@ a:focus:not(:focus-visible) {
   flex-wrap: wrap;
   gap: 0.25rem 1rem;
 }
+/* Masaüstü alt bilgisi: 'Gösterim rehberi ve sözlük ›' satırın sonunda */
+.app-footer-guide {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  margin-inline-start: auto;
+  font-weight: 600;
+}
 
 /* Mobil alt gezinme */
 .bottom-nav {
@@ -659,7 +685,8 @@ a:focus:not(:focus-visible) {
   cursor: pointer;
   min-width: 0;
 }
-.bottom-link span {
+/* Yalnız etiket kısalır (…); simge sarmalayıcısı ve içindeki sayı rozeti (bekleyen iş, okunmamış) kesilmez */
+.bottom-link > span:not(.bottom-icon-wrap) {
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -709,11 +736,11 @@ a:focus:not(:focus-visible) {
   margin-top: 1rem;
 }
 .more-group-title {
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  /* BÜYÜK HARF etiket yok (Görsel dil): grup adı olduğu gibi yazılır, vurgu kalınlıktan gelir. */
+  font-size: var(--fs-sm);
+  font-weight: 650;
   color: var(--text-muted);
-  margin-bottom: 0.25rem;
+  margin-bottom: var(--sp-1);
 }
 .more-link {
   display: flex;
@@ -788,7 +815,7 @@ a:focus:not(:focus-visible) {
 .page {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: var(--sp-4);
   min-width: 0;
 }
 .page-narrow {
@@ -811,7 +838,7 @@ a:focus:not(:focus-visible) {
 }
 .page-title {
   margin: 0;
-  font-size: 1.45rem;
+  font-size: var(--fs-xl);
   min-width: 0;
 }
 @media (min-width: 900px) {
@@ -833,7 +860,7 @@ a:focus:not(:focus-visible) {
   flex-wrap: wrap;
   gap: 0.35rem;
   align-items: center;
-  font-size: 0.875rem;
+  font-size: var(--fs-sm);
   color: var(--text-muted);
 }
 .page-back {
@@ -869,7 +896,7 @@ a:focus:not(:focus-visible) {
 }
 .section-title {
   margin: 0;
-  font-size: 1.15rem;
+  font-size: var(--fs-lg);
 }
 .section-description {
   margin: 0;
@@ -884,7 +911,7 @@ a:focus:not(:focus-visible) {
 
 .prose {
   line-height: 1.65;
-  max-width: 72ch;
+  max-width: var(--measure);
 }
 .prose p {
   margin-bottom: 0.8rem;
@@ -953,6 +980,11 @@ a:focus:not(:focus-visible) {
   border-color: var(--success);
   border-left-width: 4px;
 }
+/* Eylem paneli (oy, sayım doğrulama): ince mavi kenar. Kalın sol kenar uyarı ve sonuç kartlarına kalır. */
+.card-action {
+  border-color: var(--primary);
+}
+/* Mor kenar YALNIZ yapay zekâ içeriği içindir (renk rolleri: src/README.md › Görsel dil). */
 .card-accent {
   border-color: var(--accent);
   border-left-width: 4px;
@@ -963,7 +995,7 @@ a:focus:not(:focus-visible) {
    <p class="card-summary">tek satırlık hüküm</p> başlığın DIŞINDADIR (bölge adı değişmez). */
 .card-summary {
   margin: 0.15rem 0 0;
-  font-size: 0.875rem;
+  font-size: var(--fs-sm);
   line-height: 1.4;
   color: var(--text-muted);
   overflow-wrap: anywhere;
@@ -1123,6 +1155,7 @@ a:focus:not(:focus-visible) {
   color: var(--text);
 }
 
+/* Okunmamış ya da bekleyen iş sayısı: 'şu an' sizi bekleyen → mavi (kırmızı sonuç ve hata içindir). */
 .count-badge {
   display: inline-flex;
   align-items: center;
@@ -1131,21 +1164,23 @@ a:focus:not(:focus-visible) {
   height: 18px;
   padding: 0 5px;
   border-radius: 999px;
-  background: var(--danger);
-  color: var(--danger-contrast);
+  background: var(--primary);
+  color: var(--primary-contrast);
   font-size: 0.7rem;
   font-weight: 700;
   line-height: 1;
 }
 
-/* ───────────── Rozet ve çip ───────────── */
+/* ───────────── Rozet ve çip ─────────────
+   Rozet bütçesi: nesne (kart, satır, başlık) başına en çok 1 renkli DURUM rozeti; tür, katman (T3 dışı), rol, sürüm ve
+   sayılar .badge-neutral'dır. .badge-accent (mor) YALNIZ yapay zekâ içindir. Renk her zaman metinle (ve çoğu kez simgeyle) gelir. */
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
-  padding: 0.12rem 0.5rem;
+  gap: var(--sp-1);
+  padding: 0.1rem 0.45rem;
   border-radius: 999px;
-  font-size: 0.775rem;
+  font-size: var(--fs-xs);
   font-weight: 600;
   line-height: 1.4;
   white-space: nowrap;
@@ -1593,9 +1628,9 @@ a:focus:not(:focus-visible) {
 }
 .details-meta {
   float: right;
-  margin-inline-start: 0.75rem;
+  margin-inline-start: var(--sp-3);
   color: var(--text-muted);
-  font-size: 0.875rem;
+  font-size: var(--fs-sm);
   font-weight: 400;
 }
 
@@ -2174,6 +2209,142 @@ dialog.modal::backdrop {
   height: 30px;
 }
 
+/* ───────────── Sade dil: sözlük terimi (ui/Term) ve sembol anahtarı (ParamsCard) ─────────────
+   Terim ekranda aynen yazıldığı gibi kalır; noktalı alt çizgi 'dokununca açıklanır' der (renk yalnız çizgidedir, metin rengi
+   bulunduğu yerin rengidir, bu yüzden kontrast değişmez). Dokunmatikte asıl açıklama Modal sheet'tir; title yalnız masaüstü ipucudur. */
+.term {
+  appearance: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  text-align: inherit;
+  /* Düğme UA stilleri satır sarmayı değiştirebilir: terim bulunduğu metnin sarma kuralını izler (uzun etiket 360 px'de taşmaz). */
+  white-space: inherit;
+  overflow-wrap: inherit;
+  word-break: inherit;
+  cursor: help;
+  text-decoration: underline dotted;
+  text-decoration-color: var(--text-muted);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.22em;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.term:hover {
+  text-decoration-style: solid;
+  text-decoration-color: var(--primary);
+}
+/* Rozet saran terim (TierBadge explain): rozetin kendisi düğmedir, alt çizgi yok; simge tıklanabilirliği söyler. */
+.term-badge {
+  display: inline-flex;
+  max-width: 100%;
+  vertical-align: middle;
+  border-radius: 999px;
+  text-decoration: none;
+}
+.term-badge:hover .badge {
+  border-color: var(--primary);
+}
+/* Yalnız simgeli terim düğmesi (HashText explain): .icon-btn ölçüsünde, alt çizgisiz. */
+.term-info {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  color: var(--text-muted);
+  text-decoration: none;
+  vertical-align: middle;
+}
+.term-info:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+/* Terim penceresi (Modal sheet): günlük karşılık önce, tanım sonra, yönetmelik bağlantısı en altta. */
+.term-plain {
+  font-size: var(--fs-md);
+}
+.term-definition {
+  max-width: var(--measure);
+}
+.term-symbol {
+  font-style: italic;
+  font-weight: 600;
+  color: var(--text);
+}
+/* Yeni öneri formunun yanında pencere bağlantıları yeni sekmede açılır; not bağlantının adındadır, görünüşte ikincil */
+.term-newtab {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+/* ParamsCard: 'Sembolleri ve formülleri göster' anahtarı (role=switch). Kapalıyken satırlar sade adla başlar; açıkken sembol
+   değerin yanında (τ), formül ipucunun altında görünür. */
+.param-tools {
+  display: flex;
+  justify-content: flex-end;
+}
+.param-switch {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 32px;
+  padding: var(--sp-1) 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  text-align: start;
+  cursor: pointer;
+}
+.param-switch-track {
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  border: 1px solid var(--text-muted);
+  background: var(--surface-3);
+  transition: background-color 0.15s ease;
+}
+.param-switch-track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+.param-switch[aria-checked="true"] .param-switch-track {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+.param-switch[aria-checked="true"] .param-switch-track::after {
+  transform: translateX(14px);
+  background: var(--primary);
+}
+.param-symbol {
+  margin-inline-start: var(--sp-1);
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+.param-formula {
+  display: block;
+}
+.param-legend {
+  margin: 0;
+}
+
 /* ───────────── Metin farkı ───────────── */
 .diff {
   border: 1px solid var(--border);
@@ -2341,9 +2512,10 @@ a.list-item:hover,
   background: var(--primary);
   border-color: var(--primary);
 }
+/* Geçmiş evre dolu gri nokta; renk yalnız güncel evrede (mavi) ve sonuçta (aşağıda: kabul yeşil, red kırmızı) kalır. */
 .timeline-item.is-done::before {
-  background: var(--success);
-  border-color: var(--success);
+  background: var(--text-muted);
+  border-color: var(--text-muted);
 }
 
 .tree,
@@ -2384,9 +2556,10 @@ a.list-item:hover,
   color: var(--text-muted);
 }
 .user-expert {
+  /* Rol bilgisi (gri): mor yalnız yapay zekâ içindir. */
   font-weight: 500;
   font-size: 0.85em;
-  color: var(--accent);
+  color: var(--text-muted);
 }
 
 /* ───────────── Kategori seçici ───────────── */
@@ -2452,46 +2625,7 @@ a.list-item:hover,
   background: var(--primary-soft);
 }
 
-/* ───────────── Bildirimler ───────────── */
-.notif {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem 1rem;
-  align-items: flex-start;
-  justify-content: space-between;
-}
-.notif-main {
-  flex: 1 1 240px;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-}
-.notif-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4rem;
-}
-.notif-title {
-  font-weight: 500;
-}
-.notif-unread {
-  background: var(--primary-soft);
-}
-.notif-unread .notif-title {
-  font-weight: 700;
-}
-.notif-body {
-  margin: 0;
-  font-size: 0.925rem;
-  color: var(--text-muted);
-}
-.notif-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-}
+/* Bildirimler: pages/notifications.css (sayfayla birlikte yüklenir) */
 
 /* ───────────── Hareket azaltma ───────────── */
 @media (prefers-reduced-motion: reduce) {
@@ -2526,7 +2660,8 @@ a.list-item:hover,
   border: 1px solid var(--border);
   background: var(--surface-2);
   color: var(--text-muted);
-  font-size: 0.775rem;
+  /* Rozetle aynı boy: aynı satırda gri rozet ile kategori hapı yan yana durur */
+  font-size: var(--fs-xs);
   line-height: 1.5;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2688,9 +2823,6 @@ a.list-item:hover,
 .ttree-hit > .ttree-row {
   background: var(--primary-soft);
 }
-.ttree-archived > .ttree-row {
-  opacity: 0.75;
-}
 .ttree-toggle {
   flex: none;
   width: 32px;
@@ -2717,6 +2849,14 @@ a.list-item:hover,
 .ttree-title:hover {
   color: var(--primary);
   text-decoration: underline;
+}
+/* Arşivlenen konu: soluk görünüm opaklıkla değil renkle verilir (opaklık içindeki gri metnin kontrastını AA'nın altına indirirdi);
+   durumu 'Arşivlendi' rozeti söyler. */
+.ttree-archived > .ttree-row .ttree-title {
+  color: var(--text-muted);
+}
+.ttree-archived > .ttree-row .ttree-title:hover {
+  color: var(--primary);
 }
 .ttree-ref {
   font-family: var(--mono);
@@ -2797,16 +2937,6 @@ a.list-item:hover,
   align-items: center;
   min-height: 24px;
 }
-.pre-section {
-  display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
-  min-width: 0;
-}
-.pre-h {
-  margin: 0;
-  font-size: 0.95rem;
-}
 .pre-h4 {
   margin: 0 0 0.25rem;
   font-size: 0.875rem;
@@ -2842,8 +2972,9 @@ a.list-item:hover,
   border-left-color: var(--warning);
   background: var(--warning-soft);
 }
+/* Bilgi bulgusu gri kenar: mavi eylem ve 'şu an' içindir (rozeti de gri) */
 .pre-finding-info {
-  border-left-color: var(--info);
+  border-left-color: var(--border-strong);
 }
 .pre-finding .badge {
   flex: none;
@@ -3232,12 +3363,13 @@ h4.sub-heading {
   box-shadow: inset 0 0 0 1px currentColor;
   color: inherit;
 }
+/* Köprü skoru formülle hesaplanan bir ölçüdür, yapay zekâ değildir: gri yazı ve gri gösterge (mor yalnız YZ için). */
 .msg-bridge {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
   font-size: 0.8rem;
-  color: var(--accent);
+  color: var(--text-muted);
   font-weight: 600;
   cursor: help;
 }
@@ -3252,7 +3384,7 @@ h4.sub-heading {
 .msg-bridge-meter > span {
   display: block;
   height: 100%;
-  background: var(--accent);
+  background: var(--text-muted);
 }
 .msg-buttons {
   display: inline-flex;
@@ -3377,9 +3509,10 @@ h4.sub-heading {
 .phase-done {
   color: var(--text);
 }
+/* Tamamlanan evre gri ✔ ile işaretlenir: şeritte tek renkli öğe kalır (güncel evre mavi ya da sonuç yeşil/kırmızı). */
 .phase-done .phase-dot {
-  background: var(--success-soft);
-  color: var(--success);
+  background: var(--surface-3);
+  color: var(--text);
 }
 .phase-current {
   border-color: var(--primary);
@@ -3416,6 +3549,10 @@ h4.sub-heading {
 }
 .timeline-item.is-future::before {
   border-style: dashed;
+}
+.timeline-item.is-final.is-enacted::before {
+  background: var(--success);
+  border-color: var(--success);
 }
 .timeline-item.is-final.is-rejected::before,
 .timeline-item.is-final.is-inadmissible::before {
@@ -3539,8 +3676,9 @@ h4.sub-heading {
 .finding-warning li::marker {
   color: var(--warning);
 }
+/* Bilgi bulgusu gri madde imi: mavi eylem ve 'şu an' içindir (Yeni öneri ön denetimindeki 'Bilgi' bulgusuyla aynı rol) */
 .finding-info li::marker {
-  color: var(--info);
+  color: var(--text-muted);
 }
 .rule-list {
   margin: 0;

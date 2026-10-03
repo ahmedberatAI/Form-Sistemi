@@ -107,7 +107,7 @@ export default function TxPage() {
                   label: "Uygulama imzası",
                   value: (
                     <span className="row">
-                      <HashText hash={t.sig} chars={16} label="İmza" />
+                      <HashText hash={t.sig} chars={16} label="İmza" digest={false} />
                       {appKey ? <span className="small">{sigOk ? "✔ sabitlenmiş uygulama anahtarıyla doğrulandı" : "✘ imza doğrulanamadı"}</span> : null}
                     </span>
                   ),

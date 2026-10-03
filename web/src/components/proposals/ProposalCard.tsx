@@ -2,13 +2,17 @@
 // Sade kart (rozet bütçesi): üst satırda #K-n ve TEK durum rozeti (+ T0 dışı katman ve 'Sizin'); tür, yazar, zaman ve mesaj
 // sayısı rozet değil, noktayla ayrılmış düz metin meta satırıdır. Kategoriler en çok 2 ve '+n'.
 // Satır görünümü (ProposalRow, ana sayfa): satırın tamamı bağlantıdır; işaret + #K-n + başlık + durum · ilerleme · kalan süre.
-import { useId } from "react";
+// Oturumdaki üyenin bu öneride bekleyen işi varsa (lib/taskStore, sunucunun görev listesi) kartta 'Sizden bekleniyor: Oy'
+// satırı çıkar; rozet değil düz metindir (rozet bütçesi), renk yalnız simgededir. Katman rozeti, renkli bir durum rozeti
+// yanında griye döner (nesne başına tek renkli durum rozeti).
+import { Fragment, useId } from "react";
 import { Link } from "react-router-dom";
 import { PROPOSAL_KIND_LABELS, PROPOSAL_STATUS_LABELS, type ProposalStatus, type ProposalSummary } from "@forum/shared";
 import { useOntology } from "../../lib/categories";
 import { formatPercent, proposalRef } from "../../lib/format";
 import { routes } from "../../lib/routes";
-import { Badge, Countdown, cx, ProgressBar, StatusBadge, TierBadge, Time } from "../../ui";
+import { expectationText, useProposalExpectations, type ExpectationKind } from "../../lib/taskStore";
+import { Badge, Countdown, cx, Icon, ProgressBar, StatusBadge, statusTone, TierBadge, Time, type IconName } from "../../ui";
 import { UserLink } from "../UserLink";
 import "./proposals.css";
 
@@ -23,6 +27,18 @@ export const PHASE_DEADLINE_PREFIX: Partial<Record<ProposalStatus, string>> = {
 };
 
 const MAX_CATS = 2;
+
+/** 'Sizden bekleniyor' satırının simgesi (Ana sayfa görev satırlarıyla aynı simgeler). */
+const EXPECT_ICON: Record<ExpectationKind, IconName> = {
+  vote: "vote",
+  sponsor: "users",
+  object: "warning",
+  reconciliation: "users",
+  expert: "experts",
+  author: "proposals",
+};
+/** Turuncu (dikkat ve süre) simgeli işler; diğerleri mavi (eylem). Ana sayfadaki görev tonlarıyla aynı. */
+const ATTENTION_KINDS: readonly ExpectationKind[] = ["object", "reconciliation"];
 
 /** Meta satırındaki noktalı ayraç (ekran okuyucuya okunmaz). */
 const Dot = () => (
@@ -44,6 +60,7 @@ export function ProposalCard({ proposal: p, compact, myId, headingLevel = 3 }: P
   const { categoryLabel, categoryPath } = useOntology();
   const hid = useId();
   const noteId = useId();
+  const expectId = useId();
   const H = `h${headingLevel}` as "h3";
   const mine = !!myId && p.authorId === myId;
   const prefix = PHASE_DEADLINE_PREFIX[p.status];
@@ -51,13 +68,15 @@ export function ProposalCard({ proposal: p, compact, myId, headingLevel = 3 }: P
   const part = voting && p.participation && p.participation.eligible > 0 ? p.participation : null;
   const cats = compact ? [] : p.categories.slice(0, MAX_CATS);
   const hiddenCats = compact ? [] : p.categories.slice(MAX_CATS);
+  const expectations = useProposalExpectations(p.id);
+  const describedBy = [part ? noteId : null, expectations.length ? expectId : null].filter(Boolean).join(" ") || undefined;
 
   return (
-    <article className={cx("pcard", mine && "pcard-mine")} aria-labelledby={hid} aria-describedby={part ? noteId : undefined}>
+    <article className={cx("pcard", mine && "pcard-mine")} aria-labelledby={hid} aria-describedby={describedBy}>
       <div className="pcard-top">
         <span className="pcard-ref">{proposalRef(p.seq)}</span>
         <StatusBadge status={p.status} />
-        {p.tier && p.tier !== "T0" ? <TierBadge tier={p.tier} short /> : null}
+        {p.tier && p.tier !== "T0" ? <TierBadge tier={p.tier} short neutral={statusTone(p.status) !== "neutral"} /> : null}
         {mine ? (
           <Badge tone="neutral" icon="user">
             Sizin
@@ -122,13 +141,22 @@ export function ProposalCard({ proposal: p, compact, myId, headingLevel = 3 }: P
             value={part.voted}
             max={part.eligible}
             valueText={`${part.voted}/${part.eligible} (${formatPercent(part.voted / part.eligible)})`}
-            tone="accent"
+            tone="primary"
           />
           {/* Her kartta tekrarlanan cümle görünmez; ekran okuyucu için kartın açıklaması olarak kalır. */}
           <span id={noteId} className="sr-only">
             Ara sonuç oylama bitene kadar gizlidir.
           </span>
         </div>
+      ) : null}
+
+      {expectations.length ? (
+        <p className={cx("pcard-expect", ATTENTION_KINDS.includes(expectations[0].kind) && "pcard-expect-attention")} id={expectId}>
+          <Icon name={EXPECT_ICON[expectations[0].kind]} size={14} className="pcard-expect-icon" />
+          <span>
+            <strong>Sizden bekleniyor:</strong> {expectationText(expectations)}
+          </span>
+        </p>
       ) : null}
 
       {prefix && p.phaseEndsAt ? (
@@ -207,10 +235,29 @@ export function proposalRowSpec(p: Pick<ProposalSummary, "status" | "kind" | "sp
   return { tone, mark, status: label, extra: closed ? (PROPOSAL_KIND_LABELS[p.kind] ?? null) : null };
 }
 
+/**
+ * Satırın ek meta parçaları (saf): `kind` → öneri türü (sonuçlanmış satırda tür zaten `extra`'dadır, tekrar yazılmaz), `author` →
+ * '@takma ad' (kendi önerinde 'sizin' yazıldığı için yazılmaz). Rozet değil, düz metindir (rozet bütçesi bozulmaz).
+ */
+export function proposalRowDetails(
+  p: Pick<ProposalSummary, "kind" | "authorNickname">,
+  spec: Pick<ProposalRowSpec, "extra">,
+  opts: { kind?: boolean; author?: boolean; mine?: boolean },
+): string[] {
+  const kind = PROPOSAL_KIND_LABELS[p.kind] ?? p.kind;
+  return [opts.kind && spec.extra !== kind ? kind : null, opts.author && !opts.mine && p.authorNickname ? `@${p.authorNickname}` : null].filter(
+    (x): x is string => !!x,
+  );
+}
+
 export interface ProposalRowProps {
   proposal: ProposalSummary;
   /** Oturumdaki kullanıcının kimliği: kendi önerisi meta satırında "sizin" diye işaretlenir (rozet değil) */
   myId?: string | null;
+  /** Meta satırına öneri türünü yaz (konu sayfası: aynı konuya bağlı düzenleme, alt konu ve silme satırları ayırt edilsin) */
+  showKind?: boolean;
+  /** Meta satırına yazarı ('@takma ad') yaz */
+  showAuthor?: boolean;
 }
 
 /**
@@ -218,13 +265,14 @@ export interface ProposalRowProps {
  * ("#K-31 Kütüphane … Oylamada katılım 23/57 2 sa 13 dk kaldı"). Başlık tek satırdır (…); telefonda meta alt satırda,
  * ≥ 600 px'de meta sağda.
  */
-export function ProposalRow({ proposal: p, myId }: ProposalRowProps) {
+export function ProposalRow({ proposal: p, myId, showKind, showAuthor }: ProposalRowProps) {
   const spec = proposalRowSpec(p);
   const mine = !!myId && p.authorId === myId;
+  const details = proposalRowDetails(p, spec, { kind: showKind, author: showAuthor, mine });
   const deadline = PHASE_DEADLINE_PREFIX[p.status] && p.phaseEndsAt ? p.phaseEndsAt : null;
   // Parçalar arasındaki {" "} boşlukları flex/grid düzeninde görünmez; bağlantının erişilebilir adında sözcükleri ayırır.
   return (
-    <Link className={cx("prow", `prow-${spec.tone}`)} to={routes.proposal(p.id)}>
+    <Link className={cx("prow", `prow-${spec.tone}`, details.length > 0 && "prow-detailed")} to={routes.proposal(p.id)}>
       <span className="prow-mark" aria-hidden="true">
         {spec.mark}
       </span>{" "}
@@ -239,6 +287,12 @@ export function ProposalRow({ proposal: p, myId }: ProposalRowProps) {
             <Dot /> <span>{spec.extra}</span>
           </>
         ) : null}
+        {details.map((d) => (
+          <Fragment key={d}>
+            {" "}
+            <Dot /> <span>{d}</span>
+          </Fragment>
+        ))}
         {mine ? (
           <>
             {" "}
@@ -256,20 +310,20 @@ export function ProposalRow({ proposal: p, myId }: ProposalRowProps) {
   );
 }
 
-export interface ProposalRowListProps {
+export interface ProposalRowListProps extends Pick<ProposalRowProps, "showKind" | "showAuthor"> {
   proposals: ProposalSummary[];
   myId?: string | null;
   /** Liste için erişilebilir ad */
   label: string;
 }
 
-/** Kenarlıklı satır listesi (ana sayfa: 'Şu an açık', 'Son kararlar'). */
-export function ProposalRowList({ proposals, myId, label }: ProposalRowListProps) {
+/** Kenarlıklı satır listesi (ana sayfa: 'Şu an açık', 'Son kararlar'; konu sayfası: 'Açık öneriler', tür ve yazarla). */
+export function ProposalRowList({ proposals, myId, label, showKind, showAuthor }: ProposalRowListProps) {
   return (
     <ul className="prow-list" aria-label={label}>
       {proposals.map((p) => (
         <li key={p.id}>
-          <ProposalRow proposal={p} myId={myId} />
+          <ProposalRow proposal={p} myId={myId} showKind={showKind} showAuthor={showAuthor} />
         </li>
       ))}
     </ul>

@@ -69,7 +69,7 @@ export default function UserPage() {
               <RoleBadge key={r} role={r} />
             ))}
             {p.isExpert ? (
-              <Badge tone="accent" icon="experts">
+              <Badge tone="neutral" icon="experts">
                 Bilirkişi
               </Badge>
             ) : null}

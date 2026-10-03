@@ -69,6 +69,7 @@ import {
   Section,
   Spinner,
   StatusBadge,
+  statusTone,
   TierBadge,
   Time,
 } from "../ui";
@@ -109,13 +110,28 @@ export default function ProposalDetailPage() {
   if (error && !p) return <ErrorView error={error} onRetry={reload} />;
   if (!p) return null;
 
-  const update = (d: ProposalDetail) => setData(d);
+  // Görüntüleyenin kendi eylemi (oy, destek, itiraz, rapor, bilirkişi görüşü …) bekleyen işlerini değiştirebilir: kabuktaki
+  // 'Ana sayfa' rozeti ve kartlardaki 'Sizden bekleniyor' 60 sn'lik yoklamayı beklemeden yenilenir (lib/taskStore).
+  const tasksChanged = () => void auth.refreshTasks();
+  const update = (d: ProposalDetail) => {
+    setData(d);
+    tasksChanged();
+  };
+  const setProposal: typeof setData = (next) => {
+    setData(next);
+    tasksChanged();
+  };
   const addAnalysis = (a: AiAnalysisInfo) => setData((prev) => (prev ? { ...prev, aiAnalyses: [a, ...prev.aiAnalyses.filter((x) => x.id !== a.id)] } : prev));
   // Rapor yalnız görüntüleyenin kendisi tarafından eklenir → tek rapor kuralı gereği form kapanır.
-  const addMinority = (r: MinorityReport) =>
+  const addMinority = (r: MinorityReport) => {
     setData((prev) => (prev ? { ...prev, minorityReports: [...prev.minorityReports.filter((x) => x.id !== r.id), r], canWriteMinorityReport: false } : prev));
+    tasksChanged();
+  };
   const addSuggestion = (s: Suggestion) => setData((prev) => (prev ? { ...prev, suggestions: [...prev.suggestions.filter((x) => x.id !== s.id), s] } : prev));
-  const refresh = () => void reload();
+  const refresh = () => {
+    void reload();
+    tasksChanged();
+  };
 
   const terminal = TERMINAL.includes(p.status);
   // Eski sunucu sürümüyle (ör. güncellenmemiş Android istemcisi) uyum: alan yoksa boş say.
@@ -210,7 +226,7 @@ export default function ProposalDetailPage() {
               <span className="proposal-ref">{proposalRef(p.seq)}</span>
               <StatusBadge status={p.status} />
               <KindBadge kind={p.kind} />
-              {p.tier && p.tier !== "T0" ? <TierBadge tier={p.tier} /> : null}
+              {p.tier && p.tier !== "T0" ? <TierBadge tier={p.tier} neutral={statusTone(p.status) !== "neutral"} explain /> : null}
               {p.extensionUsed ? <Badge tone="warning">Süre uzatıldı</Badge> : null}
               {integrityWarnings.length ? (
                 <Badge tone="warning" icon="warning" title="Kilit adım taraması: karar değişmez, denetim içindir (ayrıntı: Bütünlük uyarıları kartı)">
@@ -286,7 +302,7 @@ export default function ProposalDetailPage() {
           {hasActionArea(p.status) ? (
             // ?bolum=eylem hedefi: evrenin paneli (oy, destek, itiraz, uzlaşma, tartışma evresi, taslak); paneller 'eylem önce'.
             <div id={PAGE_ANCHORS.action} className="stack action-area">
-              <ActionArea proposal={p} onUpdated={update} onReload={refresh} setData={setData} onSuggestion={addSuggestion} onMinority={addMinority} onAnalysis={addAnalysis} />
+              <ActionArea proposal={p} onUpdated={update} onReload={refresh} setData={setProposal} onSuggestion={addSuggestion} onMinority={addMinority} onAnalysis={addAnalysis} />
             </div>
           ) : null}
 

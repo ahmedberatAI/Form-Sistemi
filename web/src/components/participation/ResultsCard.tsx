@@ -2,12 +2,15 @@
 // toplamlar, işaretli iki çubuk ve "Neden bu sonuç?" kontrolleri. Görüş grupları/köprü testi tablosu ve yedi sayı kutusu
 // adlandırılmış açılırlardadır; köprü sağlanmadıysa, bir grup tabanı geçemediyse ya da bir grup nötr sayıldıysa köprü açılırı
 // kendiliğinden AÇIK gelir ('Tam' görünümde her zaman açık). Hiçbir sayı ya da açıklama silinmez.
-import { useId, useState } from "react";
+// Sade dil: 'Neden bu sonuç?' kontrol satırlarının etiketi sözlük terimidir (sunucunun etiketi aynen yazılır, dokununca terimin
+// günlük karşılığı açılır); P_g, GAC ve 'girdi özeti' de öyle. Kapalı başlıkların (Details özeti) içine Term konmaz.
+import { useId, useState, type ReactNode } from "react";
 import type { ClusterResult, DecisionCheck, DecisionResult, MinorityReport } from "@forum/shared";
 import { clusterLabel } from "@forum/shared";
 import { useDetailLevel } from "../../lib/detailLevel";
 import { formatNumber, formatPercent } from "../../lib/format";
-import { Button, Card, cx, Details, HashText, OutcomeBadge, ProgressBar, Table, Time, VoteBadge } from "../../ui";
+import { getTerm, termForDecisionCheck } from "../../lib/glossary";
+import { Button, Card, cx, Details, HashText, OutcomeBadge, ProgressBar, Table, Term, Time, VoteBadge } from "../../ui";
 import { UserLink } from "../UserLink";
 import { fmtDecimal, PlainText, SubHeading, Tick } from "./common";
 import "./results.css";
@@ -184,7 +187,8 @@ export function ResultsCard({ result: r, minorityReports, reconciliationOrigin, 
         ) : null}
 
         <p className="small muted result-meta">
-          Algoritma {r.algoVersion} · hesaplandı <Time at={r.computedAt} mode="absolute" /> · girdi özeti <HashText hash={r.inputsHash} chars={10} label="Girdi özeti" />
+          Algoritma {r.algoVersion} · hesaplandı <Time at={r.computedAt} mode="absolute" /> ·{" "}
+          <Term id="ozet">girdi özeti</Term> <HashText hash={r.inputsHash} chars={10} label="Girdi özeti" />
         </p>
       </div>
     </Card>
@@ -195,6 +199,11 @@ export function ResultsCard({ result: r, minorityReports, reconciliationOrigin, 
 function WhyChecks({ result: r, informational }: { result: DecisionResult; informational: boolean }) {
   const views = planChecks(r.checks, r.clusters, informational);
   const collapsed = collapsedChecks(views);
+  // Etiket sunucudan gelir ve aynen yazılır; ilgili bir sözlük terimi varsa etiketin tamamı o terimin düğmesi olur.
+  const labelOf = (c: DecisionCheck): ReactNode => {
+    const term = termForDecisionCheck(c.key);
+    return term ? <Term id={term}>{c.label}</Term> : c.label;
+  };
   return (
     <section aria-label="Neden bu sonuç?" className="stack-sm">
       <SubHeading>Neden bu sonuç?</SubHeading>
@@ -205,7 +214,7 @@ function WhyChecks({ result: r, informational }: { result: DecisionResult; infor
               <Tick ok={v.check.passed} />
               <div className="why-text">
                 <div>
-                  <strong>{v.check.label}</strong>: {v.check.value} <span className="muted">(gerekli {v.check.required})</span>
+                  <strong>{labelOf(v.check)}</strong>: {v.check.value} <span className="muted">(gerekli {v.check.required})</span>
                 </div>
                 {v.check.detail ? <div className="small muted">{v.check.detail}</div> : null}
               </div>
@@ -213,12 +222,14 @@ function WhyChecks({ result: r, informational }: { result: DecisionResult; infor
           ) : v.kind === "bridge" ? (
             <li key="bridge-group" className="why-chip why-ok">
               <Tick ok />
-              <span>Köprü testi: {v.checks.length} grup tabanı aştı</span>
+              <span>
+                <Term id="kopru-testi">Köprü testi: {v.checks.length} grup tabanı aştı</Term>
+              </span>
             </li>
           ) : (
             <li key={v.check.key} className="why-chip why-ok">
               <Tick ok={v.check.passed} />
-              <span>{v.check.label}</span>
+              <span>{labelOf(v.check)}</span>
             </li>
           ),
         )}
@@ -264,6 +275,10 @@ function BridgeSection({ result: r, informational }: { result: DecisionResult; i
       }
     >
       <section aria-label="Görüş grupları" className="stack-sm">
+        {/* Terim korunur, günlük karşılığı yanına yazılır (açılırın başlığında Term olamaz; burada görünür metin) */}
+        <p className="small muted">
+          <Term id="kopru-testi">Köprü testi</Term> — {getTerm("kopru-testi").plain}.
+        </p>
         <Table<ClusterResult>
           caption="Görüş gruplarına göre oylar, P_g desteği ve taban"
           rowKey={(c) => c.clusterId}
@@ -294,12 +309,14 @@ function BridgeSection({ result: r, informational }: { result: DecisionResult; i
           ]}
         />
         <p className="small muted">
-          P_g = (1 + Kabul) / (2 + Kabul + Red). Hiç oy vermeyen grup 0,50 sayılır: boykot bir engel aracı değildir; bir grup kararı ancak etkin biçimde “Red” diyerek
+          <Term id="p-g">P_g</Term> = (1 + Kabul) / (2 + Kabul + Red). Hiç oy vermeyen grup 0,50 sayılır: boykot bir engel aracı değildir; bir grup kararı ancak etkin biçimde “Red” diyerek
           durdurabilir. Kümelenmemiş (yeni) üyeler genel orana sayılır, köprü testine girmez.
         </p>
         {r.gac !== null ? (
           <p className="small">
-            <strong>Grup bilgili uzlaşı (GAC): {fmtDecimal(r.gac)}</strong> <span className="muted">— anlamlı grupların P_g değerlerinin geometrik ortalaması; yalnızca gösterge.</span>
+            <strong>
+              <Term id="gac">Grup bilgili uzlaşı (GAC)</Term>: {fmtDecimal(r.gac)}
+            </strong> <span className="muted">— anlamlı grupların P_g değerlerinin geometrik ortalaması; yalnızca gösterge.</span>
           </p>
         ) : null}
       </section>

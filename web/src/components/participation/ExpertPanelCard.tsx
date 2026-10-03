@@ -5,6 +5,8 @@
 // Kura kanıtı (tohum, atamalar, kura kayıtları, aday havuzu) tek "Kura ve adillik kanıtı" açılırındadır. Her rapor tek satırdır
 // ("@bilirkişi · Uygulanabilir · güven %80 · tarih") ve [Raporu oku] gövdeyi, riskleri, karşı görüşü, YZ uyarısını, hash'leri ve
 // sorulara yanıtları satır içinde açar; soru formu [Soru sor] ile açılır. 'Tam' görünümde ikisi de açık gelir.
+// Görsel dil: rapor satırında tek renkli rozet hükümdür (uygulanabilir yeşil · uygulanamaz kırmızı · belirsiz turuncu); panel türü
+// ve 'Azınlık güvenceli' gri rozettir (mor yalnız yapay zekâ içindir: hukuki nitelendirme uyarısı AiLabel ile gelir).
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -24,7 +26,7 @@ import { resolveDefaultOpen, useDetailLevel } from "../../lib/detailLevel";
 import { formatPercent } from "../../lib/format";
 import { routes } from "../../lib/routes";
 import { useAction } from "../../lib/useAsync";
-import { AiLabel, Alert, Badge, Button, Card, cx, Details, HashText, Table, Textarea, Time } from "../../ui";
+import { AiLabel, Alert, Badge, Button, Card, cx, Details, HashText, Table, Term, Textarea, Time } from "../../ui";
 import { UserLink } from "../UserLink";
 import { fmtDecimal, PlainText, SubHeading } from "./common";
 import "./participation.css";
@@ -269,7 +271,7 @@ function PanelEvidence({ panel: e }: { panel: ExpertPanelInfo }) {
           <div className="muted">
             SHA256(blok hash ‖ öneri ‖ tur) — blok <Link to={routes.block(e.seedSource.blockHeight)}>#{e.seedSource.blockHeight}</Link> (
             <HashText hash={e.seedSource.blockHash} chars={8} copy={false} />
-            ), tur {e.seedSource.round}. Blok önceden taahhüt edildiği için kura sonradan seçilemez; herkes çekilişi yeniden üretebilir.
+            ), tur {e.seedSource.round}. Blok önceden taahhüt edildiği için <Term id="kura">kura</Term> sonradan seçilemez; herkes çekilişi yeniden üretebilir.
             {e.ledgerTx ? (
               <>
                 {" "}
@@ -334,7 +336,7 @@ function PanelBody({ panel: e }: { panel: ExpertPanelInfo }) {
   return (
     <div className="stack">
       <div className="row">
-        <Badge tone="accent">{e.isCounterPanel ? "Karşı bilirkişi paneli" : "Bilirkişi paneli"}</Badge>
+        <Badge tone="neutral">{e.isCounterPanel ? "Karşı bilirkişi paneli" : "Bilirkişi paneli"}</Badge>
         <span className="small muted">
           {e.round}. kura · <Time at={e.createdAt} />
         </span>
@@ -461,9 +463,13 @@ export function ExpertPanelCard({ proposal: p, onUpdated }: { proposal: Proposal
                     <UserLink id={q.authorId} nickname={q.authorNickname} />
                     <Time at={q.createdAt} className="muted" />
                     {q.minorityGuaranteed ? (
-                      <Badge tone="accent" title="En küçük anlamlı görüş grubundan ilk soru: bilirkişi yanıtlamak zorundadır">
-                        Azınlık güvenceli
-                      </Badge>
+                      <>
+                        <Badge tone="neutral" title="En küçük anlamlı görüş grubundan ilk soru: bilirkişi yanıtlamak zorundadır">
+                          Azınlık güvenceli
+                        </Badge>
+                        {/* Açıklama dokunmatikte de okunsun (title yalnız masaüstünde görünür). */}
+                        <span className="muted">ilk soru · bilirkişi yanıtlamak zorundadır</span>
+                      </>
                     ) : null}
                   </div>
                   <PlainText text={q.body} />

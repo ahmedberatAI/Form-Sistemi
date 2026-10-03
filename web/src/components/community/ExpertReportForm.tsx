@@ -251,7 +251,7 @@ export function ExpertReportForm({ assignment, onSubmitted, onCancel }: { assign
               <div className="row">
                 <strong>Soru {i + 1}</strong>
                 {q.minorityGuaranteed ? (
-                  <Badge tone="accent" title="Azınlık görüşündeki üyelerin sorusu: yanıtlanması zorunludur">
+                  <Badge tone="neutral" title="Azınlık görüşündeki üyelerin sorusu: yanıtlanması zorunludur">
                     azınlık güvenceli
                   </Badge>
                 ) : null}

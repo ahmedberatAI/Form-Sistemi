@@ -1,6 +1,11 @@
 // Yeni öneri: 5 tür (yeni konu, alt konu, düzenleme teklifi, silme talebi, yönetmelik değişikliği),
 // türe göre form ve canlı ön denetim (POST /api/proposals/precheck, ~700 ms gecikmeyle).
 // Ön doldurma: ?tur=<kind>&konu=<topicId>&mesaj=<messageId> (routes.newProposal).
+// Sade düzen: tür seçilince türler tek satırlık radyolara daralır (KindPicker) ve form hemen başlar; ön denetim önce hükmü verir,
+// ayrıntılar duruma göre açılır (PrecheckPanel); isteğe bağlı 'Ek kategoriler' kapalı başlar; gönderim notu tek satırdır
+// ('Gönderince ne olur?' açılırında ayrıntı). 'Tam' görünümde bütün açılırlar açık gelir.
+// Form yalnız bellekte tutulur: ön denetimdeki sözlük pencerelerinin ve madde atıflarının bağlantıları sayfadan çıkarmaz
+// (TermLinksProvider: web'de yeni sekme, yerel uygulamada bağlantısız; benzer öneri önizlemesiyle aynı kural).
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { expandIri, PROPOSAL_KIND_LABELS, PROPOSAL_TEXT_LIMITS, type CreateProposalRequest, type MessageView, type ProposalKind, type TopicSummary } from "@forum/shared";
@@ -15,6 +20,7 @@ import { PII_KIND_LABELS, PrecheckPanel, PrecheckSummary } from "../components/p
 import { useOntology } from "../lib/categories";
 import { topicRef } from "../lib/format";
 import { useDebounced, useQueryState } from "../lib/hooks";
+import { isNativePlatform } from "../lib/prefs";
 import { routes } from "../lib/routes";
 import { useAsync } from "../lib/useAsync";
 import {
@@ -23,21 +29,28 @@ import {
   Button,
   Card,
   Checkbox,
+  Details,
   DiffView,
   ErrorView,
+  formTermLinkMode,
   Input,
   KeyValue,
   LinkButton,
   PageHeader,
   Select,
   Spinner,
+  TermLinksProvider,
   Textarea,
   useConfirm,
   useToast,
 } from "../ui";
+import "../components/proposals/new-proposal.css";
 
 type FieldKey = "title" | "body" | "categories" | "parentTopicId" | "messageIds" | "ground" | "statement" | "regulationPatch";
 type PiiItem = { kind: string; masked: string };
+
+/** Gönderim düğmelerinin altındaki tek satır; ayrıntısı 'Gönderince ne olur?' açılırında. */
+const SUBMIT_NOTE = "Taslak yalnız size görünür; gönderince metin kilitlenir ve öneri destekçi toplamaya başlar.";
 
 // Madde 7 (1) ile aynı sınırlar (sunucu ve SHACL de PROPOSAL_TEXT_LIMITS'i kullanır).
 const { titleMin: TITLE_MIN, titleMax: TITLE_MAX, bodyMin: BODY_MIN } = PROPOSAL_TEXT_LIMITS;
@@ -385,230 +398,239 @@ export default function NewProposalPage() {
         <KindPicker label="1. Öneri türü" value={kind} onChange={(k) => setKindParam(k)} disabled={!!busy} />
       </div>
 
-      <div className="split np-split">
-        <form ref={formRef} className="stack" onSubmit={onSubmit} noValidate aria-label="Öneri formu">
-          {kind ? (
-            <fieldset className="form-section" disabled={!!busy}>
-              <legend>2. {PROPOSAL_KIND_LABELS[kind]}</legend>
-              <p className="small muted mt-0">{KIND_INFO[kind].text}</p>
+      <TermLinksProvider mode={formTermLinkMode(isNativePlatform())}>
+        <div className="split np-split">
+          <form ref={formRef} className="stack" onSubmit={onSubmit} noValidate aria-label="Öneri formu">
+            {kind ? (
+              <fieldset className="form-section" disabled={!!busy}>
+                <legend>2. {PROPOSAL_KIND_LABELS[kind]}</legend>
+                {/* Tek cümle; türün uzun açıklaması seçicinin 'Türler ne demek?' açılırında. */}
+                <p className="small muted mt-0">{KIND_INFO[kind].short}</p>
 
-              {kind === "topic" ? (
-                <>
-                  {titleField}
-                  {bodyField("Öneri metni", "Konunun amacını, kapsamını ve gerekçesini yazın. Kişisel veri (ad, TCKN, telefon, adres) yazmayın.")}
-                  <CategoryPicker
-                    value={categories}
-                    onChange={setCategories}
-                    required
-                    max={8}
-                    error={errors.categories}
-                    suggestions={suggestions}
-                    hint="En özel kategoriyi seçmeniz yeterli; üst kategoriler ontoloji tarafından çıkarılır. YZ önerileri yalnızca tıklarsanız eklenir."
-                  />
-                  {expertField}
-                </>
-              ) : null}
-
-              {kind === "subtopic" ? (
-                <>
-                  {topicSelect("Üst konu", "Yalnızca yürürlükteki konular listelenir.")}
-                  {inheritedInfo}
-                  {titleField}
-                  {bodyField("Alt konu metni", "Alt konunun üst konuya göre neyi kapsadığını yazın. Kişisel veri yazmayın.")}
-                  <CategoryPicker
-                    label="Ek kategoriler (isteğe bağlı)"
-                    value={categories}
-                    onChange={setCategories}
-                    max={8}
-                    error={errors.categories}
-                    suggestions={suggestions}
-                    hint="Üst konunun kategorileri otomatik miras alınır; burada yalnızca eklemeler seçilir."
-                  />
-                  {expertField}
-                </>
-              ) : null}
-
-              {kind === "amendment" ? (
-                <>
-                  {topicSelect("Hedef konu", "Metni değiştirilecek yürürlükteki konu.")}
-                  {topic ? (
-                    <>
-                      <KeyValue
-                        compact
-                        items={[
-                          { label: "Dayandığı sürüm (baseVersion)", value: `sürüm ${topic.version}`, hint: "Kabul anında konu başka bir kararla değişmişse teklif “sürüm çakışması” ile reddedilir." },
-                          { label: "Konu", value: `${topicRef(topic.seq)} ${topic.title}` },
-                        ]}
-                      />
-                      {inheritedInfo}
-                      {titleField}
-                      {bodyField("Yeni metin", "Konunun güncel metni önceden dolduruldu; değiştirmek istediğiniz yerleri düzenleyin.")}
-                      <div className="row">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          icon="refresh"
-                          onClick={() => {
-                            setTitle(topic.title);
-                            setBody(topic.body);
-                          }}
-                        >
-                          Güncel metne sıfırla
-                        </Button>
-                      </div>
-                      {title.trim() !== topic.title.trim() ? (
-                        <div className="stack-sm">
-                          <span className="field-label">Başlık farkı</span>
-                          <DiffView before={topic.title} after={title.trim()} mode="inline" label="Başlık farkı" />
-                        </div>
-                      ) : null}
-                      <div className="stack-sm">
-                        <span className="field-label">Metin farkı (güncel sürüm → teklif)</span>
-                        <DiffView before={topic.body} after={body} context={2} label="Metin farkı" />
-                      </div>
-                      <CategoryPicker
-                        label="Ek kategoriler (isteğe bağlı)"
-                        value={categories}
-                        onChange={setCategories}
-                        max={8}
-                        error={errors.categories}
-                        suggestions={suggestions}
-                      />
-                      {expertField}
-                    </>
-                  ) : null}
-                </>
-              ) : null}
-
-              {kind === "deletion" ? (
-                <DeletionForm
-                  value={deletion}
-                  onChange={setDeletion}
-                  onMessagesLoaded={setDelMessages}
-                  errors={{ messageIds: errors.messageIds, ground: errors.ground, statement: errors.statement }}
-                />
-              ) : null}
-
-              {kind === "regulation" ? (
-                <>
-                  {titleField}
-                  {bodyField("Gerekçe", "Değişikliğin neden gerektiğini ve beklenen etkisini açıklayın; bu metin yamanın gerekçesi olarak da kaydedilir.")}
-                  <PatchBuilder drafts={patchOps} onChange={setPatchOps} rationale={body.trim()} error={errors.regulationPatch} />
-                  <p className="small muted mt-0">Kategori: Forum yönetmeliği (otomatik).</p>
-                  {expertField}
-                </>
-              ) : null}
-            </fieldset>
-          ) : null}
-
-          {kind ? (
-            <section className="stack-sm np-submit" aria-label="Gönderim">
-              <div className="row-between">
-                <PrecheckSummary result={preResult} loading={pre.loading} stale={preStale} />
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  icon="chevronDown"
-                  className="np-to-panel"
-                  onClick={() => document.getElementById("np-precheck")?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                >
-                  Ön denetim ayrıntıları
-                </Button>
-              </div>
-
-              {pii ? (
-                <div id="np-pii">
-                  <Alert tone="warning" title="Kişisel veri tespit edildi">
-                    <p>Metinde kişisel veri olabilecek ifadeler bulundu:</p>
-                    <ul>
-                      {pii.map((p, i) => (
-                        <li key={i}>
-                          {PII_KIND_LABELS[p.kind] ?? p.kind}: <code className="mono">{p.masked}</code>
-                        </li>
-                      ))}
-                    </ul>
-                    <p>Kaldırmanız önerilir. Bilerek paylaşıyorsanız aşağıdaki kutuyu işaretleyip yeniden gönderin.</p>
-                    <Checkbox
-                      label="Bu bilgileri bilerek paylaşıyorum; yine de kaydet"
-                      checked={ackPii}
-                      onChange={(e) => setAckPii(e.target.checked)}
-                      hint="Kişisel veri hiçbir zaman deftere yazılmaz; ancak tartışma metni herkese açıktır."
+                {kind === "topic" ? (
+                  <>
+                    {titleField}
+                    {bodyField("Öneri metni", "Konunun amacını, kapsamını ve gerekçesini yazın. Kişisel veri (ad, TCKN, telefon, adres) yazmayın.")}
+                    <CategoryPicker
+                      value={categories}
+                      onChange={setCategories}
+                      required
+                      max={8}
+                      error={errors.categories}
+                      suggestions={suggestions}
+                      hint="En özel kategoriyi seçmeniz yeterli; üst kategoriler ontoloji tarafından çıkarılır. YZ önerileri yalnızca tıklarsanız eklenir."
                     />
-                  </Alert>
+                    {expertField}
+                  </>
+                ) : null}
+
+                {kind === "subtopic" ? (
+                  <>
+                    {topicSelect("Üst konu", "Yalnızca yürürlükteki konular listelenir.")}
+                    {inheritedInfo}
+                    {titleField}
+                    {bodyField("Alt konu metni", "Alt konunun üst konuya göre neyi kapsadığını yazın. Kişisel veri yazmayın.")}
+                    <CategoryPicker
+                      label="Ek kategoriler (isteğe bağlı)"
+                      collapsible
+                      value={categories}
+                      onChange={setCategories}
+                      max={8}
+                      error={errors.categories}
+                      suggestions={suggestions}
+                      hint="Üst konunun kategorileri otomatik miras alınır; burada yalnızca eklemeler seçilir."
+                    />
+                    {expertField}
+                  </>
+                ) : null}
+
+                {kind === "amendment" ? (
+                  <>
+                    {topicSelect("Hedef konu", "Metni değiştirilecek yürürlükteki konu.")}
+                    {topic ? (
+                      <>
+                        <KeyValue
+                          compact
+                          items={[
+                            { label: "Dayandığı sürüm (baseVersion)", value: `sürüm ${topic.version}`, hint: "Kabul anında konu başka bir kararla değişmişse teklif “sürüm çakışması” ile reddedilir." },
+                            { label: "Konu", value: `${topicRef(topic.seq)} ${topic.title}` },
+                          ]}
+                        />
+                        {inheritedInfo}
+                        {titleField}
+                        {bodyField("Yeni metin", "Konunun güncel metni önceden dolduruldu; değiştirmek istediğiniz yerleri düzenleyin.")}
+                        <div className="row">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            icon="refresh"
+                            onClick={() => {
+                              setTitle(topic.title);
+                              setBody(topic.body);
+                            }}
+                          >
+                            Güncel metne sıfırla
+                          </Button>
+                        </div>
+                        {title.trim() !== topic.title.trim() ? (
+                          <div className="stack-sm">
+                            <span className="field-label">Başlık farkı</span>
+                            <DiffView before={topic.title} after={title.trim()} mode="inline" label="Başlık farkı" />
+                          </div>
+                        ) : null}
+                        <div className="stack-sm">
+                          <span className="field-label">Metin farkı (güncel sürüm → teklif)</span>
+                          <DiffView before={topic.body} after={body} context={2} label="Metin farkı" />
+                        </div>
+                        <CategoryPicker
+                          label="Ek kategoriler (isteğe bağlı)"
+                          collapsible
+                          value={categories}
+                          onChange={setCategories}
+                          max={8}
+                          error={errors.categories}
+                          suggestions={suggestions}
+                          hint="Konunun kategorileri otomatik miras alınır; burada yalnızca eklemeler seçilir."
+                        />
+                        {expertField}
+                      </>
+                    ) : null}
+                  </>
+                ) : null}
+
+                {kind === "deletion" ? (
+                  <DeletionForm
+                    value={deletion}
+                    onChange={setDeletion}
+                    onMessagesLoaded={setDelMessages}
+                    errors={{ messageIds: errors.messageIds, ground: errors.ground, statement: errors.statement }}
+                  />
+                ) : null}
+
+                {kind === "regulation" ? (
+                  <>
+                    {titleField}
+                    {bodyField("Gerekçe", "Değişikliğin neden gerektiğini ve beklenen etkisini açıklayın; bu metin yamanın gerekçesi olarak da kaydedilir.")}
+                    <PatchBuilder drafts={patchOps} onChange={setPatchOps} rationale={body.trim()} error={errors.regulationPatch} />
+                    <p className="small muted mt-0">Kategori: Forum yönetmeliği (otomatik).</p>
+                    {expertField}
+                  </>
+                ) : null}
+              </fieldset>
+            ) : null}
+
+            {kind ? (
+              <section className="stack-sm np-submit" aria-label="Gönderim">
+                <div className="row-between">
+                  <PrecheckSummary result={preResult} loading={pre.loading} stale={preStale} />
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    icon="chevronDown"
+                    className="np-to-panel"
+                    onClick={() => document.getElementById("np-precheck")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                  >
+                    Ön denetim ayrıntıları
+                  </Button>
                 </div>
-              ) : null}
 
-              {submitError ? (
-                <ErrorView
-                  error={submitError}
-                  title={versionConflict ? "Konu bu arada güncellendi" : undefined}
-                  onRetry={
-                    versionConflict
-                      ? () => {
-                          prefilledFor.current = null;
-                          setSubmitError(null);
-                          void topicQ.reload();
-                        }
-                      : undefined
-                  }
-                />
-              ) : null}
-              {versionConflict ? <p className="small muted mt-0">“Tekrar dene” konunun güncel sürümünü yükler ve metni ona göre yeniden doldurur.</p> : null}
+                {pii ? (
+                  <div id="np-pii">
+                    <Alert tone="warning" title="Kişisel veri tespit edildi">
+                      <p>Metinde kişisel veri olabilecek ifadeler bulundu:</p>
+                      <ul>
+                        {pii.map((p, i) => (
+                          <li key={i}>
+                            {PII_KIND_LABELS[p.kind] ?? p.kind}: <code className="mono">{p.masked}</code>
+                          </li>
+                        ))}
+                      </ul>
+                      <p>Kaldırmanız önerilir. Bilerek paylaşıyorsanız aşağıdaki kutuyu işaretleyip yeniden gönderin.</p>
+                      <Checkbox
+                        label="Bu bilgileri bilerek paylaşıyorum; yine de kaydet"
+                        checked={ackPii}
+                        onChange={(e) => setAckPii(e.target.checked)}
+                        hint="Kişisel veri hiçbir zaman deftere yazılmaz; ancak tartışma metni herkese açıktır."
+                      />
+                    </Alert>
+                  </div>
+                ) : null}
 
-              <div className="form-actions">
-                <Button onClick={() => void send(false)} loading={busy === "draft"} disabled={!!busy} icon="check">
-                  Taslak kaydet
-                </Button>
-                <Button type="submit" variant="primary" loading={busy === "submit"} disabled={!!busy} icon="users">
-                  Kaydet ve destekçi toplamaya gönder
-                </Button>
-              </div>
-              <p className="small muted mt-0">
-                Taslak yalnızca size görünür ve sonradan düzenlenebilir. Gönderdiğinizde metin kilitlenir ve öneri, gerekli sayıda doğrulanmış üye eş
-                imzacı olana kadar “Destekçi toplanıyor” evresinde kalır; ardından ontoloji denetiminden geçip tartışmaya açılır.
-              </p>
-            </section>
-          ) : null}
-        </form>
+                {submitError ? (
+                  <ErrorView
+                    error={submitError}
+                    title={versionConflict ? "Konu bu arada güncellendi" : undefined}
+                    onRetry={
+                      versionConflict
+                        ? () => {
+                            prefilledFor.current = null;
+                            setSubmitError(null);
+                            void topicQ.reload();
+                          }
+                        : undefined
+                    }
+                  />
+                ) : null}
+                {versionConflict ? <p className="small muted mt-0">“Tekrar dene” konunun güncel sürümünü yükler ve metni ona göre yeniden doldurur.</p> : null}
 
-        <aside className="np-aside" id="np-precheck" aria-label="Ön denetim">
-          {kind ? (
-            <PrecheckPanel
-              result={preResult}
-              loading={pre.loading}
-              error={debKey ? pre.error : null}
-              stale={preStale}
-              idleText={idleText}
-              onRetry={() => void pre.reload()}
-              selectedCategories={kind === "deletion" || kind === "regulation" ? undefined : [...categories, ...inherited]}
-              onAddCategory={kind === "topic" || kind === "subtopic" || kind === "amendment" ? addCategory : undefined}
-            />
-          ) : (
-            <Card title="Bir öneri nasıl karara dönüşür?" tone="muted">
-              <ol className="steps">
-                <li>
-                  <strong>Taslak</strong> — yalnızca siz görürsünüz; canlı ön denetim katmanı ve kuralları gösterir.
-                </li>
-                <li>
-                  <strong>Destekçi toplama</strong> — yazar dışında birkaç doğrulanmış üye eş imzacı olur.
-                </li>
-                <li>
-                  <strong>Ontoloji denetimi</strong> — yönetmeliğe aykırı öneriler oylamaya giremez.
-                </li>
-                <li>
-                  <strong>Tartışma</strong> — metin önerileri, bilirkişi görüşü, YZ özeti (danışma).
-                </li>
-                <li>
-                  <strong>Gizli oylama</strong> — genel onay + her görüş kümesinden asgari destek (köprü testi).
-                </li>
-                <li>
-                  <strong>İtiraz / uzlaşma</strong> — azınlık kararı bir kez erteleyebilir; yeniden oylama kesin sonuçtur.
-                </li>
-              </ol>
-            </Card>
-          )}
-        </aside>
-      </div>
+                <div className="form-actions">
+                  <Button onClick={() => void send(false)} loading={busy === "draft"} disabled={!!busy} icon="check">
+                    Taslak kaydet
+                  </Button>
+                  <Button type="submit" variant="primary" loading={busy === "submit"} disabled={!!busy} icon="users">
+                    Kaydet ve destekçi toplamaya gönder
+                  </Button>
+                </div>
+                <p className="small muted mt-0">{SUBMIT_NOTE}</p>
+                <Details summary="Gönderince ne olur?" className="np-submit-more">
+                  <p className="small mt-0">
+                    Taslak yalnızca size görünür ve sonradan düzenlenebilir. Gönderdiğinizde metin kilitlenir ve öneri, gerekli sayıda doğrulanmış üye eş
+                    imzacı olana kadar “Destekçi toplanıyor” evresinde kalır; ardından ontoloji denetiminden geçip tartışmaya açılır.
+                  </p>
+                </Details>
+              </section>
+            ) : null}
+          </form>
+
+          <aside className="np-aside" id="np-precheck" aria-label="Ön denetim">
+            {kind ? (
+              <PrecheckPanel
+                result={preResult}
+                loading={pre.loading}
+                error={debKey ? pre.error : null}
+                stale={preStale}
+                idleText={idleText}
+                onRetry={() => void pre.reload()}
+                selectedCategories={kind === "deletion" || kind === "regulation" ? undefined : [...categories, ...inherited]}
+                onAddCategory={kind === "topic" || kind === "subtopic" || kind === "amendment" ? addCategory : undefined}
+              />
+            ) : (
+              <Card title="Bir öneri nasıl karara dönüşür?" tone="muted">
+                <ol className="steps">
+                  <li>
+                    <strong>Taslak</strong> — yalnızca siz görürsünüz; canlı ön denetim katmanı ve kuralları gösterir.
+                  </li>
+                  <li>
+                    <strong>Destekçi toplama</strong> — yazar dışında birkaç doğrulanmış üye eş imzacı olur.
+                  </li>
+                  <li>
+                    <strong>Ontoloji denetimi</strong> — yönetmeliğe aykırı öneriler oylamaya giremez.
+                  </li>
+                  <li>
+                    <strong>Tartışma</strong> — metin önerileri, bilirkişi görüşü, YZ özeti (danışma).
+                  </li>
+                  <li>
+                    <strong>Gizli oylama</strong> — genel onay + her görüş kümesinden asgari destek (köprü testi).
+                  </li>
+                  <li>
+                    <strong>İtiraz / uzlaşma</strong> — azınlık kararı bir kez erteleyebilir; yeniden oylama kesin sonuçtur.
+                  </li>
+                </ol>
+              </Card>
+            )}
+          </aside>
+        </div>
+      </TermLinksProvider>
     </div>
   );
 }

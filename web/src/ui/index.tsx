@@ -56,6 +56,7 @@ export {
   UserStatusBadge,
   ExpertStatusBadge,
   statusTone,
+  tierTone,
   OPEN_STATUSES,
   CLOSED_STATUSES,
 } from "./badges";
@@ -69,6 +70,8 @@ export { ToastProvider, useToast, useConfirm } from "./Toast";
 export type { ToastApi, ToastTone, ConfirmOptions } from "./Toast";
 export { Time, Countdown } from "./time";
 export type { TimeProps, CountdownProps } from "./time";
+export { Term, TermLink, TermLinksProvider, formTermLinkMode } from "./Term";
+export type { TermProps, TermLinkMode } from "./Term";
 export { AiLabel } from "./AiLabel";
 export type { AiLabelProps } from "./AiLabel";
 export { HashText, CopyButton, copyToClipboard } from "./HashText";

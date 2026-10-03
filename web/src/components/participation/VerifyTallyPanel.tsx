@@ -3,6 +3,9 @@
 // (ledgerTxHash) ve dahil olma kanıtı cihazda sabitlenen doğrulayıcı anahtarlarıyla denetlenir. Sunucunun bültende
 // verdiği hazır veriler yalnızca karşılaştırma için kullanılır; sayım defterden kurulan verilerle yapılır.
 // Düzen: önce tek cümle, sonra düğme, sonra 'Neyi denetler?' açılırı (5 satırlık teknik giriş); çalıştırma sonrası adımlar aynen.
+// Görsel dil: eylem kartı ince mavi kenarlıdır (tone="action"); hüküm rengi yalnız çalıştırma sonrası Alert'te (yeşil/kırmızı) gelir.
+// Sade dil: 'Neyi denetler?' girişindeki, adım ayrıntılarındaki ve sonuç notundaki teknik terimler sözlük terimidir (Term); düğmeden
+// ÖNCEKİ tek cümle (VERIFY_LEAD) ve kapalı başlıklar düz metin kalır.
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { hashCanonical, OUTCOME_LABELS, revealHash, verifyTally, type BulletinRound, type DecisionResult } from "@forum/shared";
@@ -12,7 +15,7 @@ import { formatNumber } from "../../lib/format";
 import { loadRoundFromLedger, type BoundResult } from "../../lib/ledgerVerify";
 import { routes } from "../../lib/routes";
 import { describeValidatorDiff, ensurePinnedValidators, type PinnedValidators } from "../../lib/validators";
-import { Alert, Button, Card, Details, HashText, Spinner } from "../../ui";
+import { Alert, Button, Card, Details, HashText, Spinner, Term } from "../../ui";
 import { Tick } from "./common";
 import "./results.css";
 
@@ -47,8 +50,8 @@ function boundStep(label: string, r: BoundResult<unknown> | { state: "missing" }
     ok: true,
     detail: (
       <>
-        İçerik işlem özetiyle eşleşti; blok <Link to={routes.block(r.height)}>#{r.height}</Link>, sıra {r.index + 1}; Merkle yolu ve{" "}
-        {r.proof.header.commitSigs.length} doğrulayıcı imzası sabitlenmiş anahtarlarla denetlendi.
+        İçerik işlem <Term id="ozet">özetiyle</Term> eşleşti; blok <Link to={routes.block(r.height)}>#{r.height}</Link>, sıra {r.index + 1};{" "}
+        <Term id="merkle-yolu">Merkle yolu</Term> ve {r.proof.header.commitSigs.length} <Term id="dogrulayici">doğrulayıcı</Term> imzası sabitlenmiş anahtarlarla denetlendi.
       </>
     ),
   };
@@ -162,7 +165,7 @@ export function VerifyTallyPanel({ proposalId, results }: { proposalId: string; 
 
   return (
     // id="dogrula": "Sayımı doğrula" bağlantısının (?bolum=dogrula) hedefi; odak, kartın ilk denetimine (aşağıdaki düğmeye) gider.
-    <Card title="Sayımı kendim doğrulayayım" tone="accent" headingLevel={3} id="dogrula">
+    <Card title="Sayımı kendim doğrulayayım" tone="action" headingLevel={3} id="dogrula">
       <div className="stack">
         <p className="verify-lead">{VERIFY_LEAD}</p>
         <div>
@@ -172,9 +175,9 @@ export function VerifyTallyPanel({ proposalId, results }: { proposalId: string; 
         </div>
         <Details className="verify-intro" summary="Neyi denetler?">
           <p className="small">
-            Defterdeki oy açıklamaları (BALLOT_REVEAL) ve sayım kaydı (TALLY) indirilir; karar fonksiyonu tarayıcınızda aynı girdilerle yeniden çalıştırılır. Her
-            açıklanan doğrudan oy, defterdeki son taahhüdüyle karşılaştırılır. Kimin hangi oyu verdiği açıklanmaz: oy pusulaları öneriye özel rastgele kimliklerle
-            tutulur.
+            <Term id="dagitik-defter">Defterdeki</Term> oy açıklamaları (BALLOT_REVEAL) ve sayım kaydı (TALLY) indirilir; karar fonksiyonu tarayıcınızda aynı
+            girdilerle yeniden çalıştırılır. Her açıklanan doğrudan oy, defterdeki son <Term id="taahhut">taahhüdüyle</Term> karşılaştırılır. Kimin hangi oyu
+            verdiği açıklanmaz: oy pusulaları öneriye özel rastgele kimliklerle tutulur.
           </p>
         </Details>
         {running ? <Spinner showLabel label="Bülten indiriliyor ve sayım yeniden yapılıyor…" /> : null}
@@ -239,8 +242,9 @@ export function VerifyTallyPanel({ proposalId, results }: { proposalId: string; 
         ))}
         {checks && checks.length ? (
           <p className="small verify-note">
-            <strong>Bu hesap sunucuya güvenmeden tarayıcınızda yapıldı.</strong> Veriler defterden alındı; işlemlerin bloklara dahil olduğu, cihazınızda sabitlenen
-            doğrulayıcı anahtarlarıyla (en az 2f+1 imza) denetlendi. Kendi oyunuzun bu sayıma girdiğini “Oyum kayıtlı mı?” sayfasından doğrulayabilirsiniz.
+            <strong>Bu hesap sunucuya güvenmeden tarayıcınızda yapıldı.</strong> Veriler defterden alındı; işlemlerin bloklara dahil olduğu, cihazınızda sabitlenen{" "}
+            <Term id="dogrulayici">doğrulayıcı</Term> anahtarlarıyla (en az <Term id="2f1">2f+1 imza</Term>) denetlendi. Kendi oyunuzun bu sayıma girdiğini “Oyum kayıtlı
+            mı?” sayfasından doğrulayabilirsiniz.
           </p>
         ) : null}
       </div>

@@ -1,19 +1,28 @@
 // Uygulama iskeleti: üst çubuk (logo, bildirimler, kullanıcı menüsü), masaüstünde grup ayraçlı üst gezinme,
 // mobilde alt gezinme + "Daha fazla" sayfası (en altında "Sistem durumu"), genel uyarı şeritleri ve alt bilgi.
+// 'Ana sayfa' öğesinde bekleyen iş sayısı rozeti (lib/taskStore; AuthProvider 60 sn'de bir yeniler, ayrıca burada sayfa
+// değişince bayatsa): rozet aria-hidden'dır, bağlantı adı 'Ana sayfa' kalır; sayı ekran okuyucuya aria-describedby ile söylenir.
 import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { SURUM, type SystemInfo } from "@forum/shared";
 import { useAuth } from "../../auth/AuthContext";
 import { formatDateTime } from "../../lib/format";
 import { useNow } from "../../lib/hooks";
+import { routes } from "../../lib/routes";
+import { countBadgeText, taskCountText, useTaskCount } from "../../lib/taskStore";
 import { Alert, Button, cx, DropdownMenu, Icon, Modal } from "../../ui";
 import { GROUP_LABELS, systemRows, topNavSections, visibleItems, type NavItem } from "./nav";
 
-function UnreadBadge({ n }: { n: number }) {
-  if (n <= 0) return null;
+/** Sayfa değişince bekleyen işler bu kadar eskiyse yenilenir (oy verip listeye dönen üyenin rozeti ve kartları güncel kalsın). */
+const TASKS_STALE_MS = 10_000;
+
+/** Okunmamış bildirim ya da bekleyen iş sayısı (mavi: 'şu an'). Yalnız görseldir (aria-hidden); 0'da çizilmez, 99'dan sonra "99+". */
+function CountBadge({ n }: { n: number }) {
+  const text = countBadgeText(n);
+  if (!text) return null;
   return (
     <span className="count-badge" aria-hidden="true">
-      {n > 99 ? "99+" : n}
+      {text}
     </span>
   );
 }
@@ -97,7 +106,7 @@ function MoreSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
                   <NavLink to={i.to} className="more-link" onClick={onClose}>
                     <Icon name={i.icon} size={18} />
                     <span>{i.label}</span>
-                    {i.to === "/bildirimler" ? <UnreadBadge n={auth.unread} /> : null}
+                    {i.to === "/bildirimler" ? <CountBadge n={auth.unread} /> : null}
                   </NavLink>
                 </li>
               ))}
@@ -135,12 +144,27 @@ function MoreSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   );
 }
 
-function NavLinkItem({ item, unread }: { item: NavItem; unread: number }) {
+/** 'Ana sayfa' öğesinin rozeti: bekleyen iş sayısı ve gizli açıklamanın id'si ("3 iş sizi bekliyor"). */
+interface HomeTasks {
+  count: number;
+  descId: string;
+}
+
+const isHome = (to: string) => to === routes.home();
+
+function NavLinkItem({ item, unread, tasks }: { item: NavItem; unread: number; tasks: HomeTasks }) {
+  const home = isHome(item.to) && tasks.count > 0;
   return (
-    <NavLink to={item.to} end={item.end} className={({ isActive }) => cx("nav-link", isActive && "nav-link-active")}>
+    <NavLink
+      to={item.to}
+      end={item.end}
+      className={({ isActive }) => cx("nav-link", isActive && "nav-link-active")}
+      aria-describedby={home ? tasks.descId : undefined}
+    >
       <Icon name={item.icon} size={16} />
       <span>{item.label}</span>
-      {item.to === "/bildirimler" ? <UnreadBadge n={unread} /> : null}
+      {item.to === "/bildirimler" ? <CountBadge n={unread} /> : null}
+      {home ? <CountBadge n={tasks.count} /> : null}
     </NavLink>
   );
 }
@@ -153,6 +177,11 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const mainRef = useRef<HTMLElement>(null);
   const firstRender = useRef(true);
   const [dismissExpired, setDismissExpired] = useState(false);
+  const taskCount = useTaskCount();
+  const taskDescId = useId();
+  const homeTasks: HomeTasks = { count: taskCount, descId: taskDescId };
+  const { refreshTasks } = auth;
+  const navSeen = useRef(false);
 
   // Sayfa değişince başa kaydır ve odağı içeriğe taşı (ekran okuyucular için).
   useEffect(() => {
@@ -163,6 +192,15 @@ export function AppLayout({ children }: { children: ReactNode }) {
     window.scrollTo(0, 0);
     mainRef.current?.focus({ preventScroll: true });
   }, [location.pathname]);
+
+  // Sayfa değişince bekleyen işler bayatsa yenilenir (açılıştaki ilk yükleme AuthProvider'dadır; burada tekrarlanmaz).
+  useEffect(() => {
+    if (!navSeen.current) {
+      navSeen.current = true;
+      return;
+    }
+    void refreshTasks({ maxAgeMs: TASKS_STALE_MS });
+  }, [location.pathname, refreshTasks]);
 
   useEffect(() => {
     if (auth.sessionExpired) setDismissExpired(false);
@@ -191,7 +229,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
               <>
                 <Link to="/bildirimler" className="icon-btn header-bell" aria-label={auth.unread ? `Bildirimler (${auth.unread} okunmamış)` : "Bildirimler"}>
                   <Icon name="bell" size={20} />
-                  <UnreadBadge n={auth.unread} />
+                  <CountBadge n={auth.unread} />
                 </Link>
                 <DropdownMenu
                   ariaLabel={`Kullanıcı menüsü: @${user.nickname}`}
@@ -204,7 +242,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                   }
                   items={[
                     { label: "Profil", to: "/profil", icon: "user" },
-                    { label: "Bildirimler", to: "/bildirimler", icon: "bell", badge: <UnreadBadge n={auth.unread} /> },
+                    { label: "Bildirimler", to: "/bildirimler", icon: "bell", badge: <CountBadge n={auth.unread} /> },
                     auth.can("R") || auth.can("D") ? { label: "Kayıt memuru", to: "/kayit-memuru", icon: "registrar" } : null,
                     auth.can("A") || auth.can("D") ? { label: "Yönetim", to: "/yonetim", icon: "admin" } : null,
                     { label: "Ayarlar", to: "/ayarlar", icon: "settings" },
@@ -242,7 +280,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
               <Fragment key={section[0].group}>
                 {n > 0 ? <span className="nav-divider" aria-hidden="true" /> : null}
                 {section.map((i) => (
-                  <NavLinkItem key={i.to} item={i} unread={auth.unread} />
+                  <NavLinkItem key={i.to} item={i} unread={auth.unread} tasks={homeTasks} />
                 ))}
               </Fragment>
             ))}
@@ -311,24 +349,50 @@ export function AppLayout({ children }: { children: ReactNode }) {
               </span>
             </>
           ) : null}
+          {/* Keşfet ve doğrula (yedi bileşen, gösterim rehberi, ilkeler, sözlük): masaüstünde gezinme öğesi değil; buradan ve vitrinden. */}
+          <Link to={routes.kesfet()} className="app-footer-guide">
+            Gösterim rehberi ve sözlük <Icon name="chevronRight" size={14} />
+          </Link>
         </div>
       </footer>
 
       <nav className="bottom-nav" aria-label="Alt gezinme">
-        {bottomItems.map((i) => (
-          <NavLink key={i.to} to={i.to} end={i.end} className={({ isActive }) => cx("bottom-link", isActive && "bottom-link-active")}>
-            <Icon name={i.icon} size={22} />
-            <span>{i.short ?? i.label}</span>
-          </NavLink>
-        ))}
+        {bottomItems.map((i) => {
+          const home = isHome(i.to) && taskCount > 0;
+          return (
+            <NavLink
+              key={i.to}
+              to={i.to}
+              end={i.end}
+              className={({ isActive }) => cx("bottom-link", isActive && "bottom-link-active")}
+              aria-describedby={home ? taskDescId : undefined}
+            >
+              {home ? (
+                <span className="bottom-icon-wrap">
+                  <Icon name={i.icon} size={22} />
+                  <CountBadge n={taskCount} />
+                </span>
+              ) : (
+                <Icon name={i.icon} size={22} />
+              )}
+              <span>{i.short ?? i.label}</span>
+            </NavLink>
+          );
+        })}
         <button type="button" className={cx("bottom-link", moreOpen && "bottom-link-active")} onClick={() => setMoreOpen(true)} aria-haspopup="dialog">
           <span className="bottom-icon-wrap">
             <Icon name="menu" size={22} />
-            <UnreadBadge n={auth.unread} />
+            <CountBadge n={auth.unread} />
           </span>
           <span>Daha fazla</span>
         </button>
       </nav>
+      {/* 'Ana sayfa' bağlantılarının açıklaması (aria-describedby; bağlantı adı değişmez). hidden: göz atma kipinde ayrıca okunmaz. */}
+      {taskCount > 0 ? (
+        <span id={taskDescId} hidden>
+          {taskCountText(taskCount)}
+        </span>
+      ) : null}
       <MoreSheet open={moreOpen} onClose={() => setMoreOpen(false)} />
     </div>
   );

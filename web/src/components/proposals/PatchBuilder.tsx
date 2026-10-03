@@ -220,6 +220,8 @@ export function PatchBuilder({ drafts, onChange, rationale, error }: PatchBuilde
                   Kaldır
                 </Button>
               </div>
+              {/* 'Eksik' rozetinin nedeni görünür metin olarak da yazar (title yalnız masaüstünde okunur). */}
+              {isIncomplete ? <p className="small muted mt-0 patch-op-why">Zorunlu alanlar boş ya da metin değişmedi.</p> : null}
 
               {d.op === "setParam" ? (
                 (() => {
@@ -421,7 +423,8 @@ export function PatchBuilder({ drafts, onChange, rationale, error }: PatchBuilde
           {stale ? <Spinner size="sm" label="Doğrulanıyor…" showLabel /> : null}
           {ready && check.data && !stale ? (
             <>
-              <TierBadge tier={check.data.tier} short />
+              {/* Rozet bütçesi: renkli tek rozet yamanın hükmüdür; katman (T3 dahil) gri. */}
+              <TierBadge tier={check.data.tier} short neutral />
               {check.data.admissible ? (
                 <Badge tone="success" icon="check">
                   Meta-kurallara uygun

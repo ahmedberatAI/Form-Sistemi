@@ -1,4 +1,7 @@
 // Alan rozetleri: öneri durumu, katman, tür, oy, görüş, sonuç, rol. Renk + metin (+ simge) birlikte.
+// Görsel dil (src/README.md): mavi (info) eylem ve 'şu an' · yeşil/kırmızı sonuç · turuncu dikkat ve süre · mor (accent) YALNIZ
+// yapay zekâ; bu dosyadaki hiçbir rozet mor değildir. Rozet bütçesi: nesne başına en çok 1 renkli DURUM rozeti; tür, katman
+// (T3 dışında), rol ve görüş sorusu gridir (neutral).
 import {
   EXPERT_STATUS_LABELS,
   OUTCOME_LABELS,
@@ -19,18 +22,22 @@ import {
   type UserStatus,
   type VoteChoice,
 } from "@forum/shared";
+import { termForTier } from "../lib/glossary";
 import { Badge, type Tone } from "./basic";
 import type { IconName } from "./Icon";
+import { Term } from "./Term";
 
+// Süren evre (destek, tartışma, oylama, yeniden oylama) mavi · itiraz ve uzlaşma turuncu · kabul yeşil · red ve aykırı kırmızı ·
+// taslak, geri çekilen ve süresi dolan gri.
 const STATUS_TONE: Record<ProposalStatus, { tone: Tone; icon?: IconName }> = {
   draft: { tone: "neutral" },
   sponsoring: { tone: "info", icon: "users" },
   inadmissible: { tone: "danger", icon: "error" },
   deliberation: { tone: "info", icon: "topics" },
-  voting: { tone: "accent", icon: "vote" },
+  voting: { tone: "info", icon: "vote" },
   objection_window: { tone: "warning", icon: "clock" },
   reconciliation: { tone: "warning", icon: "users" },
-  revote: { tone: "accent", icon: "vote" },
+  revote: { tone: "info", icon: "vote" },
   enacted: { tone: "success", icon: "check" },
   rejected: { tone: "danger", icon: "close" },
   withdrawn: { tone: "neutral", icon: "close" },
@@ -54,20 +61,37 @@ export function StatusBadge({ status }: { status: ProposalStatus }) {
   );
 }
 
-const TIER_TONE: Record<Tier, Tone> = { T0: "neutral", T1: "info", T2: "accent", T3: "danger", DEL: "warning" };
+/** Katman rozetinin tonu: yalnız T3 (değiştirilemez maddeye dokunur, oylanamaz) kırmızıdır; T0, T1, T2 ve DEL gridir. */
+export function tierTone(tier: Tier | null | undefined): Tone {
+  return tier === "T3" ? "danger" : "neutral";
+}
 
-/** "T1 · Nitelikli karar" (short → yalnızca "T1", açıklama title'da) */
-export function TierBadge({ tier, short }: { tier: Tier | null | undefined; short?: boolean }) {
+/**
+ * "T1 · Nitelikli karar" (short → yalnızca "T1", açıklama title'da).
+ * neutral → T3'te de gri: aynı nesnede renkli bir durum rozeti zaten varken (ör. 'Yönetmeliğe aykırı') rozet bütçesi aşılmaz.
+ * explain → rozet, katmanın açıklamasını (sözlük penceresi) açan bir düğme olur; title yalnız masaüstünde görünür, dokunmatikte bu
+ *   pencere okunur. YALNIZ düz metin akışında kullanın: bağlantı, düğme, Card başlığı ya da <summary> içindeki rozet explain almaz.
+ */
+export function TierBadge({ tier, short, neutral, explain }: { tier: Tier | null | undefined; short?: boolean; neutral?: boolean; explain?: boolean }) {
   if (!tier) return <Badge tone="neutral">Katman belirlenmedi</Badge>;
-  return (
-    <Badge tone={TIER_TONE[tier]} title={TIER_LABELS[tier]}>
+  const badge = (
+    // explain + tam etiket: fare ipucu düğmenin kendi açıklamasıdır (Term title); kısa etiketin ipucu katmanın adıdır.
+    <Badge tone={neutral ? "neutral" : tierTone(tier)} title={explain && !short ? undefined : TIER_LABELS[tier]} icon={explain ? "info" : undefined}>
       {short ? tier : `${tier} · ${TIER_LABELS[tier]}`}
     </Badge>
   );
+  return explain ? (
+    <Term id={termForTier(tier)} className="term-badge">
+      {badge}
+    </Term>
+  ) : (
+    badge
+  );
 }
 
+/** Tür bir durum değildir: her zaman gri (silme ve yönetmelik değişikliği dahil; ağırlığı katman ve durum söyler). */
 export function KindBadge({ kind }: { kind: ProposalKind }) {
-  return <Badge tone={kind === "deletion" ? "warning" : kind === "regulation" ? "accent" : "neutral"}>{PROPOSAL_KIND_LABELS[kind] ?? kind}</Badge>;
+  return <Badge tone="neutral">{PROPOSAL_KIND_LABELS[kind] ?? kind}</Badge>;
 }
 
 export function VoteBadge({ choice }: { choice: VoteChoice }) {
@@ -80,8 +104,9 @@ export function VoteBadge({ choice }: { choice: VoteChoice }) {
   );
 }
 
+/** Lehte yeşil, karşı kırmızı (oy seçimiyle aynı dil); soru ve diğerleri gri (mavi eylem içindir). */
 export function StanceBadge({ stance }: { stance: Stance }) {
-  const tone: Tone = stance === "pro" ? "success" : stance === "con" ? "danger" : stance === "question" ? "info" : "neutral";
+  const tone: Tone = stance === "pro" ? "success" : stance === "con" ? "danger" : "neutral";
   return <Badge tone={tone}>{STANCE_LABELS[stance] ?? stance}</Badge>;
 }
 
@@ -90,9 +115,10 @@ export function OutcomeBadge({ outcome }: { outcome: DecisionOutcome }) {
   return <Badge tone={tone}>{OUTCOME_LABELS[outcome] ?? outcome}</Badge>;
 }
 
+/** Rol bir durum değildir: gri. Kullanıcının tek renkli rozeti hesap durumudur (UserStatusBadge). */
 export function RoleBadge({ role }: { role: Role }) {
   if (role === "member") return null;
-  return <Badge tone={role === "admin" ? "danger" : role === "auditor" ? "accent" : "info"}>{ROLE_LABELS[role]}</Badge>;
+  return <Badge tone="neutral">{ROLE_LABELS[role]}</Badge>;
 }
 
 export function UserStatusBadge({ status }: { status: UserStatus }) {

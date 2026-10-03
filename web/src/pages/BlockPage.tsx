@@ -162,7 +162,7 @@ export default function BlockPage() {
               empty={<EmptyState title="İmza yok" />}
               columns={[
                 { key: "v", header: "Doğrulayıcı", render: (s) => <code>{s.validator}</code> },
-                { key: "s", header: "İmza", render: (s) => <HashText hash={s.sig} chars={16} label="İmza" /> },
+                { key: "s", header: "İmza", render: (s) => <HashText hash={s.sig} chars={16} label="İmza" digest={false} /> },
                 { key: "ok", header: "Doğrulama", render: (s) => <VerifyMark ok={s.ok} failText={s.known ? "Geçersiz" : "Bilinmeyen anahtar"} naText="Anahtar yok" /> },
               ]}
             />

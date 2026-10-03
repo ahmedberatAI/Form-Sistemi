@@ -1,0 +1,153 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Bildirimler (Faz 3 / madde 6) — NotificationsPage.tsx
+
+   Satırın tamamı bir bağlantıdır (.notif-content); yanında tek bir 'Okundu işaretle' simge düğmesi (.notif-read) durur.
+   Her tür sınıfı bir simge alır (.notif-icon) ve ekran okuyucu metni taşır; simge rengi (.notif-tone-*) tek başına anlam
+   taşımaz. Yeni renk YOK: yalnız mevcut belirteçler (--info, --warning, --text-muted…), böylece üç tema bloğu da uyar.
+   Bildirim satırının bütün kuralları bu dosyadadır; styles.css'teki .list / .list-item kuralları .notif-list ile daha özgül
+   seçicilerle ezilir.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Tarih grupları: 'Bugün', 'Bu hafta', 'Daha eski' (h2 + liste) */
+.notif-group + .notif-group {
+  margin-top: var(--sp-5);
+}
+.notif-group-title {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-md);
+  font-weight: 650;
+  color: var(--text);
+}
+
+/* Satır: [bağlantı: simge · metin · ok] [okundu düğmesi] */
+.notif-list > .notif-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0;
+  padding: 0;
+}
+.notif-list > .notif-row:not(.notif-unread):hover {
+  background: var(--surface-2);
+}
+/* Okunmamış: zemin + sol çubuk + 'Yeni' rozeti ve kalın başlık; renk tek başına ipucu değildir.
+   Rozetin açık mavi zemini satır zeminiyle aynı olduğundan yüzey rengiyle ve ince çerçeveyle ayrılır. */
+.notif-list > .notif-unread {
+  background: var(--primary-soft);
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+.notif-list > .notif-unread .notif-title {
+  font-weight: 700;
+}
+.notif-list > .notif-unread .badge-info {
+  background: var(--surface);
+  border-color: var(--primary);
+}
+
+.notif-list .notif-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-3) 0 var(--sp-3) var(--sp-4);
+  color: var(--text);
+  text-decoration: none;
+}
+.notif-list .notif-content:last-child {
+  padding-right: var(--sp-4);
+}
+.notif-list a.notif-content:hover {
+  color: var(--text);
+}
+.notif-list a.notif-content:hover .notif-title {
+  text-decoration: underline;
+}
+/* Liste kenarı taşmayı kırpar (.list overflow: hidden): odak halkası içeri çizilir. */
+.notif-list a.notif-content:focus-visible,
+.notif-list .notif-read:focus-visible {
+  outline-offset: -3px;
+}
+
+.notif-list .notif-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.notif-list .notif-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.notif-list .notif-title {
+  font-weight: 500;
+}
+.notif-list .notif-title,
+.notif-list .notif-body {
+  overflow-wrap: anywhere;
+}
+.notif-list .notif-body {
+  display: block;
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+/* Tür simgesi: gri (tür), mavi (sizden eylem bekleyen), turuncu (dikkat). */
+.notif-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.notif-icon.notif-tone-info {
+  color: var(--info);
+}
+.notif-icon.notif-tone-warning {
+  color: var(--warning);
+}
+
+/* Bağlantı oku: yalnız gezinme ipucu (süs; ekran okuyucuya kapalı). */
+.notif-list .notif-go {
+  flex: none;
+  align-self: center;
+  margin-left: var(--sp-2);
+  color: var(--text-muted);
+}
+
+/* Okundu işaretle: dokunmatik hedef 44 px, satırın dikey ortasında. */
+.notif-list .notif-read {
+  flex: none;
+  align-self: center;
+  width: 44px;
+  height: 44px;
+  margin: 0 var(--sp-2) 0 var(--sp-1);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.notif-list .notif-read:hover {
+  background: var(--surface-2);
+}
+
+/* 360 px: ok gizlenir, boşluklar daralır; metin sütunu en az ~200 px kalır. */
+@media (max-width: 480px) {
+  .notif-list .notif-go {
+    display: none;
+  }
+  .notif-list .notif-content {
+    gap: var(--sp-2);
+    padding-left: var(--sp-3);
+  }
+  .notif-list .notif-content:last-child {
+    padding-right: var(--sp-3);
+  }
+}

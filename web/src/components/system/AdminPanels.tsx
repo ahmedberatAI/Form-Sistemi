@@ -118,7 +118,7 @@ export function ClockPanel() {
       </Card>
 
       {result ? (
-        <Card title={result.title} subtitle={`Yeni simüle zaman: ${formatDateTime(result.res.now)}`} actions={<Badge tone="info">{result.res.transitions.length} geçiş</Badge>}>
+        <Card title={result.title} subtitle={`Yeni simüle zaman: ${formatDateTime(result.res.now)}`} actions={<Badge tone="neutral">{result.res.transitions.length} geçiş</Badge>}>
           <TransitionsList result={result.res} />
         </Card>
       ) : null}

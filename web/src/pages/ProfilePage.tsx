@@ -1,5 +1,7 @@
-// Profilim: hesap özeti, rızalar, vekâletler, KVKK (döküm / kripto-imha), takma ad ve şifre değiştirme, bilirkişi durumu.
-import { useState, type FormEvent } from "react";
+// Profilim: oy hakkı durumu en üstte; hesap özeti, açık rızalar ve vekâletler açık; seyrek işler (bilirkişilik, takma ad, şifre, KVKK, kimlik
+// düzeltme) başlığı görünür, gövdesi katlı kartlardır ('Tam' görünümde açık). Derin bağlantılar: ?bolum=kvkk, ?bolum=duzeltme, ?bolum=rizalar …
+// (components/system/accountLogic.ts › PROFILE_ANCHORS). Karar mantığı sunucuda kalır; oy hakkı koşulları yalnız söylenir.
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { clusterLabel, type AddressInput, type CorrectableField, type CorrectionStatus, type IdentityCorrectionValues, type Me } from "@forum/shared";
 import { ApiError, errorMessage } from "../api/client";
@@ -22,9 +24,22 @@ import { DomainChips } from "../components/community/DomainChips";
 import { DelegationForm, OutgoingDelegations, useScopeLabel } from "../components/community/delegation";
 import { ReputationBar } from "../components/community/ReputationBar";
 import "../components/community/community.css";
+import {
+  correctionSummary,
+  emptyDelegationLine,
+  expertSummary,
+  KVKK_SUMMARY,
+  nicknameSummary,
+  PASSWORD_SUMMARY,
+  PROFILE_ANCHORS,
+  voteRightOf,
+} from "../components/system/accountLogic";
+import "../components/system/account.css";
 import { canDownloadFiles, downloadJson } from "../lib/download";
 import { formatDate } from "../lib/format";
+import { isNativePlatform } from "../lib/prefs";
 import { routes } from "../lib/routes";
+import { useSectionParam } from "../lib/sectionParam";
 import { useAsync } from "../lib/useAsync";
 import {
   Alert,
@@ -37,6 +52,7 @@ import {
   Details,
   ErrorView,
   ExpertStatusBadge,
+  formTermLinkMode,
   Input,
   KeyValue,
   LinkButton,
@@ -44,27 +60,64 @@ import {
   RoleBadge,
   Spinner,
   Table,
+  Term,
+  TermLinksProvider,
   Textarea,
   Time,
   useConfirm,
   useToast,
   UserStatusBadge,
+  type TermLinkMode,
 } from "../ui";
+
+type ConsentKey = "political" | "ai";
+
+/** Rıza verme/geri alma: Oy hakkı kartı ile Açık rızalar kartı aynı isteği paylaşır (biri sürerken öteki de kilitlenir). */
+function useConsentUpdate() {
+  const auth = useAuth();
+  const toast = useToast();
+  const confirm = useConfirm();
+  const [busy, setBusy] = useState<ConsentKey | null>(null);
+
+  const set = async (key: ConsentKey, value: boolean) => {
+    if (key === "political" && !value) {
+      const ok = await confirm({
+        title: "Siyasi görüş rızasını geri al",
+        message: "Rızanızı geri alırsanız oy kullanamaz, itiraz imzalayamaz ve azınlık raporu yazamazsınız (bu işlemler yalnızca oy kullanabilen üyelere açıktır). Rızanızı istediğiniz zaman yeniden verebilirsiniz.",
+        confirmLabel: "Rızamı geri al",
+        tone: "danger",
+      });
+      if (!ok) return;
+    }
+    setBusy(key);
+    try {
+      const next = await updateConsents(key === "political" ? { politicalConsent: value } : { aiConsent: value });
+      auth.setUser(next);
+      // Siyasi görüş rızası oy, itiraz ve azınlık raporu işlerini açar ya da kapatır: 'Ana sayfa' rozeti hemen güncellenir.
+      void auth.refreshTasks();
+      toast.success(value ? "Açık rızanız kaydedildi." : "Rızanız geri alındı.");
+    } catch (e) {
+      toast.error(e);
+    } finally {
+      setBusy(null);
+    }
+  };
+  return { busy, set };
+}
 
 export default function ProfilePage() {
   const auth = useAuth();
   const me = auth.user;
+  const consents = useConsentUpdate();
+  // ?bolum=kvkk | duzeltme | rizalar … : kartı açar, kaydırır, odağı taşır ve parametreyi siler.
+  useSectionParam(!!me);
   if (!me) return <Spinner block />;
   return (
     <div className="page page-narrow">
       <PageHeader title="Profilim" subtitle="Hesabınız, rızalarınız, vekâletleriniz ve kişisel verileriniz üzerindeki haklarınız." />
-      {me.status === "pending" ? (
-        <Alert tone="warning" title="Hesabınız doğrulama bekliyor">
-          Kayıt memuru kimliğinizi doğruladığında öneri açabilir, oy verebilir ve vekâlet verebilirsiniz.
-        </Alert>
-      ) : null}
+      <VoteRightCard me={me} busy={consents.busy === "political"} onGrant={() => void consents.set("political", true)} />
       <AccountCard me={me} />
-      <ConsentsCard me={me} />
+      <ConsentsCard me={me} busy={consents.busy} onChange={(key, value) => void consents.set(key, value)} />
       <DelegationsCard />
       <ExpertStatusCard me={me} />
       <NicknameCard me={me} />
@@ -72,6 +125,80 @@ export default function ProfilePage() {
       <KvkkCard me={me} />
       <CorrectionCard me={me} />
     </div>
+  );
+}
+
+// ───────────── Oy hakkı (sayfanın en üstü) ─────────────
+
+/**
+ * 'Oy hakkınız: Var/Yok'. Yoksa eksik koşullar sayılır ve üyenin elindeki TEK eylem gösterilir (siyasi görüş rızası); kayıt memuru
+ * onayı, askı ve 18 yaş üyenin elinde olmadığı için düğme çıkmaz. Düğmeden rıza verilince odak (düğme kaybolduğu için) karta taşınır
+ * (oy hakkı açılmasa da: bekleyen hesapta rıza verilince düğme kalkar); istek başarısız olursa düğmeye geri verilir. Rıza başka
+ * yerden (Açık rızalar kutusu) verilirse odağa dokunulmaz.
+ */
+export function VoteRightCard({ me, busy, onGrant }: { me: Pick<Me, "status" | "isAdult" | "politicalConsent">; busy?: boolean; onGrant?: () => void }) {
+  const right = voteRightOf(me);
+  const button = useRef<HTMLButtonElement>(null);
+  const fromButton = useRef(false);
+  const wasAble = useRef(right.can);
+  useEffect(() => {
+    if (busy) return;
+    const changed = right.can !== wasAble.current;
+    wasAble.current = right.can;
+    if (!fromButton.current) return;
+    fromButton.current = false;
+    const focusCard = () => {
+      const card = document.getElementById(PROFILE_ANCHORS.oyHakki);
+      card?.setAttribute("tabindex", "-1");
+      card?.focus({ preventScroll: true });
+    };
+    if (changed && right.can) focusCard();
+    // Başarısız istek: düğme yerinde, odak ona döner. Rıza verildi ama başka koşul eksik (ör. kayıt memuru onayı bekleniyor):
+    // düğme kalktı, odak body'ye düşmesin, karta gider.
+    else if (!right.can) {
+      if (button.current) button.current.focus({ preventScroll: true });
+      else focusCard();
+    }
+  }, [right.can, busy]);
+
+  if (right.can) {
+    return (
+      <Card title="Oy hakkınız: Var" anchor={PROFILE_ANCHORS.oyHakki} summary="✔ Oy kullanma koşullarının üçü de tamam" summaryTone="success">
+        <p className="mt-0 small">
+          Kimliğiniz doğrulandı, 18 yaşından büyüksünüz ve siyasi görüş rızanız var. Oylamaya açılan önerilerde oy kullanabilirsiniz; uygun seçmen listesi
+          oylama açıldığında belirlenir.
+        </p>
+      </Card>
+    );
+  }
+  return (
+    <Card title="Oy hakkınız: Yok" anchor={PROFILE_ANCHORS.oyHakki} summary="⚠ Şu an oy kullanamazsınız" summaryTone="warning">
+      <div className="stack-sm">
+        <ul className="acct-missing" aria-label="Eksik koşullar">
+          {right.missing.map((m) => (
+            <li key={m}>{m}</li>
+          ))}
+        </ul>
+        {right.action === "consent" ? (
+          <div className="acct-action">
+            <Button
+              ref={button}
+              variant="primary"
+              loading={busy}
+              onClick={() => {
+                fromButton.current = true;
+                onGrant?.();
+              }}
+            >
+              Siyasi görüş rızası ver
+            </Button>
+            <p className="acct-note">
+              Oy ve görüş verileriniz özel nitelikli kişisel veridir (KVKK m. 6); rızayı istediğiniz zaman aşağıdaki “Açık rızalar” bölümünden geri alabilirsiniz.
+            </p>
+          </div>
+        ) : null}
+      </div>
+    </Card>
   );
 }
 
@@ -185,16 +312,23 @@ function CorrectionCard({ me }: { me: Me }) {
     );
   };
 
+  const closed = me.status === "erased" || me.status === "rejected";
   return (
     <Card
       title="Kimlik bilgilerimi düzelt"
+      collapsible
+      anchor={PROFILE_ANCHORS.duzeltme}
+      summary={correctionSummary(data, closed)}
       subtitle="Kayıtlı ad, soyad, T.C. kimlik no, doğum tarihi, e-posta, telefon ya da adresiniz yanlışsa gerekçesiyle düzeltilmesini isteyin (KVKK m. 11/1-d)."
     >
       <div className="stack">
-        <p className="mt-0 small muted">
-          Talebiniz kayıt memuruna gider. Memur önerdiğiniz değerleri yalnızca erişim amacını kaydederek görebilir ve kimliğinizi belgeyle doğruladıktan
-          sonra onaylar. Önerdiğiniz değerler şifreli saklanır ve karar verildiğinde imha edilir; günlüklere yalnızca hangi alanların düzeltildiği yazılır.
-        </p>
+        <p className="mt-0 small muted">Talebiniz kayıt memuruna gider; memur kimliğinizi belgeyle doğruladıktan sonra onaylar.</p>
+        <Details summary="Düzeltme talebi nasıl işler?">
+          <p className="mt-0 small">
+            Memur önerdiğiniz değerleri yalnızca erişim amacını kaydederek görebilir. Önerdiğiniz değerler şifreli saklanır ve karar verildiğinde imha
+            edilir; günlüklere yalnızca hangi alanların düzeltildiği yazılır.
+          </p>
+        </Details>
         {loading && !data ? (
           <Spinner />
         ) : error ? (
@@ -223,7 +357,7 @@ function CorrectionCard({ me }: { me: Me }) {
           </ul>
         ) : null}
 
-        {me.status === "erased" || me.status === "rejected" ? null : pending ? (
+        {closed ? null : pending ? (
           <p className="small muted mt-0">Bekleyen bir talebiniz var; sonuçlanınca ya da geri çekince yeni talep açabilirsiniz.</p>
         ) : open ? (
           <form className="stack" onSubmit={submit} noValidate aria-label="Düzeltme talebi">
@@ -299,7 +433,7 @@ function CorrectionCard({ me }: { me: Me }) {
 function AccountCard({ me }: { me: Me }) {
   const roles = me.roles.filter((r) => r !== "member");
   return (
-    <Card title="Hesap özeti" actions={<LinkButton size="sm" variant="ghost" to={routes.user(me.id)}>Herkese açık profilim</LinkButton>}>
+    <Card title="Hesap özeti" className="acct-account" anchor={PROFILE_ANCHORS.hesap} actions={<LinkButton size="sm" variant="ghost" to={routes.user(me.id)}>Herkese açık profilim</LinkButton>}>
       <KeyValue
         items={[
           { label: "Takma ad", value: <strong>@{me.nickname}</strong> },
@@ -318,7 +452,7 @@ function AccountCard({ me }: { me: Me }) {
           },
           { label: "Katılım", value: formatDate(me.joinedAt) },
           {
-            label: "Görüş kümem",
+            label: <Term id="gorus-kumesi">Görüş kümem</Term>,
             value: (
               <span className="row">
                 <strong>{clusterLabel(me.clusterId ?? null)}</strong>
@@ -327,61 +461,39 @@ function AccountCard({ me }: { me: Me }) {
                 </Badge>
               </span>
             ),
-            hint: "Kapanmış oylamalardaki oylarınıza göre (Polis benzeri kümeleme) hesaplanır. Kümeler adsızdır; köprü testinde her anlamlı kümeden asgari destek aranır.",
+            // İlk cümle görünür; eğitici ayrıntı (yöntem ve köprü testindeki rolü) adlandırılmış açılırda korunur.
+            hint: (
+              <>
+                Kapanmış oylamalardaki oylarınıza göre hesaplanır; kümeler adsızdır.
+                <Details summary="Görüş kümesi nasıl hesaplanır?" className="acct-hint-more">
+                  <p className="mt-0">
+                    Kapanmış oylamalardaki oylarınıza göre (Polis benzeri kümeleme) hesaplanır. Kümeler adsızdır; köprü testinde her anlamlı kümeden asgari
+                    destek aranır.
+                  </p>
+                </Details>
+              </>
+            ),
           },
-          { label: "Oy kullanabilir mi?", value: canVote(me) ? <Badge tone="success" icon="check">Evet</Badge> : <Badge tone="warning">Hayır</Badge>, hint: voteHint(me) },
         ]}
       />
     </Card>
   );
 }
 
-const canVote = (me: Me) => me.status === "verified" && me.isAdult && me.politicalConsent;
-
-function voteHint(me: Me): string | undefined {
-  if (me.status !== "verified") return "Kimliğiniz doğrulanmadan oy kullanamazsınız.";
-  if (!me.isAdult) return "Oy kullanmak için 18 yaşından büyük olmak gerekir.";
-  if (!me.politicalConsent) return "Oy kullanmak için siyasi görüş verisine açık rıza vermeniz gerekir (aşağıda).";
-  return undefined;
-}
-
-function ConsentsCard({ me }: { me: Me }) {
-  const auth = useAuth();
-  const toast = useToast();
-  const confirm = useConfirm();
-  const [busy, setBusy] = useState<"political" | "ai" | null>(null);
-
-  const set = async (key: "political" | "ai", value: boolean) => {
-    if (key === "political" && !value) {
-      const ok = await confirm({
-        title: "Siyasi görüş rızasını geri al",
-        message: "Rızanızı geri alırsanız oy kullanamaz, itiraz imzalayamaz ve azınlık raporu yazamazsınız (bu işlemler yalnızca oy kullanabilen üyelere açıktır). Rızanızı istediğiniz zaman yeniden verebilirsiniz.",
-        confirmLabel: "Rızamı geri al",
-        tone: "danger",
-      });
-      if (!ok) return;
-    }
-    setBusy(key);
-    try {
-      const next = await updateConsents(key === "political" ? { politicalConsent: value } : { aiConsent: value });
-      auth.setUser(next);
-      toast.success(value ? "Açık rızanız kaydedildi." : "Rızanız geri alındı.");
-    } catch (e) {
-      toast.error(e);
-    } finally {
-      setBusy(null);
-    }
-  };
-
+/**
+ * Rıza satırları: onay kutusu kendi ipucuyla; uzun açıklama bir açılırda (hukuki bildirimin ilk cümlesi kutunun yanında kalır).
+ * İstek sürerken kutular `disabled` yapılmaz (odak kaybolurdu); aria-disabled + işlemsiz değişiklik ile kilitlenir.
+ */
+function ConsentsCard({ me, busy, onChange }: { me: Me; busy: ConsentKey | null; onChange: (key: ConsentKey, value: boolean) => void }) {
   return (
-    <Card title="Açık rızalar" subtitle="Rızalarınızı istediğiniz zaman verebilir ya da geri alabilirsiniz (KVKK m. 5–6).">
+    <Card title="Açık rızalar" anchor={PROFILE_ANCHORS.rizalar} subtitle="Rızalarınızı istediğiniz zaman verebilir ya da geri alabilirsiniz (KVKK m. 5–6).">
       <div className="stack">
         <div className="consent-box">
           <Checkbox
             label={<strong>Siyasi görüş verisi (oy ve görüş) — oy kullanmak için gerekli</strong>}
             checked={me.politicalConsent}
-            disabled={busy !== null}
-            onChange={(e) => void set("political", e.target.checked)}
+            aria-disabled={busy !== null || undefined}
+            onChange={(e) => busy === null && onChange("political", e.target.checked)}
             hint="Oy ve görüş verileriniz siyasi düşüncenizi ortaya koyabileceği için özel nitelikli kişisel veridir (KVKK m. 6) ve yalnızca açık rızanızla işlenir. Oylarınız gizli kalır: defterde yalnızca kimliksiz taahhütler bulunur."
           />
         </div>
@@ -389,10 +501,16 @@ function ConsentsCard({ me }: { me: Me }) {
           <Checkbox
             label={<strong>Yapay zekâ analizi — varsayılan kapalı</strong>}
             checked={me.aiConsent}
-            disabled={busy !== null}
-            onChange={(e) => void set("ai", e.target.checked)}
-            hint="Açarsanız yazdığınız öneri, mesaj ve raporlar sınıflandırma, özet ve denetim için Anthropic'in Claude modeline (ABD'deki sunucular) gönderilir; bu bir yurt dışına aktarımdır (KVKK m. 9). Gönderimden önce kişisel veriler maskelenir, takma adlar K1, K2… biçiminde değiştirilir. Kapalıyken içerikleriniz için yalnızca sunucuda çalışan kural tabanlı (çevrimdışı) analiz kullanılır. YZ yalnızca danışmandır; hiçbir kararı değiştirmez."
+            aria-disabled={busy !== null || undefined}
+            onChange={(e) => busy === null && onChange("ai", e.target.checked)}
+            hint="Açarsanız yazdığınız öneri, mesaj ve raporlar sınıflandırma, özet ve denetim için Anthropic'in Claude modeline (ABD'deki sunucular) gönderilir; bu bir yurt dışına aktarımdır (KVKK m. 9)."
           />
+          <Details summary="Yapay zekâ analizi nasıl işler?" className="acct-consent-more">
+            <p className="mt-0 small">
+              Gönderimden önce kişisel veriler maskelenir, takma adlar K1, K2… biçiminde değiştirilir. Kapalıyken içerikleriniz için yalnızca sunucuda
+              çalışan kural tabanlı (çevrimdışı) analiz kullanılır. YZ yalnızca danışmandır; hiçbir kararı değiştirmez.
+            </p>
+          </Details>
         </div>
         {busy ? <Spinner label="Kaydediliyor…" showLabel size="sm" /> : null}
       </div>
@@ -405,11 +523,16 @@ function DelegationsCard() {
   const scopeLabel = useScopeLabel();
   const { data, error, loading, reload, setData } = useAsync(() => getMyDelegations(), []);
   const [formOpen, setFormOpen] = useState(false);
+  // Vekâlet formu açıkken (yalnız bellekte) sözlük penceresinin bağlantıları sayfadan çıkarmaz: web'de yeni sekme, yerelde bağlantısız.
+  const termLinks: TermLinkMode = formOpen ? formTermLinkMode(isNativePlatform()) : "page";
+  // Boş listeler tek satıra iner: ikisi de boşsa tek cümle; yalnız biri boşsa o yönün kısa notu.
+  const emptyLine = data ? emptyDelegationLine(data.outgoing.length, data.incoming.length) : null;
 
   return (
     <Card
       title="Vekâletler"
-      subtitle="Oy vermediğiniz oylamalarda tercihinizin kime uygulanacağını belirlersiniz (likit demokrasi). Her kişi her zaman tam 1 oy sayılır."
+      anchor={PROFILE_ANCHORS.vekaletler}
+      subtitle="Oy vermediğiniz oylamalarda tercihinizin kime uygulanacağını belirlersiniz (likit demokrasi)."
     >
       {loading && !data ? (
         <Spinner block />
@@ -417,24 +540,35 @@ function DelegationsCard() {
         <ErrorView error={error} onRetry={reload} compact />
       ) : data ? (
         <div className="stack">
-          <Alert tone="info">
-            <strong>Doğrudan oy verirseniz vekâletiniz o oylamada askıya alınır.</strong> Kapsam sırası: önerinin kategorileri (en özelden genele), sonra genel
-            (*) vekâlet; her kapsamda önce 1. sıradaki delegeye bakılır. Vekâlet sınırı: bir delege başkalarına ait en fazla <strong>{data.cap}</strong> oy
-            taşıyabilir; sınırı aşan vekâletler o oylamada kullanılmaz ve size bildirim gider.
-          </Alert>
+          <p className="mt-0">
+            <strong>
+              Doğrudan oy verirseniz{" "}
+              <TermLinksProvider mode={termLinks}>
+                <Term id="vekalet">vekâletiniz</Term>
+              </TermLinksProvider>{" "}
+              o oylamada askıya alınır.
+            </strong>
+          </p>
+          <Details summary="Vekâlet nasıl uygulanır?">
+            <p className="mt-0 small">
+              Her kişi her zaman tam 1 oy sayılır. Kapsam sırası: önerinin kategorileri (en özelden genele), sonra genel (*) vekâlet; her kapsamda önce
+              1. sıradaki delegeye bakılır. Vekâlet sınırı: bir delege başkalarına ait en fazla <strong>{data.cap}</strong> oy taşıyabilir; sınırı aşan
+              vekâletler o oylamada kullanılmaz ve size bildirim gider.
+            </p>
+          </Details>
 
-          <section className="stack-sm" aria-label="Verdiğim vekâletler">
-            <h3 className="h3 mt-0">Verdiğim vekâletler</h3>
-            {data.outgoing.length ? (
+          {data.outgoing.length ? (
+            <section className="stack-sm" aria-label="Verdiğim vekâletler">
+              <h3 className="h3 mt-0">Verdiğim vekâletler</h3>
               <OutgoingDelegations items={data.outgoing} onRevoked={(id) => setData((d) => d && { ...d, outgoing: d.outgoing.filter((x) => x.id !== id) })} />
-            ) : (
-              <p className="muted mt-0">Henüz vekâlet vermediniz; oy vermediğiniz oylamalarda oyunuz kullanılmamış sayılır.</p>
-            )}
-          </section>
+            </section>
+          ) : emptyLine ? (
+            <p className="acct-empty">{emptyLine}</p>
+          ) : null}
 
-          <section className="stack-sm" aria-label="Aldığım vekâletler">
-            <h3 className="h3 mt-0">Aldığım vekâletler</h3>
-            {data.incoming.length ? (
+          {data.incoming.length ? (
+            <section className="stack-sm" aria-label="Aldığım vekâletler">
+              <h3 className="h3 mt-0">Aldığım vekâletler</h3>
               <Table
                 caption="Bana verilen vekâletler"
                 rows={data.incoming}
@@ -446,13 +580,13 @@ function DelegationsCard() {
                   { key: "at", header: "Tarih", hideOnMobile: true, render: (d) => <Time at={d.createdAt} /> },
                 ]}
               />
-            ) : (
-              <p className="muted mt-0">Size verilmiş vekâlet yok.</p>
-            )}
-            {data.incoming.length > data.cap ? (
-              <Alert tone="warning">Size verilen vekâlet sayısı sınırı ({data.cap}) aşıyor; bir oylamada en fazla {data.cap} kişinin tercihini taşıyabilirsiniz.</Alert>
-            ) : null}
-          </section>
+              {data.incoming.length > data.cap ? (
+                <Alert tone="warning">Size verilen vekâlet sayısı sınırı ({data.cap}) aşıyor; bir oylamada en fazla {data.cap} kişinin tercihini taşıyabilirsiniz.</Alert>
+              ) : null}
+            </section>
+          ) : data.outgoing.length && emptyLine ? (
+            <p className="acct-empty">{emptyLine}</p>
+          ) : null}
 
           {auth.can("V") ? (
             formOpen ? (
@@ -490,7 +624,7 @@ function ExpertStatusCard({ me }: { me: Me }) {
   const { data, loading } = useAsync(() => listExperts(), [me.id]);
   const own = data?.find((e) => e.userId === me.id);
   return (
-    <Card title="Bilirkişilik">
+    <Card title="Bilirkişilik" collapsible anchor={PROFILE_ANCHORS.bilirkisilik} summary={expertSummary(own, !!data)}>
       {loading && !data ? (
         <Spinner />
       ) : own ? (
@@ -518,7 +652,9 @@ function ExpertStatusCard({ me }: { me: Me }) {
         </div>
       ) : (
         <div className="row-between">
-          <span className="muted">Bilirkişi değilsiniz.</span>
+          <span className="muted">
+            <Term id="bilirkisi">Bilirkişi</Term> değilsiniz.
+          </span>
           {me.status === "verified" ? (
             <LinkButton size="sm" to="/bilirkisiler?sekme=basvur">
               Bilirkişi olarak başvur
@@ -570,14 +706,17 @@ function NicknameCard({ me }: { me: Me }) {
 
   if (me.status === "suspended") {
     return (
-      <Card title="Takma ad değiştir">
-        <p className="muted small">Hesabınız askıdayken takma adınız değiştirilemez.</p>
+      <Card title="Takma ad değiştir" collapsible anchor={PROFILE_ANCHORS.takmaAd} summary={nicknameSummary(me.nickname, true)}>
+        <p className="muted small mt-0">Hesabınız askıdayken takma adınız değiştirilemez.</p>
       </Card>
     );
   }
   return (
     <Card
       title="Takma ad değiştir"
+      collapsible
+      anchor={PROFILE_ANCHORS.takmaAd}
+      summary={nicknameSummary(me.nickname, false)}
       subtitle="Forumda yalnızca takma adınız görünür. Mesajlarınız, önerileriniz ve size ait kayıtlar yeni takma adınızla görünür; takma ad deftere yazılmaz."
     >
       <form className="stack" onSubmit={submit} noValidate>
@@ -650,7 +789,7 @@ function PasswordCard() {
   };
 
   return (
-    <Card title="Şifre değiştir">
+    <Card title="Şifre değiştir" collapsible anchor={PROFILE_ANCHORS.sifre} summary={PASSWORD_SUMMARY}>
       <form className="stack" onSubmit={submit} noValidate>
         <Input label="Mevcut şifre" type="password" autoComplete="current-password" value={oldPassword} error={errors.oldPassword} onChange={(e) => setOld(e.target.value)} />
         <div className="form-grid">
@@ -706,47 +845,52 @@ function KvkkCard({ me }: { me: Me }) {
     }
   };
 
+  // Onay penceresi kartın gövdesinin dışında durur: gövde katlıyken (hidden) üst katmanda açılacak pencere kaybolmasın.
   return (
-    <Card title="Kişisel verilerim (KVKK)" subtitle="6698 sayılı Kanun m. 11 kapsamındaki haklarınız.">
-      <div className="stack">
-        <Details summary="Aydınlatma metni">
-          <KvkkNotice />
-        </Details>
+    <>
+      <Card title="Kişisel verilerim (KVKK)" collapsible anchor={PROFILE_ANCHORS.kvkk} summary={KVKK_SUMMARY} subtitle="6698 sayılı Kanun m. 11 kapsamındaki haklarınız.">
+        <div className="stack">
+          <Details summary="Aydınlatma metni">
+            <KvkkNotice />
+          </Details>
 
-        <section className="stack-sm" aria-label="Veri dökümü">
-          <h3 className="h3 mt-0">{canDownload ? "Verimi indir" : "Veri dökümüm"}</h3>
-          <p className="mt-0 small muted">
-            Hesabınız, kimlik verileriniz (şifresi çözülmüş), rızalarınız ve platform kayıtlarınız JSON olarak{" "}
-            {canDownload ? "indirilir" : "hazırlanır; bu cihazda dosya indirilemediği için dökümü kopyalayıp güvendiğiniz bir yere yapıştırabilirsiniz"}.
-            Döküm yalnızca size verilir.
-          </p>
-          <div className="row">
-            <Button loading={exporting} onClick={() => void doExport()}>
-              {canDownload ? "Verimi indir (JSON)" : "Dökümü hazırla (JSON)"}
-            </Button>
-            {exported ? <CopyButton text={exported} label="Dökümü kopyala" /> : null}
-          </div>
-          {exported ? (
-            <Details summary="Döküm içeriğini göster">
-              <pre>{exported}</pre>
+          <section className="stack-sm" aria-label="Veri dökümü">
+            <h3 className="h3 mt-0">{canDownload ? "Verimi indir" : "Veri dökümüm"}</h3>
+            <p className="mt-0 small muted">
+              Hesabınız, kimlik verileriniz (şifresi çözülmüş), rızalarınız ve platform kayıtlarınız JSON olarak{" "}
+              {canDownload ? "indirilir" : "hazırlanır; bu cihazda dosya indirilemediği için dökümü kopyalayıp güvendiğiniz bir yere yapıştırabilirsiniz"}.
+              Döküm yalnızca size verilir.
+            </p>
+            <div className="row">
+              <Button loading={exporting} onClick={() => void doExport()}>
+                {canDownload ? "Verimi indir (JSON)" : "Dökümü hazırla (JSON)"}
+              </Button>
+              {exported ? <CopyButton text={exported} label="Dökümü kopyala" /> : null}
+            </div>
+            {exported ? (
+              <Details summary="Döküm içeriğini göster">
+                <pre>{exported}</pre>
+              </Details>
+            ) : null}
+          </section>
+
+          <section className="stack-sm" aria-label="Hesabı sil">
+            <h3 className="h3 mt-0">Hesabımı sil</h3>
+            <Alert tone="warning">Kimlik verileriniz geri döndürülemez biçimde imha edilir (kripto-imha: size özel şifreleme anahtarı silinir).</Alert>
+            <Details summary="Hesap silinince ne olur?">
+              <p className="mt-0 small">
+                Mesajlarınız silinmez, “Silinmiş üye” olarak görünür; defterdeki özetler zinciri bozmadan kalır. Verdiğiniz ve size verilen vekâletler geri
+                alınır. Bu işlem oylamaya konmaz.
+              </p>
             </Details>
-          ) : null}
-        </section>
-
-        <section className="stack-sm" aria-label="Hesabı sil">
-          <h3 className="h3 mt-0">Hesabımı sil</h3>
-          <Alert tone="warning">
-            Kimlik verileriniz geri döndürülemez biçimde imha edilir (kripto-imha: size özel şifreleme anahtarı silinir). Mesajlarınız silinmez,
-            “Silinmiş üye” olarak görünür; defterdeki özetler zinciri bozmadan kalır. Verdiğiniz ve size verilen vekâletler geri alınır. Bu işlem
-            oylamaya konmaz.
-          </Alert>
-          <div>
-            <Button variant="danger" onClick={() => setEraseOpen(true)}>
-              Hesabımı sil…
-            </Button>
-          </div>
-        </section>
-      </div>
+            <div>
+              <Button variant="danger" onClick={() => setEraseOpen(true)}>
+                Hesabımı sil…
+              </Button>
+            </div>
+          </section>
+        </div>
+      </Card>
       <ConfirmDialog
         open={eraseOpen}
         title="Hesabınız kalıcı olarak silinecek"
@@ -776,6 +920,6 @@ function KvkkCard({ me }: { me: Me }) {
       >
         <Input label="Şifreniz" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
       </ConfirmDialog>
-    </Card>
+    </>
   );
 }

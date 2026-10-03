@@ -1,6 +1,10 @@
-// Öneri türü seçimi: beş tür, açıklamalı kartlar (erişilebilir radyo grubu).
+// Öneri türü seçimi: beş tür (erişilebilir radyo grubu).
+// Tür seçilmeden önce açıklamalı büyük kartlar; seçildikten sonra tek satırlık küçük radyolara (ad + katman) daralır. Radyolar
+// DOM'da ve işaretli kalır (tür değiştirmek 1 dokunuş); türlerin uzun açıklamaları 'Türler ne demek?' açılırında okunur.
+// Görsel dil: katman rozetleri gridir (tierTone; bu türlerin hiçbiri T3 değildir); renk yalnız seçili radyonun mavi çerçevesindedir.
 import { PROPOSAL_KIND_LABELS, type ProposalKind, type Tier } from "@forum/shared";
-import { Badge, Icon, RadioGroup, type IconName } from "../../ui";
+import { cx, Details, Icon, RadioGroup, TierBadge, type IconName } from "../../ui";
+import "./new-proposal.css";
 
 export const KIND_ORDER: ProposalKind[] = ["topic", "subtopic", "amendment", "deletion", "regulation"];
 
@@ -42,6 +46,11 @@ export const KIND_INFO: Record<ProposalKind, { icon: IconName; short: string; te
   },
 };
 
+/** Seçicinin görünümü (saf): tür seçilmeden önce açıklamalı kartlar, seçildikten sonra kompakt radyo şeridi. */
+export function kindPickerLayout(value: ProposalKind | null): "cards" | "compact" {
+  return value ? "compact" : "cards";
+}
+
 export interface KindPickerProps {
   value: ProposalKind | null;
   onChange: (k: ProposalKind) => void;
@@ -50,34 +59,56 @@ export interface KindPickerProps {
 }
 
 export function KindPicker({ value, onChange, disabled, label = "Öneri türü" }: KindPickerProps) {
+  const compact = kindPickerLayout(value) === "compact";
   return (
-    <RadioGroup<ProposalKind>
-      label={label}
-      layout="cards"
-      value={value}
-      onChange={onChange}
-      disabled={disabled}
-      required
-      options={KIND_ORDER.map((k) => ({
-        value: k,
-        label: (
-          <span className="kind-label">
-            <Icon name={KIND_INFO[k].icon} size={18} />
-            <span>{PROPOSAL_KIND_LABELS[k]}</span>
-            {KIND_INFO[k].tiers.map((t) => (
-              <Badge key={t} tone={t === "DEL" ? "warning" : t === "T2" ? "accent" : t === "T1" ? "info" : "neutral"}>
-                {t}
-              </Badge>
+    // Sarmalayıcı iki görünümde de aynı öğedir: radyolar yeniden bağlanmaz, ok tuşlarıyla tür değiştirirken odak radyoda kalır.
+    <div className={cx("kind-picker", compact && "kind-picker-compact")}>
+      <RadioGroup<ProposalKind>
+        label={label}
+        layout={compact ? "inline" : "cards"}
+        value={value}
+        onChange={onChange}
+        disabled={disabled}
+        required
+        options={KIND_ORDER.map((k) => ({
+          value: k,
+          label: (
+            <span className="kind-label">
+              {compact ? null : <Icon name={KIND_INFO[k].icon} size={18} />}
+              <span>{PROPOSAL_KIND_LABELS[k]}</span>
+              {KIND_INFO[k].tiers.map((t) => (
+                <TierBadge key={t} tier={t} short />
+              ))}
+            </span>
+          ),
+          hint: compact ? undefined : (
+            <>
+              {KIND_INFO[k].short} <span className="kind-tier">{KIND_INFO[k].tierText}</span>
+            </>
+          ),
+        }))}
+      />
+      {compact ? (
+        <Details summary="Türler ne demek?" className="kind-help">
+          <dl className="kind-help-list">
+            {KIND_ORDER.map((k) => (
+              <div key={k} className={cx("kind-help-item", k === value && "is-selected")}>
+                <dt>
+                  {PROPOSAL_KIND_LABELS[k]}
+                  {k === value ? <span className="kind-help-mark"> (seçili)</span> : null}
+                </dt>
+                <dd>
+                  {KIND_INFO[k].text}
+                  <span className="kind-help-tier">
+                    {KIND_INFO[k].tiers.join(", ")} · {KIND_INFO[k].tierText}
+                  </span>
+                </dd>
+              </div>
             ))}
-          </span>
-        ),
-        hint: (
-          <>
-            {KIND_INFO[k].short} <span className="kind-tier">{KIND_INFO[k].tierText}</span>
-          </>
-        ),
-      }))}
-    />
+          </dl>
+        </Details>
+      ) : null}
+    </div>
   );
 }
 

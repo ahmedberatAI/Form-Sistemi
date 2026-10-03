@@ -264,7 +264,7 @@ function ApplyTab() {
 
 const ASSIGNMENT_TONE: Record<AssignmentStatus, Tone> = {
   invited: "info",
-  accepted: "accent",
+  accepted: "info",
   recused: "neutral",
   reported: "success",
   overdue: "danger",

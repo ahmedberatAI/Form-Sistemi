@@ -1,9 +1,10 @@
-// Cihazda sabitlenmiş doğrulayıcı anahtarları (TOFU): tarayıcı içi doğrulamalar bunlarla yapılır.
+// Cihazda sabitlenmiş doğrulayıcı anahtarları (TOFU): tarayıcı içi doğrulamalar bunlarla yapılır. Sıfırlama Ayarlar › Gelişmiş altındaki
+// 'Doğrulayıcı anahtarları' kartındadır; bildirimdeki bağlantı (?bolum=anahtarlar) o kartı açar.
 import { Link } from "react-router-dom";
 import { describeValidatorDiff, ensurePinnedValidators } from "../../lib/validators";
-import { routes } from "../../lib/routes";
 import { useAsync } from "../../lib/useAsync";
-import { Alert } from "../../ui";
+import { Alert, Term } from "../../ui";
+import { settingsHref } from "./accountLogic";
 
 export function usePinnedValidators() {
   return useAsync(() => ensurePinnedValidators(), []);
@@ -14,15 +15,15 @@ export function PinNotice({ pin }: { pin: Awaited<ReturnType<typeof ensurePinned
   if (pin.status === "changed") {
     return (
       <Alert tone="error" title="Doğrulayıcı anahtarları değişmiş">
-        {describeValidatorDiff(pin.diff)} Sabitlemeyi <Link to={routes.settings()}>Ayarlar</Link> sayfasından sıfırlayabilirsiniz.
+        {describeValidatorDiff(pin.diff)} Sabitlemeyi <Link to={settingsHref("anahtarlar")}>Ayarlar › Gelişmiş</Link> bölümünden sıfırlayabilirsiniz.
       </Alert>
     );
   }
   if (pin.status === "pinned_now") {
     return (
       <Alert tone="info">
-        Doğrulayıcı açık anahtarları bu cihaza ilk kez sabitlendi (ilk kullanımda güven). Sonraki doğrulamalar bu anahtarlarla yapılır; sunucu anahtarları
-        değiştirirse uyarılırsınız.
+        Doğrulayıcı açık anahtarları bu cihaza ilk kez sabitlendi (<Term id="tofu">ilk kullanımda güven</Term>). Sonraki doğrulamalar bu anahtarlarla
+        yapılır; sunucu anahtarları değiştirirse uyarılırsınız.
       </Alert>
     );
   }

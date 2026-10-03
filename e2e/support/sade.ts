@@ -218,3 +218,31 @@ export function scanContrast(page: Page, scope = "main"): Promise<ContrastIssue[
     return issues;
   }, scope);
 }
+
+// ───────────────────────────── Faz 3 yardımcıları ─────────────────────────────
+
+/**
+ * e2e'nin ayrılmış düğme/bağlantı/bölge adı parçaları (plan: 'Test sözleşmeleri'). Yeni düğme, bağlantı ve bölge adları bunları
+ * İÇERMEZ (büyük/küçük harf ve Türkçe i/İ ayrımı gözetmeden).
+ */
+export const RESERVED_NAME_PARTS = ["Destekle", "Oyumu ver", "Daha fazla", "Sayımı kendim doğrulayayım", "Kapat", "Gerekçe", "Açıklama", "Azınlık raporu", "Düğüm"] as const;
+
+/** Verilen adın içerdiği ayrılmış parçalar (boşsa ad güvenlidir). */
+export function reservedParts(name: string): string[] {
+  const low = name.toLocaleLowerCase("tr-TR");
+  return RESERVED_NAME_PARTS.filter((r) => low.includes(r.toLocaleLowerCase("tr-TR")));
+}
+
+/** Yunan harfleri (τ, φ, ω, ρ, σ, μ, δ …): 'ilk okumada sembol yok' denetimi için. */
+export const GREEK = /[Ͱ-Ͽ]/;
+
+/** Türkiye'de yaz saati yoktur (UTC+3 sabit, 2016'dan beri): bildirim tarih gruplarının sınırları buradan hesaplanır. */
+const TR_OFFSET_MS = 3 * 3_600_000;
+const DAY_MS = 24 * 3_600_000;
+
+/** Bildirimin tarih grubu (web/src/lib/notificationKinds.ts › ageGroupOf ile aynı kural, Europe/Istanbul takvimiyle). */
+export function notificationGroupOf(createdAt: number, now: number): "Bugün" | "Bu hafta" | "Daha eski" {
+  const startOfToday = Math.floor((now + TR_OFFSET_MS) / DAY_MS) * DAY_MS - TR_OFFSET_MS;
+  if (createdAt >= startOfToday) return "Bugün";
+  return createdAt >= startOfToday - 6 * DAY_MS ? "Bu hafta" : "Daha eski";
+}

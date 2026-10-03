@@ -202,7 +202,9 @@ describe("ShowcaseTiles", () => {
     expect(tiles.filter((t) => !t.to).map((t) => t.key)).toEqual(["yz"]);
     const html = render(<ShowcaseTiles system={system()} />);
     expect(html.match(/<li>/g)).toHaveLength(6);
-    expect(namesOf(html, "a").map((n) => n.split(" ")[0])).toEqual(["Defter", "Oy", "Bilirkişiler", "Graf", "Yönetmelik"]);
+    // Başlığın yanında 'Gösterim rehberi ›' (Faz 3: Keşfet ve doğrula), ardından beş karo bağlantısı
+    expect(namesOf(html, "a").map((n) => n.split(" ")[0])).toEqual(["Gösterim", "Defter", "Oy", "Bilirkişiler", "Graf", "Yönetmelik"]);
+    expect(html).toContain('href="/kesfet?bolum=rehber"');
     expect(html).toContain("345. blok");
     expect(html).toContain("4/4 doğrulayıcı sağlıklı");
     expect(html).toContain("sürüm 2");

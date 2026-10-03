@@ -1,0 +1,99 @@
+/* ── Konular ve konu ayrıntısı (Faz 3 / madde 4) ──
+   Yeni renk belirteci yok: yalnız styles.css'teki --primary, --surface, --border, --text-muted vb. ve boşluk/yazı belirteçleri
+   (--sp-*, --fs-*) kullanılır; koyu tema bu belirteçlerle kendiliğinden uyar. Bu dosya sayfa parçasıyla birlikte yüklenir
+   (styles.css'ten sonra); styles.css'teki bir kuralı değiştiren her kural kendi dosyasında daha özgül seçiciyle yazılmıştır. */
+
+/* Tek satır sayaçlar (Konular): eski dört büyük kutunun yerine sarmalı, küçük haplar. Yalnız 'Konulara açık öneri' bağlantıdır
+   (mavi sayı: şu an süren işler); sıfır olan soluk ama görünür kalır. */
+.topic-counts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.topic-counts > li {
+  min-width: 0;
+  max-width: 100%;
+}
+.topic-count {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 36px;
+  max-width: 100%;
+  padding: var(--sp-1) var(--sp-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: var(--fs-sm);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.topic-count-n {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.topic-count-link {
+  min-height: 40px;
+}
+.topic-count-link:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.topic-count-link:not(.is-zero) .topic-count-n {
+  color: var(--primary);
+}
+.topic-count.is-zero {
+  background: transparent;
+  border-style: dashed;
+  color: var(--text-muted);
+}
+
+/* Arama ya da kategori süzgecinde eşleşen satır --primary-soft zeminlidir; mavi rozetin zemini de aynı belirteç (tek mavi) olduğu
+   için 'n açık öneri' hapı kaybolup bağlantıya benzerdi: eşleşen satırda rozet beyaz zemin ve mavi kenarla ayrışır
+   (Bildirimler'deki okunmamış satırla aynı çözüm). */
+.ttree-hit > .ttree-row .badge-info {
+  background: var(--surface);
+  border-color: var(--primary);
+}
+
+/* Telefonda Kategori ve Arşiv, 'Süz' açılırının içinde alt alta */
+.topics-filter-fields {
+  display: grid;
+  gap: var(--sp-3);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Konu ayrıntısı: ana sütun (metin, açık öneriler, tartışma) ve yan sütun (alt konular, sürüm geçmişi). Telefonda tek sütun ve
+   DOM sırası okuma sırasıdır; ≥ 900 px'te .split iki sütuna böler. Tartışma ana sütunda tam genişlikte okunur. */
+.topic-main,
+.topic-aside {
+  min-width: 0;
+}
+
+/* Açık öneri yok: kart yalnız başlık ve tek cümleye iner (boş gövde ve kutu yok) */
+.topic-open-empty > .card-body:empty {
+  display: none;
+}
+.topic-open-empty > .card-header {
+  padding-bottom: 0.9rem;
+}
+
+/* Sayfa başlığındaki 'N alt konu' kısa yolu: telefonda Alt konular tartışmanın altındadır; masaüstünde yan sütunda göründüğü için gizlenir */
+.topic-jump {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-height: 28px;
+  font-weight: 600;
+}
+@media (min-width: 900px) {
+  .topic-jump {
+    display: none;
+  }
+}

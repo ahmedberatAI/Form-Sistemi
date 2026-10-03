@@ -163,7 +163,7 @@ function NodeCard({ n, isMe, onClose }: { n: GraphVisNode; isMe: boolean; onClos
         compact
         items={[
           { label: "PageRank", value: formatNumber(n.pagerank, 4) },
-          n.isExpert ? { label: "Bilirkişi", value: <Badge tone="accent">evet</Badge> } : null,
+          n.isExpert ? { label: "Bilirkişi", value: <Badge tone="neutral">evet</Badge> } : null,
           isMe && n.cluster ? { label: "Görüş kümeniz", value: <span className="row"><ClusterGlyph clusterId={n.cluster} /> {clusterLabel(n.cluster)}</span>, hint: "Yalnız size gösterilir." } : null,
           isMe && n.community != null ? { label: "Topluluğunuz (Louvain)", value: n.community } : null,
           n.sybilFlag

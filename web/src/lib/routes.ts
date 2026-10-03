@@ -30,6 +30,11 @@ export const routes = {
   block: (height: number) => `/defter/blok/${height}`,
   tx: (hash: string) => `/defter/islem/${encodeURIComponent(hash)}`,
   ontology: () => "/yonetmelik",
+  /**
+   * 'Keşfet ve doğrula': yedi bileşen, gösterim rehberi, temel ilkeler ve sözlük (gezinme öğesi değil; vitrin, alt bilgi ve
+   * 'Daha fazla'dan). `bolum` verilirse o bölüme ya da sözlük terimine (`terim-<kimlik>`) kaydırır (lib/sectionParam.ts).
+   */
+  kesfet: (q?: { bolum?: string }) => "/kesfet" + (q?.bolum ? `?bolum=${encodeURIComponent(q.bolum)}` : ""),
 };
 
 const SEGMENT_MAP: Record<string, string> = {

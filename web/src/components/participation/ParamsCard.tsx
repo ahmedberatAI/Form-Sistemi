@@ -1,14 +1,22 @@
-// Karar parametreleri (ALGORITMA §2): oylama açılınca öneriye sabitlenir, sonradan yönetmelik değişse de geriye etkili olmaz.
+// Karar parametreleri (ALGORİTMA §2): oylama açılınca öneriye sabitlenir, sonradan yönetmelik değişse de geriye etkili olmaz.
 // Katlanabilir kart: kapalıyken başlığın yanında tek satırlık hüküm ("Onay eşiği ≥ %60 · yeter sayı … · oylamada sabitlendi") durur.
+// Sade dil: satırlar sade adla başlar ('Onay eşiği: %60'); etiket sözlük terimidir (dokununca günlük karşılığı açılır). Yunan
+// sembolleri (τ, φ, ω …) ve formüller 'Sembolleri ve formülleri göster' anahtarının arkasındadır; 'Tam' görünümde açık gelir.
+import { useState, type ReactNode } from "react";
 import { quorumRequired, type DecisionParams, type ProposalStatus, type Rational } from "@forum/shared";
 import { useOntology } from "../../lib/categories";
+import { useDetailLevel } from "../../lib/detailLevel";
 import { formatHours, formatNumber, formatPercent } from "../../lib/format";
-import { Card, Details, KeyValue, TierBadge } from "../../ui";
+import type { TermId } from "../../lib/glossary";
+import { Card, Details, KeyValue, Term, TierBadge, type KeyValueItem } from "../../ui";
 
 const FIXED_FROM: ProposalStatus[] = ["voting", "objection_window", "reconciliation", "revote", "enacted", "rejected"];
 
 const pct = (r: Rational) => (r.den ? formatPercent(r.num / r.den) : "—");
 const frac = (r: Rational) => (r.den ? `${r.num}/${r.den} (${pct(r)})` : "—");
+
+/** Sembol anahtarının erişilebilir adı (düğme adı; 'Daha fazla', 'Kapat' gibi yasak alt dizeler içermez). */
+export const SYMBOLS_SWITCH_LABEL = "Sembolleri ve formülleri göster";
 
 /**
  * Yeter sayının mutlak değeri. q bir ORANDIR; kişi sayısı yalnız biliniyorsa yazılır: oylamadaki uygun seçmen sayısından
@@ -28,6 +36,189 @@ export function paramsSummary(p: DecisionParams, fixed: boolean, quorumAbs?: num
   ].join(" · ");
 }
 
+// ───────────── Satırlar (saf; birim testli) ─────────────
+
+/** Parametre listesinin bir satırı: sade ad + değer; sembol ve formül anahtarın arkasında. */
+export interface ParamRow {
+  key: string;
+  /** Sade ad ('Onay eşiği'); sembol etikete değil değerin yanına yazılır */
+  label: string;
+  /** Etiketin sözlük terimi (dokununca günlük karşılığı açılır) */
+  term?: TermId;
+  /** Yunan harfi ya da kısaltma ('τ', 'K_s'); yalnız anahtar açıkken görünür */
+  symbol?: string;
+  /** null → değer özel çizilir (katman rozeti) */
+  value: string | null;
+  /** Düz Türkçe ipucu; her zaman görünür */
+  hint?: string;
+  /** Formül; yalnız anahtar açıkken görünür */
+  formula?: string;
+}
+
+export function paramRows(p: DecisionParams, categoryLabel: (iri: string) => string = (iri) => iri): ParamRow[] {
+  const rows: (ParamRow | null)[] = [
+    { key: "tier", label: "Katman", term: "katman", value: null },
+    {
+      key: "quorum",
+      label: "Yeter sayı",
+      term: "yeter-sayi",
+      symbol: "q",
+      value: pct(p.quorum),
+      hint: "Oylamanın geçerli olması için katılması gereken en az uygun seçmen oranı",
+      formula: "Gerekli katılım: max(⌈q·|E|⌉, ⌈1,5·√|E|⌉), en fazla |E|",
+    },
+    {
+      key: "threshold",
+      label: "Onay eşiği",
+      term: "onay-esigi",
+      symbol: "τ",
+      value: `${p.thresholdStrict ? ">" : "≥"} ${pct(p.threshold)}`,
+      hint: p.thresholdStrict ? "kesin büyüktür" : "büyük ya da eşit",
+    },
+    {
+      key: "clusterFloor",
+      label: "Küme tabanı",
+      term: "kume-tabani",
+      symbol: "φ",
+      value: pct(p.clusterFloor),
+      hint: "Her anlamlı görüş grubunun öneriyi en az bu oranda desteklemesi gerekir (köprü testi)",
+      formula: "Her anlamlı görüş grubunda P_g ≥ φ",
+    },
+    p.authorClusterFloor
+      ? {
+          key: "authorClusterFloor",
+          label: "Yazarın grubu tabanı",
+          term: "kume-tabani",
+          value: pct(p.authorClusterFloor),
+          hint: "Silmede mesaj yazarının kendi görüş grubundan en az bu oranda destek aranır",
+          formula: `Yazarın görüş grubunda P_g ≥ ${pct(p.authorClusterFloor)}`,
+        }
+      : null,
+    {
+      key: "override",
+      label: "Aşma eşiği",
+      term: "asma-esigi",
+      symbol: "ω",
+      value: frac(p.overrideThreshold),
+      hint: "Tartışmalı sonuç sonrası yeniden oylamada tabanı aşan nitelikli çoğunluk",
+    },
+    {
+      key: "revote",
+      label: "Yeniden oy eşiği",
+      term: "yeniden-oy-esigi",
+      symbol: "ρ",
+      value: frac(p.revoteThreshold),
+      hint: "İtiraz sonrası; güçlü itirazda en az 2/3",
+    },
+    {
+      key: "significant",
+      label: "Anlamlı küme",
+      term: "anlamli-kume",
+      symbol: "σ",
+      value: `pay ≥ ${pct(p.significantShare)} ve ≥ ${p.significantMinMembers} üye`,
+    },
+    {
+      key: "minVotes",
+      label: "Küme başına asgari oy",
+      term: "kume-basina-asgari-oy",
+      symbol: "μ",
+      value: String(p.minVotesPerCluster),
+      hint: "Altındaysa oylama bir kez uzatılır",
+    },
+    {
+      key: "minClustered",
+      label: "Köprü için asgari kümelenmiş üye",
+      term: "soguk-baslangic",
+      symbol: "n_C,min",
+      value: String(p.minClusteredForBridge),
+    },
+    { key: "coldStart", label: "Soğuk başlangıç artışı", term: "soguk-baslangic", symbol: "δ", value: `+${pct(p.coldStartBump)} (en fazla 2/3)` },
+    {
+      key: "delegationCap",
+      label: "Vekâlet sınırı",
+      term: "vekalet",
+      value: `uygun seçmenin ${pct(p.delegationCapFraction)} oranı (en az 2 oy)`,
+      hint: "Bir delegenin taşıyabileceği başkasına ait oy sayısının üst sınırı",
+      formula: `max(2, ⌈${pct(p.delegationCapFraction)} · |E|⌉)`,
+    },
+    { key: "delegationHops", label: "Vekâlet zinciri", term: "vekalet", symbol: "H", value: `en fazla ${p.delegationMaxHops} adım` },
+    { key: "sponsors", label: "Gerekli destekçi", term: "gerekli-destekci", symbol: "K_s", value: String(p.sponsorsRequired) },
+    {
+      key: "expert",
+      label: "Bilirkişi",
+      term: "bilirkisi",
+      value: p.requiresExpert ? `gerekli (${p.expertCount} kişi)` : "zorunlu değil",
+      hint: p.expertDomains.length ? `Alanlar: ${p.expertDomains.map(categoryLabel).join(", ")}` : undefined,
+    },
+  ];
+  return rows.filter((r): r is ParamRow => !!r);
+}
+
+/** Sembol ve formül anahtarı açıkken görünen, kapalıyken görünmeyen öğe sayıları (testler ve ölçüm için). */
+export function symbolCount(rows: ParamRow[]): { symbols: number; formulas: number } {
+  return { symbols: rows.filter((r) => r.symbol).length, formulas: rows.filter((r) => r.formula).length };
+}
+
+/** Satırı KeyValue öğesine çevirir; sembol değerin yanına, formül ipucunun altına yalnız `showSymbols` iken yazılır. */
+export function toKeyValueItem(row: ParamRow, showSymbols: boolean, tier: DecisionParams["tier"]): KeyValueItem {
+  let value: ReactNode = row.value;
+  if (row.key === "tier") value = <TierBadge tier={tier} explain />;
+  else if (showSymbols && row.symbol)
+    value = (
+      <>
+        {row.value} <span className="param-symbol">({row.symbol})</span>
+      </>
+    );
+  const formula = showSymbols && row.formula ? <span className="param-formula">{row.formula}</span> : null;
+  const hint = row.hint || formula ? (
+    <>
+      {row.hint}
+      {formula}
+    </>
+  ) : undefined;
+  return { label: row.term ? <Term id={row.term}>{row.label}</Term> : row.label, value, hint };
+}
+
+// ───────────── Liste (kartın ve ön denetim panelinin ortak parçası) ─────────────
+
+/** 'Sembolleri ve formülleri göster' anahtarı (role=switch). Durumu üst bileşen tutar. */
+export function SymbolsSwitch({ shown, onToggle }: { shown: boolean; onToggle: () => void }) {
+  return (
+    <div className="param-tools">
+      <button type="button" role="switch" aria-checked={shown} className="param-switch" onClick={onToggle}>
+        <span className="param-switch-track" aria-hidden="true" />
+        <span>{SYMBOLS_SWITCH_LABEL}</span>
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Karar parametrelerinin sade listesi: anahtar + satırlar (+ açıkken |E| ve P_g açıklaması). Etiketler sözlük terimidir.
+ * Anahtar, dokunulmadıkça görünüm yoğunluğuna uyar ('Tam' görünümde açık gelir); dokununca seçim korunur.
+ * Başka bir panelde (ör. yeni öneri ön denetimi) aynı liste doğrudan kullanılabilir.
+ */
+export function ParamsList({ params, categoryLabel: label }: { params: DecisionParams; categoryLabel?: (iri: string) => string }) {
+  const ontology = useOntology();
+  const { full } = useDetailLevel();
+  const [choice, setChoice] = useState<boolean | null>(null);
+  const shown = choice ?? full;
+  const rows = paramRows(params, label ?? ontology.categoryLabel);
+  return (
+    <>
+      <SymbolsSwitch shown={shown} onToggle={() => setChoice(!shown)} />
+      <KeyValue compact items={rows.map((r) => toKeyValueItem(r, shown, params.tier))} />
+      {shown ? (
+        <p className="small muted param-legend">
+          |E|: oylamadaki uygun seçmen sayısı · P_g: bir görüş grubunun yumuşatılmış desteği, (1 + Kabul) / (2 + Kabul + Red).
+        </p>
+      ) : null}
+    </>
+  );
+}
+
+// ───────────── Kart ─────────────
+
 export interface ParamsCardProps {
   params: DecisionParams | null;
   status: ProposalStatus;
@@ -41,7 +232,6 @@ export interface ParamsCardProps {
 }
 
 export function ParamsCard({ params: p, status, votingRound, eligible, resultQuorum, headingLevel = 2 }: ParamsCardProps) {
-  const { categoryLabel } = useOntology();
   if (!p) {
     return (
       <Card title="Karar parametreleri" headingLevel={headingLevel} anchor="parametreler">
@@ -61,30 +251,7 @@ export function ParamsCard({ params: p, status, votingRound, eligible, resultQuo
       anchor="parametreler"
     >
       <div className="stack-sm">
-        <KeyValue
-          compact
-          items={[
-            { label: "Katman", value: <TierBadge tier={p.tier} /> },
-            { label: "Yeter sayı q", value: pct(p.quorum), hint: "Gerekli katılım: max(⌈q·|E|⌉, ⌈1,5·√|E|⌉), en fazla |E|" },
-            { label: "Onay eşiği τ", value: `${p.thresholdStrict ? ">" : "≥"} ${pct(p.threshold)}`, hint: p.thresholdStrict ? "kesin büyüktür" : "büyük ya da eşit" },
-            { label: "Küme tabanı φ", value: pct(p.clusterFloor), hint: "Her anlamlı görüş grubunda P_g ≥ φ (köprü testi)" },
-            p.authorClusterFloor ? { label: "Yazarın grubu tabanı", value: pct(p.authorClusterFloor), hint: "Silmede mesaj yazarının görüş grubunda P ≥ 1/2" } : null,
-            { label: "Aşma eşiği ω", value: frac(p.overrideThreshold), hint: "Tartışmalı sonuç sonrası yeniden oylamada tabanı aşan nitelikli çoğunluk" },
-            { label: "Yeniden oy eşiği ρ", value: frac(p.revoteThreshold), hint: "İtiraz sonrası; güçlü itirazda en az 2/3" },
-            { label: "Anlamlı küme σ", value: `pay ≥ ${pct(p.significantShare)} ve ≥ ${p.significantMinMembers} üye` },
-            { label: "Küme başına asgari oy μ", value: String(p.minVotesPerCluster), hint: "Altındaysa oylama bir kez uzatılır" },
-            { label: "Köprü için asgari kümelenmiş üye n_C,min", value: String(p.minClusteredForBridge) },
-            { label: "Soğuk başlangıç artışı δ", value: `+${pct(p.coldStartBump)} (en fazla 2/3)` },
-            { label: "Vekâlet sınırı", value: `max(2, ⌈${pct(p.delegationCapFraction)} · |E|⌉) başkasına ait oy` },
-            { label: "Vekâlet zinciri H", value: `en fazla ${p.delegationMaxHops} adım` },
-            { label: "Gerekli destekçi K_s", value: String(p.sponsorsRequired) },
-            {
-              label: "Bilirkişi",
-              value: p.requiresExpert ? `gerekli (${p.expertCount} kişi)` : "zorunlu değil",
-              hint: p.expertDomains.length ? `Alanlar: ${p.expertDomains.map(categoryLabel).join(", ")}` : undefined,
-            },
-          ]}
-        />
+        <ParamsList params={p} />
         <Details summary="Süreler">
           <KeyValue
             compact

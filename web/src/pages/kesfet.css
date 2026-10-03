@@ -1,0 +1,291 @@
+/* ── Keşfet ve doğrula (Faz 3 / madde 7) ──
+   Yalnız KesfetPage yükler (tembel yüklenen sayfayla birlikte gelir). Kabuğun parçaları (alt gezinme sayı rozeti, alt bilgideki
+   'Gösterim rehberi ve sözlük ›') styles.css'te, öneri kartındaki 'Sizden bekleniyor' satırı proposals/proposals.css'tedir.
+   Yeni renk belirteci YOK: yalnız --primary, --warning, --success, --accent (YALNIZ yapay zekâ), --text, --text-muted, --border,
+   --surface* ve boşluk/yazı belirteçleri (--sp-*, --fs-*, --measure) kullanılır; koyu temalar kendiliğinden uyar.
+   Renk her zaman metin ya da simgeyle birliktedir (⚠ + 'Uyarı:', ✔). */
+
+/* ───────────── Keşfet sayfası ───────────── */
+
+.kesfet {
+  /* ?bolum= ile gelinen sözlük terimi sabit başlığın altında kalmasın (bölümler ve Details için styles.css'te aynı kural var) */
+  --kesfet-scroll-margin: calc(var(--sticky-h) + env(safe-area-inset-top, 0px) + 12px);
+}
+
+/* 'Bu sayfada' kısa yolları: tek satır, sarmalı (360 px'de taşmaz) */
+.kesfet-onpage {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--sp-2);
+  min-width: 0;
+  font-size: var(--fs-sm);
+}
+.kesfet-onpage-title {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.kesfet-onpage-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--sp-1);
+  min-width: 0;
+}
+.kesfet-onpage-list a {
+  display: inline-block;
+  padding: var(--sp-1) 0.1rem; /* dokunma hedefi ≈ 30 px */
+  font-weight: 600;
+}
+.kesfet-onpage-sep {
+  margin-inline-end: var(--sp-1);
+  color: var(--text-muted);
+}
+
+/* Yedi bileşen: telefonda tek sütun, ≥ 720 px'de iki sütun; satırın üst kısmı (ad + canlı durum) bağlantıdır */
+.kesfet-evidence {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sp-2);
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 720px) {
+  .kesfet-evidence {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.kesfet-evidence > li {
+  min-width: 0;
+  display: flex;
+}
+.kesfet-ev {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow-wrap: anywhere;
+}
+.kesfet-ev.is-warning {
+  border-color: var(--warning);
+}
+.kesfet-ev-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 44px;
+  padding: var(--sp-2) var(--sp-3);
+  color: var(--text);
+  text-decoration: none;
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+a.kesfet-ev-head:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+/* Kenarlıklı kutuda odak halkası içeride (köşe kesilmesin) */
+a.kesfet-ev-head:focus-visible {
+  outline-offset: -3px;
+}
+/* Ad ve canlı durum sarar; ok simgesi her zaman sağda ve ortada kalır (alt satıra tek başına düşmez) */
+.kesfet-ev-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-1) var(--sp-2);
+}
+.kesfet-ev-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-weight: 650;
+}
+.kesfet-ev-live {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.kesfet-ev-live.is-warning {
+  color: var(--warning);
+  font-weight: 600;
+}
+.kesfet-ev-live.is-ok {
+  color: var(--success);
+  font-weight: 600;
+}
+/* Mor YALNIZ yapay zekâ içindir */
+.kesfet-ev-live.is-ai {
+  color: var(--accent);
+  font-weight: 600;
+}
+.kesfet-ev-go {
+  margin-inline-start: auto;
+  flex: none;
+  color: var(--text-muted);
+}
+.kesfet-ev-about {
+  margin: 0;
+  padding: 0 var(--sp-3) var(--sp-2);
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+/* Gösterim rehberi: numaralı yedi adım. Numara başlığın içinde (CSS sayacı, aria-hidden), metin kartın tam genişliğini
+   kullanır (telefonda dar sütun kalmaz); liste anlamı <ol role=list> ile korunur. */
+.kesfet-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  counter-reset: kesfet-step;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.kesfet-step {
+  counter-increment: kesfet-step;
+  padding: var(--sp-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  min-width: 0;
+}
+.kesfet-step-no {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.kesfet-step-no::before {
+  content: counter(kesfet-step);
+}
+.kesfet-step-body {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.kesfet-step-title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-md);
+}
+.kesfet-step-text {
+  margin: 0 0 var(--sp-2);
+  max-width: var(--measure);
+}
+.kesfet-step-note {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+.kesfet-step-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--sp-4);
+  margin: 0;
+}
+.kesfet-step-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  min-height: 32px;
+  font-weight: 600;
+}
+.kesfet-step-term {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+.kesfet-step-term .term {
+  color: var(--text);
+}
+.kesfet-failed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+/* Temel ilkeler: tam metin; ≥ 900 px'de iki sütun */
+.kesfet-tenets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sp-2);
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 900px) {
+  .kesfet-tenets {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.kesfet-tenet {
+  min-width: 0;
+  padding: var(--sp-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow-wrap: anywhere;
+}
+.kesfet-tenet-title {
+  margin: 0 0 var(--sp-1);
+  font-size: var(--fs-md);
+}
+.kesfet-tenet-text {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-sm);
+}
+.kesfet-tenet-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+/* Sözlük: arama alanı tek sütun (telefonda tam genişlik), terimler konu açılırlarında tanım listesi */
+.kesfet-gloss-search {
+  max-width: 28rem;
+}
+.kesfet-gloss {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+.kesfet-term {
+  padding: var(--sp-3) 0;
+  border-top: 1px solid var(--border);
+  scroll-margin-top: var(--kesfet-scroll-margin);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.kesfet-term:first-child {
+  border-top: 0;
+  padding-top: var(--sp-2);
+}
+.kesfet-term-name {
+  margin: 0 0 var(--sp-1);
+  font-weight: 650;
+}
+.kesfet-term-body {
+  margin: 0;
+}

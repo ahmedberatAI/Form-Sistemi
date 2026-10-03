@@ -106,7 +106,7 @@ function CategoryTreeNode({ n }: { n: CategoryNode }) {
       <div className="row">
         <strong>{n.label}</strong>
         {n.requiresExpert ? (
-          <Badge tone="info" icon="experts" title="Bu kategorideki öneriler için bilirkişi görüşü gerekir">
+          <Badge tone="neutral" icon="experts" title="Bu kategorideki öneriler için bilirkişi görüşü gerekir">
             bilirkişi gerekli
           </Badge>
         ) : null}
@@ -181,8 +181,8 @@ function GroundList({ grounds, kind }: { grounds: GroundInfo[]; kind: "deletion"
                 </Badge>
               ) : null}
               {g.legal ? (
-                <Badge tone="info" title="Bilirkişi görüşü bağlayıcıdır">
-                  hukuki
+                <Badge tone="neutral" title="Bilirkişi görüşü bağlayıcıdır">
+                  hukuki — bilirkişi görüşü bağlayıcı
                 </Badge>
               ) : null}
             </div>
@@ -272,7 +272,7 @@ export function ParamsView({ o }: { o: OntologyOverview }) {
           render: (p) =>
             p.immutable ? (
               <Badge tone="danger" title="Değiştirilemez maddeye dayanır">
-                kilitli
+                kilitli — değiştirilemez madde
               </Badge>
             ) : (
               <Badge tone="neutral">ayarlanabilir</Badge>

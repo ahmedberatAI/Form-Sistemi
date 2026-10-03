@@ -1,11 +1,14 @@
 // Ana sayfa: role göre "senden beklenenler". Bu dosya yalnız veriyi bağlar (oturum, pano, cihazdaki makbuz sayısı, ekran
 // genişliği); düzen ve sıra components/home/HomeLayout'tadır. Hesap durumu (bekleyen, askıda, reddedilmiş) yalnız burada kartla
-// söylenir; kabuktaki şeritler bu rotada gizlenir (layout/AppLayout).
+// söylenir; kabuktaki şeritler bu rotada gizlenir (layout/AppLayout). Pano her geldiğinde görev deposu (lib/taskStore) onunla
+// eşitlenir: 'Sizi bekleyenler' listesi ile kabuktaki 'Ana sayfa' sayı rozeti aynı sunucu kuralını (community.tasks) okur ve
+// birbirleriyle çelişmez.
 import { useEffect, useState } from "react";
 import { getDashboard } from "../api/endpoints";
 import { useAuth } from "../auth/AuthContext";
 import { HomeLayout } from "../components/home/HomeLayout";
 import { listReceipts } from "../lib/receipts";
+import { setTasks } from "../lib/taskStore";
 import { useAsync } from "../lib/useAsync";
 
 /** Masaüstü düzeninin eşiği (styles.css .split ile aynı). */
@@ -31,6 +34,14 @@ export default function HomePage() {
   const dashboard = useAsync(() => getDashboard(), [userId], { pollMs: 30_000, enabled: !auth.loading });
   const receipts = useAsync(() => listReceipts(), [userId], { enabled: !auth.loading && !!userId });
   const wide = useWideScreen();
+
+  // Yalnız yeni pano gelince çalışır (oturum değişince eski pano yeniden yazılmaz: useAsync eski kişinin geç yanıtını atar,
+  // AuthProvider de depoyu boşaltır). Ziyaretçi panosunda görev olmaz; depo oturumsuzken zaten boştur.
+  const data = dashboard.data;
+  useEffect(() => {
+    if (data && userId) setTasks(data.tasks);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
 
   return (
     <HomeLayout

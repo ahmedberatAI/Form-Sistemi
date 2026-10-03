@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { LEDGER_TX_LABELS, PROPOSAL_STATUS_LABELS, type LedgerTxType, type TickResponse } from "@forum/shared";
 import { proposalRef } from "../../lib/format";
 import { routes } from "../../lib/routes";
-import { Badge, cx, type Tone } from "../../ui";
+import { Badge, cx } from "../../ui";
 import "./system.css";
 
 /** Doğrulama sonucu: ok → "✔ geçerli", false → "✘ geçersiz", null → "— denetlenmedi" (renk + simge + metin). */
@@ -28,25 +28,23 @@ export function VerifyMark({ ok, okText = "Geçerli", failText = "Geçersiz", na
   );
 }
 
-const TX_TONE: Partial<Record<LedgerTxType, Tone>> = {
-  VOTE_COMMIT: "accent",
-  BALLOT_REVEAL: "accent",
-  TALLY: "success",
-  PHASE_CHANGED: "info",
-  MESSAGE_HIDDEN: "warning",
-  MEMBER_ERASED: "warning",
-  EVIDENCE: "danger",
-  BYLAW_VERSION: "accent",
-  OBJECTION: "warning",
-};
+/**
+ * İşlem TÜRÜ bir sınıflandırmadır, durum değildir: rozet gridir (görsel dil: 'tür … gri'; bir blok satırında birden çok tür yan yana
+ * durur ve rozet bütçesi nesne başına en çok 1 renkli rozettir). Tek istisna gerçek bir hata kaydıdır: hatalı doğrulayıcı kanıtı
+ * (EVIDENCE) kırmızı ve simgelidir; böylece blok satırında renkli rozet en çok birdir.
+ */
+export function txTypeTone(t: string): "neutral" | "danger" {
+  return t === "EVIDENCE" ? "danger" : "neutral";
+}
 
 export function txTypeLabel(t: string): string {
   return LEDGER_TX_LABELS[t as LedgerTxType] ?? t;
 }
 
 export function TxTypeBadge({ type, count }: { type: string; count?: number }) {
+  const tone = txTypeTone(type);
   return (
-    <Badge tone={TX_TONE[type as LedgerTxType] ?? "neutral"} title={type}>
+    <Badge tone={tone} icon={tone === "danger" ? "error" : undefined} title={type}>
       {txTypeLabel(type)}
       {count && count > 1 ? ` ×${count}` : ""}
     </Badge>

@@ -6,6 +6,11 @@ import { Icon, type IconName } from "./Icon";
 
 export const cx = (...parts: (string | false | null | undefined)[]): string => parts.filter(Boolean).join(" ");
 
+/**
+ * Renk rolleri (src/README.md › Görsel dil): info = mavi, eylem ve 'şu an' (birincil maviyle aynı renk) · success / danger =
+ * sonuç (ve danger: hata) · warning = dikkat ve süre · accent = mor, YALNIZ yapay zekâ · neutral = gri, geri kalan her şey.
+ * Rozet bütçesi: nesne başına en çok 1 renkli durum rozeti. Renk her zaman metin (ve çoğu kez simge) ile birlikte kullanılır.
+ */
 export type Tone = "neutral" | "info" | "success" | "warning" | "danger" | "accent";
 
 // ───────────── Düğmeler ─────────────
@@ -136,7 +141,11 @@ export interface CardProps {
   className?: string;
   /** Başlık düzeyi (varsayılan h2) */
   headingLevel?: 2 | 3 | 4;
-  tone?: "default" | "muted" | "warning" | "danger" | "success" | "accent";
+  /**
+   * Kart tonu: action = ince mavi kenar (kullanıcıdan eylem bekleyen panel: oy, sayım doğrulama) · warning / danger / success =
+   * kalın sol kenar (uyarı ve sonuç) · muted = gri zemin · accent = mor kenar, YALNIZ yapay zekâ içeriği.
+   */
+  tone?: "default" | "muted" | "action" | "warning" | "danger" | "success" | "accent";
   id?: string;
   /**
    * true → başlık, gövdeyi açıp kapatan düğme olur (WAI-ARIA akordeonu: <h2><button aria-expanded aria-controls>).
@@ -387,6 +396,7 @@ export interface ProgressBarProps {
   valueText?: string;
   /** Görsel etiket satırını göster */
   showLabel?: boolean;
+  /** primary (varsayılan, mavi: süren katılım ve destek) · success / danger sonuç · warning dikkat · accent YALNIZ yapay zekâ */
   tone?: "primary" | "success" | "warning" | "danger" | "accent";
   /** Eşik işareti (aynı ölçekte; ör. taban 0,4) */
   marker?: number;

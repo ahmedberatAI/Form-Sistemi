@@ -2,6 +2,7 @@
 // Oylama sürerken yalnızca katılım gösterilir; sonuçlar oylama bitince açıklanır.
 // 'Eylem önce': başlık ve kalan süre → katılım çubuğu → tek satırlık not → oy formu → makbuz satırı → koşullu uyarılar →
 // yeniden oylama eşiği → açıklama. Makbuz hash'leri ile gizli oy ve vekâlet açıklaması adlandırılmış açılırlarda durur.
+// Görsel dil: eylem paneli ince mavi kenarlıdır (tone="action"); katılım çubuğu mavidir (mor yalnız yapay zekâ içindir).
 import { Link, useLocation } from "react-router-dom";
 import { useState } from "react";
 import { VOTE_LABELS, type BallotReceipt, type ProposalDetail, type VoteChoice } from "@forum/shared";
@@ -69,10 +70,10 @@ export function VotePanel({ proposal: p, setProposal, reload }: VotePanelProps) 
   const params = p.params;
 
   return (
-    <Card title={round === 2 ? "Yeniden oylama" : "Oylama"} actions={<Countdown to={p.phaseEndsAt} prefix="Kalan" />} tone="accent" className="vote-panel">
+    <Card title={round === 2 ? "Yeniden oylama" : "Oylama"} actions={<Countdown to={p.phaseEndsAt} prefix="Kalan" />} tone="action" className="vote-panel">
       <div className="stack">
         {part ? (
-          <ProgressBar label="Katılım" value={part.voted} max={Math.max(1, part.eligible)} valueText={`${part.voted}/${part.eligible} uygun seçmen`} tone="accent" />
+          <ProgressBar label="Katılım" value={part.voted} max={Math.max(1, part.eligible)} valueText={`${part.voted}/${part.eligible} uygun seçmen`} tone="primary" />
         ) : null}
         <p className="small muted vote-secret">Ara sonuç gösterilmez; yalnız katılım görünür.</p>
 
@@ -135,7 +136,7 @@ export function VotePanel({ proposal: p, setProposal, reload }: VotePanelProps) 
                 <KeyValue
                   compact
                   items={[
-                    { label: "Oy pusulası kimliği", value: <HashText hash={current.receipt.ballotId} chars={12} label="Oy pusulası kimliği" />, hint: "Öneriye özeldir; farklı önerilerdeki oylarınız birbirine bağlanamaz." },
+                    { label: "Oy pusulası kimliği", value: <HashText hash={current.receipt.ballotId} chars={12} label="Oy pusulası kimliği" digest={false} />, hint: "Öneriye özeldir; farklı önerilerdeki oylarınız birbirine bağlanamaz." },
                     { label: "Taahhüt", value: <HashText hash={current.receipt.commitment} chars={12} label="Taahhüt" /> },
                     {
                       label: "Defter işlemi",

@@ -41,7 +41,8 @@ test("itiraz: Red oyu veren üye arayüzden imzalar, imzacı anonim kalır, geç
   const eligible: string[] = [];
   for (const n of [...BLOCKS.B, ...BLOCKS.C, ...BLOCKS.A]) {
     if ((await api.proposal(k29.id, n)).canObject) eligible.push(n);
-    if (eligible.length >= 3) break;
+    // Tohumun zamana bağlı küçük farkları yüzünden gereken imza sayısı değişebilir (kural a: kümede %75; kural b: iki kümeden 6 imza): 3'te kesmeyiz.
+    if (eligible.length >= 8) break;
   }
   expect(eligible.length, "ilk turda Red oyu veren ve henüz imzalamamış en az bir uygun seçmen olmalı").toBeGreaterThan(0);
   const signer = eligible[0];

@@ -30,6 +30,7 @@ const LedgerPage = page(() => import("./pages/LedgerPage"));
 const BlockPage = page(() => import("./pages/BlockPage"));
 const TxPage = page(() => import("./pages/TxPage"));
 const OntologyPage = page(() => import("./pages/OntologyPage"));
+const KesfetPage = page(() => import("./pages/KesfetPage"));
 
 function NotFound() {
   return (
@@ -91,6 +92,7 @@ export default function App() {
               <Route path="/defter/blok/:height" element={<BlockPage />} />
               <Route path="/defter/islem/:hash" element={<TxPage />} />
               <Route path="/yonetmelik" element={<OntologyPage />} />
+              <Route path="/kesfet" element={<KesfetPage />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>

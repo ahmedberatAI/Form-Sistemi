@@ -1,23 +1,30 @@
 // Silme (karartma) talebi formu: hedef mesaj(lar), silme gerekçesi, açıklama.
 // "Görüş ayrılığı" değiştirilemez madde gereği seçilemez (devre dışı ve açıklamalı gösterilir).
 // Aynı tartışmadaki aynı yazarın birden çok mesajı tek talepte toplanabilir.
+// Sade düzen: 'Tartışma silinmez' tek cümledir (ayrıntısı açılırda); kurallar canlı sayaçlı tek satırdır ('Açık talepleriniz 1/3 ·
+// son 24 saatte 2/5'), dört kural açılırdadır ve sınıra 1 kala ya da sınırda turuncu ve AÇIK gelir. Talep bir mesajdan başlatıldıysa
+// 'Mesaj kimliğiyle ekle' alanı da açılırdadır.
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { DELETION_GROUND_VOCAB, expandIri, fy, type GroundInfo, type MessageView } from "@forum/shared";
+import { DELETION_GROUND_VOCAB, expandIri, fy, type GroundInfo, type MessageView, type ProposalStatus, type ProposalSummary } from "@forum/shared";
 import { getMessage, getThread, listProposals } from "../../api/endpoints";
 import { useAuth } from "../../auth/AuthContext";
 import { useOntology } from "../../lib/categories";
 import { formatPercent, proposalRef, truncate } from "../../lib/format";
 import { routes } from "../../lib/routes";
 import { useAsync } from "../../lib/useAsync";
-import { Alert, Badge, Button, cx, ErrorView, Input, RadioGroup, Spinner, StanceBadge, Textarea, Time } from "../../ui";
+import { Alert, Badge, Button, cx, Details, ErrorView, Icon, Input, RadioGroup, Spinner, StanceBadge, Textarea, Time } from "../../ui";
+import { profileHref } from "../system/accountLogic";
 import { UserLink } from "../UserLink";
+import "./new-proposal.css";
 
 export const GORUS_AYRILIGI_IRI = fy("GorusAyriligi");
 export const MAX_OPEN_DELETIONS = 3;
 export const MAX_DELETIONS_PER_DAY = 5;
 const MAX_MESSAGES = 20;
 const DAY_MS = 86_400_000;
+/** Sunucuyla aynı: bu durumlardaki talepler 'açık' sayılmaz (server/src/forum/proposals.ts › CLOSED_SQL). */
+const CLOSED_STATUSES: ProposalStatus[] = ["enacted", "rejected", "withdrawn", "expired", "inadmissible"];
 
 export interface DeletionDraft {
   messageIds: string[];
@@ -53,6 +60,37 @@ export function deletionTargetProblems(messages: MessageView[], myId: string | n
   return out;
 }
 
+export interface DeletionLimits {
+  /** Sonuçlanmamış silme talepleri (taslak dahil) */
+  open: number;
+  /** Son 24 saatte açılanlar */
+  day: number;
+}
+
+/** Kullanıcının kendi silme taleplerinden sayaçlar (saf; sunucu da aynı sınırları aynı biçimde sayar). */
+export function deletionLimits(mine: readonly Pick<ProposalSummary, "status" | "createdAt">[], now: number): DeletionLimits {
+  return {
+    open: mine.filter((p) => !CLOSED_STATUSES.includes(p.status)).length,
+    day: mine.filter((p) => p.createdAt > now - DAY_MS).length,
+  };
+}
+
+export type DeletionLimitLevel = "ok" | "near" | "at";
+
+/** Sınıra uzaklık: 'at' sınırda (yeni talep reddedilir), 'near' sınıra 1 kala, 'ok' olağan. Sayaç yüklenmediyse 'ok'. */
+export function deletionLimitLevel(limits: DeletionLimits | null): DeletionLimitLevel {
+  if (!limits) return "ok";
+  if (limits.open >= MAX_OPEN_DELETIONS || limits.day >= MAX_DELETIONS_PER_DAY) return "at";
+  if (limits.open >= MAX_OPEN_DELETIONS - 1 || limits.day >= MAX_DELETIONS_PER_DAY - 1) return "near";
+  return "ok";
+}
+
+/** Kurallar satırının metni: "Açık talepleriniz 1/3 · son 24 saatte 2/5" (sayaç yokken yalnız sınırlar). */
+export function deletionLimitLine(limits: DeletionLimits | null): string {
+  if (!limits) return `en çok ${MAX_OPEN_DELETIONS} açık talep · 24 saatte en çok ${MAX_DELETIONS_PER_DAY} talep`;
+  return `Açık talepleriniz ${limits.open}/${MAX_OPEN_DELETIONS} · son 24 saatte ${limits.day}/${MAX_DELETIONS_PER_DAY}`;
+}
+
 export interface DeletionFormProps {
   value: DeletionDraft;
   onChange: (next: DeletionDraft) => void;
@@ -67,6 +105,9 @@ export function DeletionForm({ value, onChange, errors = {}, onMessagesLoaded }:
   const [manualId, setManualId] = useState("");
   const [manualError, setManualError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  // Talep bir mesajdan başlatıldıysa (hedef önceden dolu) elle ekleme alanı açılırda durur. İlk değer sabittir: elle ilk mesajı
+  // ekleyen kişinin alanı (ve odağı) ekleme anında kaybolmaz.
+  const [startedWithTarget] = useState(() => value.messageIds.length > 0);
 
   const idsKey = value.messageIds.join(",");
   const msgs = useAsync(
@@ -89,13 +130,8 @@ export function DeletionForm({ value, onChange, errors = {}, onMessagesLoaded }:
   }, [first, thread.data, value.messageIds]);
 
   const mine = useAsync(() => listProposals({ mine: true, kind: "deletion", limit: 200 }), [auth.user?.id], { enabled: !!auth.user });
-  const limits = useMemo(() => {
-    if (!mine.data) return null;
-    const now = auth.now();
-    const open = mine.data.filter((p) => !["enacted", "rejected", "withdrawn", "expired", "inadmissible"].includes(p.status)).length;
-    const day = mine.data.filter((p) => p.createdAt > now - DAY_MS).length;
-    return { open, day };
-  }, [mine.data, auth]);
+  const limits = useMemo(() => (mine.data ? deletionLimits(mine.data, auth.now()) : null), [mine.data, auth]);
+  const level = deletionLimitLevel(limits);
 
   const problems = deletionTargetProblems(messages, auth.user?.id);
   const selectedGround = grounds.find((g) => expandIri(g.iri) === expandIri(value.ground));
@@ -131,12 +167,42 @@ export function DeletionForm({ value, onChange, errors = {}, onMessagesLoaded }:
     }
   };
 
+  const manualField = (
+    <div className="del-manual">
+      <Input
+        label="Mesaj kimliğiyle ekle"
+        value={manualId}
+        onChange={(e) => setManualId(e.target.value)}
+        error={manualError ?? undefined}
+        hint={`Aynı tartışmadan, aynı yazarın mesajları; en çok ${MAX_MESSAGES} mesaj.`}
+        className="mono"
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            void addManual();
+          }
+        }}
+      />
+      <Button icon="plus" onClick={() => void addManual()} loading={adding} disabled={!manualId.trim()}>
+        Ekle
+      </Button>
+    </div>
+  );
+  const openRequests = mine.data?.filter((p) => !CLOSED_STATUSES.includes(p.status)) ?? [];
+
   return (
     <div className="del-form stack">
-      <Alert tone="info" title="Tartışma silinmez">
-        Talep kabul edilirse mesaj <strong>karartılır</strong>: yerinde “[#K-… kararıyla gizlendi — gerekçe: …]” mezar taşı kalır, eski sürümler ve
-        defterdeki içerik özeti korunur. Asıl metin yalnızca denetçiye (erişim kaydıyla) açıktır; mesajın yazarı karartılamayan bir cevap metni
-        ekleyebilir. Talep reddedilirse herkese açık arşivlenir.
+      <Alert tone="info" title="Tartışma silinmez" className="del-intro">
+        <p className="mt-0">
+          Talep kabul edilirse mesaj <strong>karartılır</strong>: yerinde mezar taşı kalır.
+        </p>
+        <Details summary="Karartma nasıl işler?" className="del-more">
+          <p className="mt-0">
+            Mesajın yerinde “[#K-… kararıyla gizlendi — gerekçe: …]” mezar taşı kalır, eski sürümler ve defterdeki içerik özeti korunur. Asıl metin
+            yalnızca denetçiye (erişim kaydıyla) açıktır; mesajın yazarı karartılamayan bir cevap metni ekleyebilir. Talep reddedilirse herkese açık
+            arşivlenir.
+          </p>
+        </Details>
       </Alert>
 
       <fieldset className="form-section">
@@ -215,25 +281,13 @@ export function DeletionForm({ value, onChange, errors = {}, onMessagesLoaded }:
           </div>
         ) : null}
 
-        <div className="del-manual">
-          <Input
-            label="Mesaj kimliğiyle ekle"
-            value={manualId}
-            onChange={(e) => setManualId(e.target.value)}
-            error={manualError ?? undefined}
-            hint={`Aynı tartışmadan, aynı yazarın mesajları; en çok ${MAX_MESSAGES} mesaj.`}
-            className="mono"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                void addManual();
-              }
-            }}
-          />
-          <Button icon="plus" onClick={() => void addManual()} loading={adding} disabled={!manualId.trim()}>
-            Ekle
-          </Button>
-        </div>
+        {startedWithTarget ? (
+          <Details summary="Başka bir mesajı kimliğiyle ekle" className="del-manual-more">
+            {manualField}
+          </Details>
+        ) : (
+          manualField
+        )}
       </fieldset>
 
       <fieldset className="form-section">
@@ -253,7 +307,8 @@ export function DeletionForm({ value, onChange, errors = {}, onMessagesLoaded }:
                 <span className="del-ground">
                   <span className={cx(invalid && "del-ground-invalid")}>{g.label}</span>
                   {g.urgent ? (
-                    <Badge tone="danger" title="Talep anında mesaj daraltılır">
+                    // Turuncu: dikkat ve süre (kırmızı sonuç ve hata içindir). Anlamı ipucu satırında görünür metin olarak da yazar.
+                    <Badge tone="warning" title="Talep anında mesaj daraltılır">
                       acil
                     </Badge>
                   ) : null}
@@ -268,6 +323,10 @@ export function DeletionForm({ value, onChange, errors = {}, onMessagesLoaded }:
                 <>
                   <strong>Değiştirilemez madde: görüş ayrılığı silme gerekçesi olamaz.</strong> Bir görüşe katılmamak, onu karartmak için yeterli değildir;
                   karşı görüşünüzü tartışmaya yazın.
+                </>
+              ) : g.urgent ? (
+                <>
+                  {g.description} <span className="del-urgent-note">Acil: talep açılınca mesaj hemen daraltılır.</span>
                 </>
               ) : (
                 g.description
@@ -301,42 +360,56 @@ export function DeletionForm({ value, onChange, errors = {}, onMessagesLoaded }:
         />
       </fieldset>
 
-      <Alert tone="info" title="Kurallar ve sınırlar">
-        <ul className="mt-0">
-          <li>
-            Karar <strong>DEL</strong> katmanında oylanır: en az 2/3 onay, köprü testi ve mesaj yazarının kendi görüş kümesinde en az{" "}
-            {formatPercent(0.5)} destek. Mesaj yazarına bildirim gider; tartışma süresinde mesajını kendisi düzenleyebilir.
-          </li>
-          <li>
-            Aynı anda en çok {MAX_OPEN_DELETIONS} açık silme talebiniz olabilir; 24 saatte en çok {MAX_DELETIONS_PER_DAY} talep açabilirsiniz.
-            {limits ? (
+      {/* Kurallar: tek satır ve canlı sayaç (role=status; uyarı kutusu değil). Sınıra 1 kala ya da sınırda turuncu ve kurallar açık. */}
+      <div className={cx("del-limits", level !== "ok" && "del-limits-warning")}>
+        <p className="del-limits-line" role="status">
+          <Icon name={level === "ok" ? "info" : "warning"} size={16} className="del-limits-icon" />
+          <span>
+            <strong>Kurallar ve sınırlar:</strong> {deletionLimitLine(limits)}
+            {level === "near" ? <strong> · sınıra 1 talep kaldı</strong> : null}
+          </span>
+        </p>
+        {level === "at" ? (
+          <p className="del-limits-at">
+            <strong>Sınıra ulaştınız;</strong> yeni talep sunucu tarafından reddedilecektir.
+            {openRequests.length ? (
               <>
                 {" "}
-                Şu an: <strong>{limits.open}</strong>/{MAX_OPEN_DELETIONS} açık, son 24 saatte <strong>{limits.day}</strong>/{MAX_DELETIONS_PER_DAY}.
+                Açık talepleriniz:{" "}
+                {openRequests.map((p) => (
+                  <Link key={p.id} to={routes.proposal(p.id)} className="del-ref">
+                    {proposalRef(p.seq)}
+                  </Link>
+                ))}
               </>
             ) : null}
-          </li>
-          <li>
-            Bir mesaj için aynı anda tek bir silme talebi açık olabilir. Mevcut talep acil değilse kişisel veri ifşası ya da tehdit gerekçeli talep yine
-            açılabilir ve mesaj hemen daraltılır; “Görüş ayrılığı” gibi geçersiz talepler başka talebi engellemez.
-          </li>
-          <li>
-            Kendi kişisel verilerinizin silinmesi oylamaya konmaz; <Link to={routes.profile()}>Profil</Link> sayfasındaki KVKK bölümünden yapılır.
-          </li>
-        </ul>
-        {mine.data && limits && (limits.open >= MAX_OPEN_DELETIONS || limits.day >= MAX_DELETIONS_PER_DAY) ? (
-          <p className="mt-0">
-            <strong>Sınıra ulaştınız;</strong> yeni talep sunucu tarafından reddedilecektir. Açık talepleriniz:{" "}
-            {mine.data
-              .filter((p) => !["enacted", "rejected", "withdrawn", "expired", "inadmissible"].includes(p.status))
-              .map((p) => (
-                <Link key={p.id} to={routes.proposal(p.id)} className="del-ref">
-                  {proposalRef(p.seq)}
-                </Link>
-              ))}
           </p>
         ) : null}
-      </Alert>
+        <Details summary="Silme kuralları (4)" open={level !== "ok" ? true : undefined} className="del-rules">
+          <ul className="del-rules-list">
+            <li>
+              Karar <strong>DEL</strong> katmanında oylanır: en az 2/3 onay, köprü testi ve mesaj yazarının kendi görüş kümesinde en az{" "}
+              {formatPercent(0.5)} destek. Mesaj yazarına bildirim gider; tartışma süresinde mesajını kendisi düzenleyebilir.
+            </li>
+            <li>
+              Aynı anda en çok {MAX_OPEN_DELETIONS} açık silme talebiniz olabilir; 24 saatte en çok {MAX_DELETIONS_PER_DAY} talep açabilirsiniz.
+              {limits ? (
+                <>
+                  {" "}
+                  Şu an: <strong>{limits.open}</strong>/{MAX_OPEN_DELETIONS} açık, son 24 saatte <strong>{limits.day}</strong>/{MAX_DELETIONS_PER_DAY}.
+                </>
+              ) : null}
+            </li>
+            <li>
+              Bir mesaj için aynı anda tek bir silme talebi açık olabilir. Mevcut talep acil değilse kişisel veri ifşası ya da tehdit gerekçeli talep yine
+              açılabilir ve mesaj hemen daraltılır; “Görüş ayrılığı” gibi geçersiz talepler başka talebi engellemez.
+            </li>
+            <li>
+              Kendi kişisel verilerinizin silinmesi oylamaya konmaz; <Link to={profileHref("kvkk")}>Profil</Link> sayfasındaki KVKK bölümünden yapılır.
+            </li>
+          </ul>
+        </Details>
+      </div>
     </div>
   );
 }

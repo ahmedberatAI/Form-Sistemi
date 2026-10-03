@@ -1,14 +1,20 @@
+// Ayarlar: Görünüm (tema ve görünüm yoğunluğu) → Sunucu bağlantısı → Bu cihazdaki oy makbuzları; seyrek gereken tanılama 'Gelişmiş' başlığı
+// altında katlı kartlardır (Doğrulayıcı anahtarları, Uygulama hakkında; 'Tam' görünümde açık). Derin bağlantı: ?bolum=anahtarlar
+// (components/system/accountLogic.ts › SETTINGS_ANCHORS); PinNotice 'Ayarlar › Gelişmiş' bağlantısı oraya gider.
 import { useEffect, useState, type FormEvent } from "react";
 import { SURUM } from "@forum/shared";
 import { defaultServerUrl, getSavedServerUrl, getServerUrl, NATIVE_DEFAULT_SERVER, normalizeServerUrl, pingServer, setServerUrl } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { aboutSummary, pinsSummary, platformLabel, SETTINGS_ANCHORS } from "../components/system/accountLogic";
+import "../components/system/account.css";
 import { setTheme, getTheme, THEME_LABELS, type ThemeMode } from "../components/system/theme";
 import { DETAIL_LEVEL_LABELS, useDetailLevel, type DetailLevel } from "../lib/detailLevel";
 import { formatDateTime, shortHash } from "../lib/format";
 import { isNativePlatform, platformName } from "../lib/prefs";
 import { exportReceipts, listReceipts } from "../lib/receipts";
+import { useSectionParam } from "../lib/sectionParam";
 import { listPinnedValidators, resetPinnedValidators, type PinnedValidators } from "../lib/validators";
-import { Alert, Button, Card, CopyButton, Input, KeyValue, PageHeader, RadioGroup, Table, useConfirm, useToast } from "../ui";
+import { Alert, Button, Card, CopyButton, Input, KeyValue, PageHeader, RadioGroup, Section, Table, Term, useConfirm, useToast } from "../ui";
 
 function ServerCard() {
   const auth = useAuth();
@@ -79,7 +85,7 @@ function ServerCard() {
   };
 
   return (
-    <Card title="Sunucu bağlantısı" subtitle={native ? "Android uygulaması bilgisayardaki sunucuya bu adresle bağlanır." : "Boş bırakılırsa web sitesinin sunulduğu adres kullanılır."}>
+    <Card title="Sunucu bağlantısı" anchor={SETTINGS_ANCHORS.sunucu} subtitle={native ? "Android uygulaması bilgisayardaki sunucuya bu adresle bağlanır." : "Boş bırakılırsa web sitesinin sunulduğu adres kullanılır."}>
       <form className="stack" onSubmit={save} noValidate>
         <Input
           label="Sunucu adresi"
@@ -129,7 +135,7 @@ function ThemeCard() {
   const [mode, setMode] = useState<ThemeMode>(getTheme());
   const { level, setLevel } = useDetailLevel();
   return (
-    <Card title="Görünüm">
+    <Card title="Görünüm" anchor={SETTINGS_ANCHORS.gorunum}>
       <div className="stack">
         <RadioGroup<ThemeMode>
           label="Tema"
@@ -178,11 +184,22 @@ function ValidatorsCard() {
     toast.success("Sabitlenmiş doğrulayıcı anahtarları silindi.");
   };
 
+  // Başlıkta TOFU/Ed25519 geçmez (ilk ekranda jargon yok); terimler gövdede sözlük düğmesiyle açıklanır. Sıfırlama gövdenin altlığındadır:
+  // kapalıyken görünmez (1 dokunuş), açıkken onay penceresi ister.
   return (
     <Card
-      title="Doğrulayıcı anahtarları (TOFU)"
-      subtitle="Oy makbuzları, dağıtık defterin doğrulayıcı imzalarıyla cihazınızda doğrulanır. Anahtarlar ilk kullanımda sabitlenir; sunucu sonradan farklı anahtar bildirirse uyarılırsınız."
-      actions={
+      title="Doğrulayıcı anahtarları"
+      headingLevel={3}
+      collapsible
+      anchor={SETTINGS_ANCHORS.anahtarlar}
+      summary={pinsSummary(pins)}
+      subtitle={
+        <>
+          Oy makbuzları, <Term id="dagitik-defter">dağıtık defterin</Term> <Term id="dogrulayici">doğrulayıcı</Term> imzalarıyla cihazınızda doğrulanır. Anahtarlar
+          ilk kullanımda sabitlenir (<Term id="tofu">TOFU</Term>); sunucu sonradan farklı anahtar bildirirse uyarılırsınız.
+        </>
+      }
+      footer={
         pins && pins.length ? (
           <Button variant="danger" size="sm" onClick={reset}>
             Sıfırla
@@ -191,7 +208,7 @@ function ValidatorsCard() {
       }
     >
       {pins === null ? null : pins.length === 0 ? (
-        <p className="muted">Henüz sabitlenmiş anahtar yok. İlk oy doğrulamasında sabitlenecek.</p>
+        <p className="muted mt-0">Henüz sabitlenmiş anahtar yok. İlk oy doğrulamasında sabitlenecek.</p>
       ) : (
         <div className="stack">
           {pins.map((p) => (
@@ -210,7 +227,15 @@ function ValidatorsCard() {
                 rowKey={(v) => v.id}
                 columns={[
                   { key: "id", header: "Doğrulayıcı" },
-                  { key: "publicKey", header: "Açık anahtar (Ed25519)", render: (v) => <code className="hash" title={v.publicKey}>{shortHash(v.publicKey, 16)}</code> },
+                  {
+                    key: "publicKey",
+                    header: (
+                      <>
+                        Açık anahtar (<Term id="ed25519">Ed25519</Term>)
+                      </>
+                    ),
+                    render: (v) => <code className="hash" title={v.publicKey}>{shortHash(v.publicKey, 16)}</code>,
+                  },
                 ]}
               />
             </div>
@@ -231,7 +256,7 @@ function ReceiptsCard() {
     })();
   }, []);
   return (
-    <Card title="Bu cihazdaki oy makbuzları" subtitle="Makbuzlar yalnızca bu cihazda saklanır; “Oyum kayıtlı mı?” sayfasında oyunuzu bağımsız olarak doğrulamak için kullanılır.">
+    <Card title="Bu cihazdaki oy makbuzları" anchor={SETTINGS_ANCHORS.makbuzlar} subtitle="Makbuzlar yalnızca bu cihazda saklanır; “Oyum kayıtlı mı?” sayfasında oyunuzu bağımsız olarak doğrulamak için kullanılır.">
       <div className="row">
         <span>{count === null ? "…" : `${count} makbuz`}</span>
         {count ? <CopyButton text={json} label="Makbuzları kopyala (JSON yedek)" /> : null}
@@ -243,12 +268,13 @@ function ReceiptsCard() {
 function AboutCard() {
   const auth = useAuth();
   const sys = auth.system;
+  const platform = platformName();
   return (
-    <Card title="Uygulama hakkında">
+    <Card title="Uygulama hakkında" headingLevel={3} collapsible anchor={SETTINGS_ANCHORS.hakkinda} summary={aboutSummary(SURUM, platform)}>
       <KeyValue
         items={[
           { label: "İstemci sürümü", value: SURUM },
-          { label: "Platform", value: platformName() === "web" ? "Web tarayıcısı" : `Yerel uygulama (${platformName()})` },
+          { label: "Platform", value: platformLabel(platform) },
           { label: "Sunucu sürümü", value: sys?.version ?? "—" },
           { label: "Sunucu (simüle) saati", value: sys ? formatDateTime(sys.now) : "—", hint: sys && sys.clockOffsetMs ? "Yönetici saati ileri aldı; tüm süreler bu saate göredir." : undefined },
           { label: "Zaman ölçeği", value: sys ? `×${sys.timeScale} (süreler bu katsayıya bölünür)` : "—" },
@@ -261,16 +287,22 @@ function AboutCard() {
 }
 
 export default function SettingsPage() {
+  // ?bolum=anahtarlar | hakkinda | gorunum … : kartı açar, kaydırır, odağı taşır ve parametreyi siler.
+  useSectionParam(true);
   return (
     <div className="page">
       <PageHeader title="Ayarlar" subtitle="Bu ayarlar yalnızca bu cihazda saklanır." />
       <div className="grid-2">
-        <ServerCard />
         <ThemeCard />
-        <ValidatorsCard />
+        <ServerCard />
         <ReceiptsCard />
-        <AboutCard />
       </div>
+      <Section id={SETTINGS_ANCHORS.gelismis} className="acct-advanced" title="Gelişmiş" description="Seyrek gereken tanılama ve cihaz bilgileri; başlıklara dokunarak açın.">
+        <div className="grid-2">
+          <ValidatorsCard />
+          <AboutCard />
+        </div>
+      </Section>
     </div>
   );
 }

@@ -1,5 +1,7 @@
 // Konu ağacı: GET /api/topics düz listesini (parentId) iç içe, açılır/kapanır ağaca çevirir.
 // Arama/kategori süzgeci verildiğinde eşleşenler ve bağlam için üst konuları gösterilir (hepsi açık).
+// Faz 3 satır kuralları (rozet bütçesi): 'sürüm n' yalnız n > 1 ise; kategoriler en çok 2 ve '+n'; açık öneri sayısı mavi (şu an),
+// 'Arşivlendi' ve öteki sayılar gri. Satırda en çok bir renkli rozet vardır.
 import { useId, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { expandIri, type TopicSummary } from "@forum/shared";
@@ -7,6 +9,8 @@ import { useOntology } from "../../lib/categories";
 import { normalizeSearch, topicRef } from "../../lib/format";
 import { routes } from "../../lib/routes";
 import { Badge, Button, cx, Icon } from "../../ui";
+import { MAX_TREE_CATEGORIES, showVersionBadge, splitCategories } from "./topicsLogic";
+import "./topics.css";
 
 export interface TopicTreeProps {
   topics: TopicSummary[];
@@ -152,6 +156,7 @@ function TopicTreeItem({ node, depth, open, onToggle, toggleDisabled, highlight,
   const t = node.topic;
   const listId = useId();
   const has = node.children.length > 0;
+  const { shown: shownCats, hidden: hiddenCats } = splitCategories(t.categories, MAX_TREE_CATEGORIES);
   return (
     <li className={cx("ttree-item", highlight && "ttree-hit", t.status === "archived" && "ttree-archived")}>
       <div className="ttree-row">
@@ -175,27 +180,35 @@ function TopicTreeItem({ node, depth, open, onToggle, toggleDisabled, highlight,
             <span className="ttree-ref">{topicRef(t.seq)}</span> {t.title}
           </Link>
           <div className="ttree-meta">
-            <Badge tone="neutral" title={`Yürürlükteki metin sürümü ${t.version}`}>
-              sürüm {t.version}
-            </Badge>
+            {showVersionBadge(t.version) ? (
+              <Badge tone="neutral" title={`Yürürlükteki metin sürümü ${t.version}`}>
+                sürüm {t.version}
+              </Badge>
+            ) : null}
             {t.childCount > 0 ? <Badge tone="neutral">{t.childCount} alt konu</Badge> : null}
             <span className="small muted">
               <Icon name="topics" size={13} /> {t.messageCount} mesaj
             </span>
             {t.openProposalCount > 0 ? (
-              <Badge tone="accent" icon="proposals" title="Bu konuyu hedefleyen açık öneriler (düzenleme, alt konu, silme)">
+              <Badge tone="info" icon="proposals" title="Bu konuyu hedefleyen açık öneriler (düzenleme, alt konu, silme)">
                 {t.openProposalCount} açık öneri
               </Badge>
             ) : null}
-            {t.status === "archived" ? <Badge tone="warning">Arşivlendi</Badge> : null}
+            {t.status === "archived" ? <Badge tone="neutral">Arşivlendi</Badge> : null}
           </div>
-          {t.categories.length ? (
+          {shownCats.length ? (
             <div className="cat-tags">
-              {t.categories.map((c) => (
+              {shownCats.map((c) => (
                 <span className="cat-tag" key={c} title={categoryPath(c)}>
                   {categoryLabel(c)}
                 </span>
               ))}
+              {hiddenCats.length ? (
+                <span className="cat-tag cat-tag-more" title={hiddenCats.map(categoryLabel).join(", ")}>
+                  +{hiddenCats.length}
+                  <span className="sr-only"> kategori daha</span>
+                </span>
+              ) : null}
             </div>
           ) : null}
         </div>

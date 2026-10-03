@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { shortHash } from "../lib/format";
 import { cx } from "./basic";
 import { Icon } from "./Icon";
+import { Term } from "./Term";
 
 /** Panoya kopyalar (Clipboard API yoksa gizli textarea yedeği). Başarıyı döner. */
 export async function copyToClipboard(text: string): Promise<boolean> {
@@ -80,14 +81,32 @@ export interface HashTextProps {
   full?: boolean;
   /** Erişilebilir açıklama (ör. "İşlem özeti") */
   label?: string;
+  /**
+   * Değer bir özet (SHA-256 parmak izi) mi? Varsayılan true: fare ipucu 'Özet (parmak izi): …' der. İmza, açık anahtar ve rastgele
+   * kimlik gibi özet OLMAYAN değerlerde false verin; ipucu yalnız değerin kendisidir (sözlükteki 'özet' tanımı yanlış öğretilmesin).
+   */
+  digest?: boolean;
+  /**
+   * Yanına 'Özet nedir?' düğmesi koyar: dokununca özetin günlük karşılığı ('parmak izi') sözlük penceresinde okunur.
+   * Varsayılan false (tablo ve satırlarda gürültü olmasın). Bağlantı, düğme ya da <summary> içindeki HashText'te kullanılmaz.
+   */
+  explain?: boolean;
   className?: string;
 }
 
-export function HashText({ hash, chars = 10, copy = true, to, full, label, className }: HashTextProps) {
+/**
+ * Fare ipucu. 'özet' sözcüğü hash anlamında YENİDEN ADLANDIRILMAZ (görünen etiketler aynen kalır); günlük karşılığı olan
+ * 'parmak izi' ipucuna ve sözlüğe eklenir. Tam değer ipucunun sonunda durur.
+ */
+export function hashTitle(hash: string): string {
+  return `Özet (parmak izi): ${hash}`;
+}
+
+export function HashText({ hash, chars = 10, copy = true, to, full, label, digest = true, explain, className }: HashTextProps) {
   if (!hash) return <span className="muted">—</span>;
   const shown = full ? hash : shortHash(hash, chars);
   const text = (
-    <code className={cx("hash", full && "hash-full")} title={hash} aria-label={label ? `${label}: ${hash}` : undefined}>
+    <code className={cx("hash", full && "hash-full")} title={digest ? hashTitle(hash) : hash} aria-label={label ? `${label}: ${hash}` : undefined}>
       {shown}
     </code>
   );
@@ -95,6 +114,12 @@ export function HashText({ hash, chars = 10, copy = true, to, full, label, class
     <span className={cx("hash-wrap", className)}>
       {to ? <Link to={to}>{text}</Link> : text}
       {copy ? <CopyButton text={hash} iconOnly label={label ? `${label} kopyala` : "Özeti kopyala"} /> : null}
+      {explain ? (
+        <Term id="ozet" className="term-info">
+          <Icon name="info" size={14} />
+          <span className="sr-only">Özet nedir?</span>
+        </Term>
+      ) : null}
     </span>
   );
 }

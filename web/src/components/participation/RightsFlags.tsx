@@ -92,7 +92,8 @@ export function RightsFlags({ proposal: p, onUpdated, showHeading = true }: { pr
         <ul className="plain-list stack-sm" aria-label="Hak etkisi bayrakları">
           {groups.map((g) => (
             <li key={`${g.right}|${g.direction}`} className="row">
-              <Badge tone={g.direction === "restrict" ? "warning" : "info"} icon={g.direction === "restrict" ? "warning" : "info"}>
+              {/* Kısıtlama dikkat ister (turuncu); genişletme gri (mavi eylem içindir; ön denetimdeki 'genişletebilir' ile aynı rol) */}
+              <Badge tone={g.direction === "restrict" ? "warning" : "neutral"} icon={g.direction === "restrict" ? "warning" : "info"}>
                 {rightLabel(g.right)}
               </Badge>
               <span className="small">{DIRECTION_LABELS[g.direction]}</span>

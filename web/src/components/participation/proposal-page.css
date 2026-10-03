@@ -18,7 +18,8 @@
   background: var(--surface);
   box-shadow: var(--shadow-sm);
 }
-/* Mavi: benden bir iş bekleniyor (vurgulu zemin) · sakin mavi: bilgi · turuncu: dikkat/süre · yeşil/kırmızı: sonuç · gri: nötr */
+/* Mavi kenar + mavi zemin: benden bir iş bekleniyor · yalnız mavi kenar: bilgi (tek mavi: --info = --primary) · turuncu: dikkat/süre ·
+   yeşil/kırmızı: sonuç · gri: nötr */
 .next-step-action {
   --next-step-tone: var(--primary);
   background: var(--primary-soft);

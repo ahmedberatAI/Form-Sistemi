@@ -6,6 +6,7 @@ import * as api from "../api/endpoints";
 import { syncOntologyWithBylawVersion } from "../lib/categories";
 import { getPref, PREF_KEYS, removePref, setPref } from "../lib/prefs";
 import { setReceiptOwner } from "../lib/receipts";
+import { clearTasks, getTasksLoadedAt, isStale, setTasks } from "../lib/taskStore";
 
 /**
  * docs/API.md yetki kısaltmaları:
@@ -28,6 +29,8 @@ export interface AuthContextValue {
   sessionExpired: boolean;
   /** Okunmamış bildirim sayısı (60 sn'de bir yenilenir) */
   unread: number;
+  // Bekleyen işler (GET /api/me/tasks) bağlamda değil lib/taskStore'dadır: 60 sn'lik yoklama bütün uygulamayı yeniden çizdirmesin.
+  // Okuma: useTaskCount() (kabuk rozeti), useProposalExpectations(id) (öneri kartı).
 
   login(req: LoginRequest): Promise<Me>;
   register(input: RegistrationInput): Promise<Me>;
@@ -37,6 +40,12 @@ export interface AuthContextValue {
   /** /api/system'i yeniden yükler; yönetici saati ileri aldıktan sonra çağırın */
   refreshSystem(): Promise<SystemInfo | null>;
   refreshUnread(): Promise<void>;
+  /**
+   * Bekleyen işleri yeniden yükler (lib/taskStore). `maxAgeMs` verilirse yalnız son yükleme o kadar eskiyse istek gider
+   * (sayfa değişiminde kullanılır). Aynı anda tek istek; `maxAgeMs` olmadan (eylem sonrası) süren bir isteğe denk gelirse o istek
+   * bitince bir kez daha sorulur. Oturum yoksa depo boşalır. Fırlatmaz.
+   */
+  refreshTasks(opts?: { maxAgeMs?: number }): Promise<void>;
   /** Sunucudan dönen güncel Me ile durumu günceller (ör. rıza değişikliği sonrası) */
   setUser(me: Me): void;
 
@@ -53,6 +62,7 @@ export interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 const SYSTEM_REFRESH_MS = 30_000;
+/** Okunmamış bildirimler ve bekleyen işler (lib/taskStore) aynı yoklamada yenilenir. */
 const UNREAD_REFRESH_MS = 60_000;
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -66,9 +76,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Sunucu saati simüle ve TIME_SCALE kat hızlı akar: now() = simAnchor + (Date.now() − realAnchor) × scale
   const clockRef = useRef<{ simAnchor: number; realAnchor: number; scale: number } | null>(null);
   const tokenRef = useRef<string | null>(null);
+  const tasksInflight = useRef<Promise<void> | null>(null);
+  // Süren istek bir eylemden önce başlamış olabilir: zorunlu yenileme (maxAgeMs yok) o sırada gelirse istek bitince bir kez daha sorulur.
+  const tasksAgain = useRef(false);
 
   const applySession = useCallback(async (t: string | null, me: Me | null) => {
     tokenRef.current = t;
+    // Oturum değişti: önceki kişinin bekleyen işleri hiçbir ekranda görünmesin (yeni liste refreshTasks ile gelir).
+    tasksInflight.current = null;
+    tasksAgain.current = false;
+    clearTasks();
     setAuthToken(t);
     setToken(t);
     setUserState(me);
@@ -102,6 +119,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       /* sessizce geç */
     }
+  }, []);
+
+  const refreshTasks = useCallback(async (opts?: { maxAgeMs?: number }): Promise<void> => {
+    const t = tokenRef.current;
+    if (!t) {
+      clearTasks();
+      return;
+    }
+    if (tasksInflight.current) {
+      if (opts?.maxAgeMs === undefined) tasksAgain.current = true;
+      return tasksInflight.current;
+    }
+    if (opts?.maxAgeMs !== undefined && !isStale(getTasksLoadedAt(), Date.now(), opts.maxAgeMs)) return;
+    tasksAgain.current = false;
+    // await Promise.resolve(): istek her zaman zaman uyumsuz başlar, böylece `finally` çalıştığında `run` atanmış olur.
+    const run: Promise<void> = (async () => {
+      await Promise.resolve();
+      do {
+        tasksAgain.current = false;
+        try {
+          const list = await api.getMyTasks();
+          // Yanıt gelene kadar oturum kapandıysa ya da değiştiyse eski kişinin işleri yazılmaz.
+          if (tokenRef.current === t) setTasks(list);
+        } catch {
+          /* sessizce geç: rozet bir sonraki yoklamada güncellenir */
+        }
+      } while (tasksAgain.current && tokenRef.current === t);
+    })().finally(() => {
+      if (tasksInflight.current === run) tasksInflight.current = null;
+    });
+    tasksInflight.current = run;
+    return run;
   }, []);
 
   const refresh = useCallback(async (): Promise<Me | null> => {
@@ -143,13 +192,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           /* 401 dışı hatada connectionError ayarlandı; belirteç korunur, oturum kapatılmaz */
         }
         void refreshUnread();
+        void refreshTasks();
       }
       if (!cancelled) setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [refresh, refreshSystem, refreshUnread]);
+  }, [refresh, refreshSystem, refreshUnread, refreshTasks]);
 
   // 401 olayı: oturumu temizle.
   useEffect(
@@ -158,19 +208,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!tokenRef.current) return;
         setSessionExpired(true);
         setUnread(0);
-        void applySession(null, null);
+        void applySession(null, null); // bekleyen işleri de boşaltır
       }),
     [applySession],
   );
 
-  // Periyodik yenileme + sekmeye geri dönünce yenileme.
+  // Periyodik yenileme + sekmeye geri dönünce yenileme. Bekleyen işler okunmamış bildirimlerle aynı 60 sn'lik yoklamadadır;
+  // böylece 'Ana sayfa' rozeti Ana sayfaya girilmeden de güncel kalır.
   useEffect(() => {
     const sys = window.setInterval(() => void refreshSystem(), SYSTEM_REFRESH_MS);
-    const unr = window.setInterval(() => void refreshUnread(), UNREAD_REFRESH_MS);
+    const unr = window.setInterval(() => {
+      void refreshUnread();
+      void refreshTasks();
+    }, UNREAD_REFRESH_MS);
     const onVisible = () => {
       if (document.visibilityState === "visible") {
         void refreshSystem();
         void refreshUnread();
+        void refreshTasks();
       }
     };
     document.addEventListener("visibilitychange", onVisible);
@@ -179,7 +234,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.clearInterval(unr);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [refreshSystem, refreshUnread]);
+  }, [refreshSystem, refreshUnread, refreshTasks]);
 
   const login = useCallback(
     async (req: LoginRequest) => {
@@ -189,10 +244,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSessionExpired(false);
       setConnectionError(null);
       void refreshUnread();
+      void refreshTasks();
       void refreshSystem();
       return res.user;
     },
-    [applySession, refreshSystem, refreshUnread],
+    [applySession, refreshSystem, refreshUnread, refreshTasks],
   );
 
   const register = useCallback(
@@ -217,7 +273,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setUnread(0);
     setSessionExpired(false);
-    await applySession(null, null);
+    await applySession(null, null); // bekleyen işleri de boşaltır
   }, [applySession]);
 
   const setUser = useCallback((me: Me) => setUserState(me), []);
@@ -266,6 +322,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       refresh,
       refreshSystem,
       refreshUnread,
+      refreshTasks,
       setUser,
       now,
       can,
@@ -275,7 +332,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isExpert,
       isAdmin,
     };
-  }, [user, token, loading, system, connectionError, sessionExpired, unread, login, register, logout, refresh, refreshSystem, refreshUnread, setUser, now]);
+  }, [user, token, loading, system, connectionError, sessionExpired, unread, login, register, logout, refresh, refreshSystem, refreshUnread, refreshTasks, setUser, now]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

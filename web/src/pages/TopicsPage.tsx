@@ -1,17 +1,125 @@
 // Konular: GET /api/topics düz listesinden konu ağacı; başlık araması ve kategori süzgeci.
 // Konular yalnızca oylamayla açılır ve değişir (yeni konu / alt konu / düzenleme teklifi).
-import { useMemo, useState } from "react";
+// Faz 3: dört büyük sayaç kutusu tek satır sayaca indi; telefonda Kategori ve Arşiv süzgeçleri 'Süz' açılırında (arama görünür).
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { expandIri } from "@forum/shared";
+import { expandIri, type TopicSummary } from "@forum/shared";
 import { listTopics } from "../api/endpoints";
 import { useAuth } from "../auth/AuthContext";
 import { TopicTree, useCategoryDescendants } from "../components/proposals/TopicTree";
+import { TOPICS_NARROW_QUERY, topicCounters, topicFilterCount, topicFilterSummary } from "../components/proposals/topicsLogic";
+import "../components/proposals/topics.css";
 import { useOntology } from "../lib/categories";
-import { normalizeSearch, topicRef } from "../lib/format";
+import { formatNumber, normalizeSearch, topicRef } from "../lib/format";
 import { useDebounced, useQueryState } from "../lib/hooks";
 import { routes } from "../lib/routes";
 import { useAsync } from "../lib/useAsync";
-import { Button, Checkbox, EmptyState, ErrorView, Input, LinkButton, PageHeader, Select, Spinner, Stat, StatGrid } from "../ui";
+import { Button, Checkbox, cx, Details, EmptyState, ErrorView, Input, LinkButton, PageHeader, Select, Spinner } from "../ui";
+
+/** Telefon genişliği mi? (Süz açılırı yalnız burada kullanılır; masaüstünde süzgeçler hep görünür.) */
+function useNarrowScreen(): boolean {
+  const [narrow, setNarrow] = useState(() => typeof window !== "undefined" && !!window.matchMedia?.(TOPICS_NARROW_QUERY).matches);
+  useEffect(() => {
+    const mq = window.matchMedia?.(TOPICS_NARROW_QUERY);
+    if (!mq) return;
+    const update = () => setNarrow(mq.matches);
+    update();
+    mq.addEventListener?.("change", update);
+    return () => mq.removeEventListener?.("change", update);
+  }, []);
+  return narrow;
+}
+
+/**
+ * Tek satır sayaçlar (eski dört kutunun yerine): Ana konu · Alt konu · Mesaj · Konulara açık öneri. Gidecek yeri olan tek sayaç
+ * 'Konulara açık öneri'dir (Öneriler sayfası); ötekiler düz sayıdır. Sıfır soluk ama görünür kalır.
+ */
+export function TopicCounters({ topics }: { topics: readonly TopicSummary[] }) {
+  return (
+    <ul className="topic-counts" aria-label="Konu sayıları">
+      {topicCounters(topics).map((c) => {
+        const inner = (
+          <>
+            <span>{c.label}</span> <span className="topic-count-n">{formatNumber(c.count)}</span>
+          </>
+        );
+        return (
+          <li key={c.key}>
+            {c.to ? (
+              <Link className={cx("topic-count", "topic-count-link", c.count === 0 && "is-zero")} to={c.to}>
+                {inner}
+              </Link>
+            ) : (
+              <span className={cx("topic-count", c.count === 0 && "is-zero")}>{inner}</span>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+export interface TopicFiltersProps {
+  /** Telefon genişliği: Kategori ve Arşiv 'Süz' açılırına girer (arama kutusu her zaman görünür). */
+  narrow: boolean;
+  q: string;
+  onQ: (value: string) => void;
+  category: string;
+  onCategory: (value: string) => void;
+  /** Ontolojinin düz kategori listesi (girintili etiketle gösterilir) */
+  categories: readonly { iri: string; label: string; depth: number }[];
+  showArchived: boolean;
+  onShowArchived: (value: boolean) => void;
+  archivedCount: number;
+  /** Açılır ilk çizimde açık mı? (adresten gelen kategori süzgeci gizli kalıp listeyi sessizce daraltmasın) */
+  openAtStart?: boolean;
+}
+
+/**
+ * Arama + Kategori + Arşiv. Masaüstünde üçü de hep görünür; telefonda yalnız arama görünür, Kategori ve Arşiv 'Süz' (etkin sayılı)
+ * açılırındadır. Alanlar ve etiketler iki düzende de aynıdır.
+ */
+export function TopicFilters({ narrow, q, onQ, category, onCategory, categories, showArchived, onShowArchived, archivedCount, openAtStart }: TopicFiltersProps) {
+  const categorySelect = (wide: boolean) => (
+    <Select
+      label="Kategori"
+      value={category}
+      onChange={(e) => onCategory(e.target.value)}
+      options={[{ value: "", label: "Tüm kategoriler" }, ...categories.map((c) => ({ value: c.iri, label: `${"— ".repeat(c.depth)}${c.label}` }))]}
+      hint="Alt kategoriler de dahil edilir."
+      fieldClassName={wide ? "list-filter-wide" : undefined}
+    />
+  );
+  const archivedCheckbox = (wide: boolean) =>
+    archivedCount ? (
+      <Checkbox
+        label={`Arşivlenenleri göster (${archivedCount})`}
+        checked={showArchived}
+        onChange={(e) => onShowArchived(e.target.checked)}
+        fieldClassName={wide ? "list-filter-wide" : undefined}
+      />
+    ) : null;
+  return (
+    <div className="list-filters" role="search">
+      <Input label="Konu ara" type="search" placeholder="Başlık ya da #T-numara…" value={q} onChange={(e) => onQ(e.target.value)} fieldClassName="list-filter-q" />
+      {narrow ? (
+        <div className="list-filter-wide">
+          <Details summary={topicFilterSummary(topicFilterCount({ category, showArchived }))} open={openAtStart}>
+            <div className="topics-filter-fields">
+              {categorySelect(false)}
+              {archivedCheckbox(false)}
+            </div>
+          </Details>
+        </div>
+      ) : (
+        <>
+          {categorySelect(true)}
+          {archivedCheckbox(true)}
+        </>
+      )}
+    </div>
+  );
+}
 
 export default function TopicsPage() {
   const auth = useAuth();
@@ -22,20 +130,10 @@ export default function TopicsPage() {
   const [cat, setCat] = useQueryState("kategori", "");
   const [showArchived, setShowArchived] = useState(false);
   const catSet = useCategoryDescendants(cat || undefined);
+  const narrow = useNarrowScreen();
 
   const topics = data ?? [];
   const archivedCount = topics.filter((t) => t.status === "archived").length;
-  const active = topics.filter((t) => t.status === "active");
-  const stats = useMemo(
-    () => ({
-      roots: active.filter((t) => !t.parentId).length,
-      subs: active.filter((t) => !!t.parentId).length,
-      open: active.reduce((s, t) => s + t.openProposalCount, 0),
-      messages: active.reduce((s, t) => s + t.messageCount, 0),
-    }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [data],
-  );
 
   const pool = topics.filter((t) => showArchived || t.status === "active");
   const nq = normalizeSearch(dq.trim());
@@ -43,6 +141,9 @@ export default function TopicsPage() {
     (t) => (!nq || normalizeSearch(`${topicRef(t.seq)} ${t.title}`).includes(nq)) && (!catSet || t.categories.some((c) => catSet.has(expandIri(c)))),
   ).length;
   const filtering = !!nq || !!catSet;
+
+  // Adresten gelen kategori süzgeci varsa 'Süz' açılırı ilk çizimde açık gelir; etkin süzgeç sayısı kapalı özetinde de yazar.
+  const [openFiltersAtStart] = useState<boolean | undefined>(() => (cat ? true : undefined));
 
   const newTopic = auth.can("V") ? (
     <LinkButton to={routes.newProposal({ kind: "topic" })} variant="primary" icon="plus">
@@ -76,32 +177,20 @@ export default function TopicsPage() {
 
       {topics.length ? (
         <>
-          <StatGrid>
-            <Stat label="Ana konu" value={stats.roots} />
-            <Stat label="Alt konu" value={stats.subs} />
-            <Stat label="Mesaj" value={stats.messages} />
-            <Stat label="Konulara açık öneri" value={stats.open} tone={stats.open ? "accent" : "neutral"} to={routes.proposals()} />
-          </StatGrid>
+          <TopicCounters topics={topics} />
 
-          <div className="list-filters" role="search">
-            <Input label="Konu ara" type="search" placeholder="Başlık ya da #T-numara…" value={q} onChange={(e) => setQ(e.target.value)} fieldClassName="list-filter-q" />
-            <Select
-              label="Kategori"
-              value={cat}
-              onChange={(e) => setCat(e.target.value)}
-              options={[{ value: "", label: "Tüm kategoriler" }, ...flat.map((c) => ({ value: c.iri, label: `${"— ".repeat(c.depth)}${c.label}` }))]}
-              hint="Alt kategoriler de dahil edilir."
-              fieldClassName="list-filter-wide"
-            />
-            {archivedCount ? (
-              <Checkbox
-                label={`Arşivlenenleri göster (${archivedCount})`}
-                checked={showArchived}
-                onChange={(e) => setShowArchived(e.target.checked)}
-                fieldClassName="list-filter-wide"
-              />
-            ) : null}
-          </div>
+          <TopicFilters
+            narrow={narrow}
+            q={q}
+            onQ={setQ}
+            category={cat}
+            onCategory={setCat}
+            categories={flat}
+            showArchived={showArchived}
+            onShowArchived={setShowArchived}
+            archivedCount={archivedCount}
+            openAtStart={openFiltersAtStart}
+          />
 
           {filtering && !matchCount ? (
             <EmptyState

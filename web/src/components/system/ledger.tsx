@@ -114,7 +114,7 @@ export function ValidatorCards({ validators }: { validators: ValidatorStatus[] }
             {v.operator ? <span className="small muted">İşleten: {v.operator}</span> : null}
           </div>
           <div className="small">
-            Açık anahtar: <HashText hash={v.publicKey} chars={12} label="Açık anahtar" />
+            Açık anahtar: <HashText hash={v.publicKey} chars={12} label="Açık anahtar" digest={false} />
           </div>
           <div className="small">
             Yükseklik: <strong>{formatNumber(v.height)}</strong>

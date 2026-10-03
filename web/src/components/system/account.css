@@ -1,0 +1,69 @@
+/* ── Profil ve Ayarlar (Faz 3 / madde 5) ──
+   Yeni renk belirteci YOK: açık ve koyu temada styles.css'teki --text-muted/--border/--surface kullanılır; renk yalnız kartın
+   hüküm satırında (Card summaryTone) ve birincil düğmededir. Boşluk ve yazı boyutu belirteçleri styles.css :root'tandır. */
+
+/* Oy hakkı kartı: eksik koşullar madde imli kısa liste; tek eylem (rıza) düğme + tek satırlık not */
+.acct-missing {
+  margin: 0;
+  padding-inline-start: var(--sp-5);
+  display: grid;
+  gap: var(--sp-1);
+}
+.acct-missing li {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.acct-action {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+}
+.acct-action .btn {
+  max-width: 100%;
+}
+.acct-note {
+  margin: 0;
+  max-width: var(--measure);
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+/* Hesap özeti: telefonda da etiket solda, değer sağda (satır başına bir satır; ≥ 600 px'deki .kv düzeniyle aynı). Başlık ve
+   'Herkese açık profilim' düğmesi aynı satırda kalır (düğme sığmazsa başlığın altına iner). */
+.acct-account > .card-header {
+  align-items: center;
+}
+.acct-account .card-heading {
+  flex-basis: 7rem;
+}
+.acct-account .kv-row {
+  grid-template-columns: minmax(5.5rem, 34%) minmax(0, 1fr);
+  gap: var(--sp-3);
+  align-items: baseline;
+}
+.acct-account .kv dt {
+  font-size: var(--fs-sm);
+}
+
+/* Vekâletler: boş liste tek satır */
+.acct-empty {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+/* Açık rızalar: onay kutusunun altındaki 'nasıl işler?' açılırı (kutu gri, açılır beyaz kalır) */
+.acct-consent-more {
+  margin-top: var(--sp-2);
+}
+
+/* Hesap özeti: tanım satırı ipucunun altındaki eğitici açılır ('Görüş kümesi nasıl hesaplanır?') */
+.acct-hint-more {
+  margin-top: var(--sp-1);
+}
+
+/* Ayarlar › Gelişmiş: seyrek gereken kartlar başlıkla görünür, gövde katlıdır (ızgara .grid-2: kapalı kart komşusuna uzamaz) */
+.acct-advanced {
+  margin-top: var(--sp-2);
+}

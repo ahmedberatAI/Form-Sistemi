@@ -1,6 +1,7 @@
 // Ontoloji (yönetmelik) denetim raporu: katman ve gerekçesi, ihlal/uyarı/bilgi bulguları (madde atıflarıyla),
 // uygulanan kurallar, çıkarılan sınıflar, yönetmelik sürümü ve özeti. Katlanabilir kart: kapalıyken başlığın yanında tek
 // satırlık hüküm durur; yönetmeliğe aykırılık ya da ihlal varsa kart kendiliğinden AÇIK gelir.
+// Rozet bütçesi: gövdedeki tek renkli rozet uygunluk hükmüdür (uygun yeşil · aykırı kırmızı); katman ve 'Bilirkişi gerekli' gridir.
 import { Link } from "react-router-dom";
 import { expandIri, TIER_LABELS, type AuditReport, type Finding, type Tier } from "@forum/shared";
 import { useOntology } from "../../lib/categories";
@@ -72,7 +73,7 @@ export function AuditCard({ audit, headingLevel = 2 }: { audit: AuditReport | nu
   return (
     <Card
       title="Ontoloji denetimi"
-      subtitle="Yönetmelik ontolojisinin otomatik denetimi (OWL/SHACL/N3 kuralları)"
+      subtitle="Yönetmeliğin otomatik denetimi: yönetmelik ontolojisi (OWL/SHACL/N3 kuralları) ile"
       tone={audit.admissible ? "default" : "danger"}
       headingLevel={headingLevel}
       collapsible
@@ -84,11 +85,11 @@ export function AuditCard({ audit, headingLevel = 2 }: { audit: AuditReport | nu
     >
       <div className="stack">
         <div className="row">
-          <TierBadge tier={audit.tier} />
+          <TierBadge tier={audit.tier} neutral explain />
           <Badge tone={audit.admissible ? "success" : "danger"} icon={audit.admissible ? "check" : "error"}>
             {audit.admissible ? "Yönetmeliğe uygun" : "Yönetmeliğe aykırı"}
           </Badge>
-          {audit.requiresExpert ? <Badge tone="accent">Bilirkişi gerekli</Badge> : null}
+          {audit.requiresExpert ? <Badge tone="neutral">Bilirkişi gerekli</Badge> : null}
         </div>
         <p className="small">
           <strong>Katman gerekçesi:</strong> {TIER_REASONS[audit.tier]}
@@ -129,7 +130,7 @@ export function AuditCard({ audit, headingLevel = 2 }: { audit: AuditReport | nu
         </Details>
 
         <p className="small muted">
-          <Link to={routes.ontology()}>Yönetmelik</Link> sürüm {audit.bylawVersion} · özet <HashText hash={audit.bylawHash} chars={8} label="Yönetmelik özeti" /> · denetim{" "}
+          <Link to={routes.ontology()}>Yönetmelik</Link> sürüm {audit.bylawVersion} · özet <HashText hash={audit.bylawHash} chars={8} label="Yönetmelik özeti" explain /> · denetim{" "}
           <Time at={audit.checkedAt} />
         </p>
       </div>
