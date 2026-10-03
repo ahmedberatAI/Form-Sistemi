@@ -1,13 +1,17 @@
 // Bilirkişi paneli (ALGORITMA §8): tohum ve kaynağı, adaylar (ağırlık, yumuşak çatışma, dışlanma), atamalar (çekinme
 // gerekçeleriyle), kura kayıtları (ilk kura + yedek kuraların EXPERT_DRAW defter işlemleri), raporlar (YZ hukuki nitelendirme
 // uyarılarıyla), sorular (azınlık güvenceli), askı bayrağı. Bilirkişi danışmandır; oyu 1'dir.
-// Kura kanıtı (tohum, atamalar, kura kayıtları, aday havuzu) tek "Kura ve adillik kanıtı" açılırındadır; raporlar ve sorular görünür kalır.
-import { useState } from "react";
+// Kapalı başlık cevap verir: kartın başlığında tek satırlık hüküm durur ("2 rapor: 2 uygulanabilir · ort. güven %80 · 2 soru").
+// Kura kanıtı (tohum, atamalar, kura kayıtları, aday havuzu) tek "Kura ve adillik kanıtı" açılırındadır. Her rapor tek satırdır
+// ("@bilirkişi · Uygulanabilir · güven %80 · tarih") ve [Raporu oku] gövdeyi, riskleri, karşı görüşü, YZ uyarısını, hash'leri ve
+// sorulara yanıtları satır içinde açar; soru formu [Soru sor] ile açılır. 'Tam' görünümde ikisi de açık gelir.
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   ASSESSMENT_LABELS,
   ASSIGNMENT_STATUS_LABELS,
   TEXT_LIMITS,
+  type ExpertAssessment,
   type ExpertDrawRecord,
   type ExpertPanelInfo,
   type ExpertQuestion,
@@ -16,78 +20,195 @@ import {
 } from "@forum/shared";
 import { askExpertQuestion, requestExperts } from "../../api/endpoints";
 import { useAuth } from "../../auth/AuthContext";
+import { resolveDefaultOpen, useDetailLevel } from "../../lib/detailLevel";
 import { formatPercent } from "../../lib/format";
 import { routes } from "../../lib/routes";
 import { useAction } from "../../lib/useAsync";
-import { AiLabel, Alert, Badge, Button, Card, Details, HashText, Table, Textarea, Time } from "../../ui";
+import { AiLabel, Alert, Badge, Button, Card, cx, Details, HashText, Table, Textarea, Time } from "../../ui";
 import { UserLink } from "../UserLink";
 import { fmtDecimal, PlainText, SubHeading } from "./common";
 import "./participation.css";
+import "./expert-ai.css";
 
 const CLOSED = ["enacted", "rejected", "withdrawn", "expired", "inadmissible"];
 
-function ReportView({ r, questions }: { r: ExpertReportView; questions: ExpertQuestion[] }) {
+const ASSESSMENT_ORDER: ExpertAssessment[] = ["feasible", "infeasible", "uncertain"];
+
+// ───────────── Hüküm satırı (saf işlevler) ─────────────
+
+/** Raporların ortalama güveni (0..1); rapor yoksa null. */
+export function averageConfidence(reports: Pick<ExpertReportView, "confidence">[]): number | null {
+  const xs = reports.map((r) => r.confidence).filter((c) => Number.isFinite(c));
+  return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
+}
+
+export interface ExpertVerdict {
+  text: string;
+  /** warning yalnız askı kuralı uygulandıysa ya da uygun bilirkişi bulunamadıysa (renk her zaman metinle birlikte) */
+  tone: "neutral" | "warning";
+}
+
+/**
+ * Kartın başlığındaki tek satırlık hüküm.
+ *  - rapor varsa: "2 rapor: 2 uygulanabilir · ort. güven %80 · 2 soru"
+ *  - panel var, rapor yoksa: "Henüz rapor yok · 3 bilirkişiden rapor bekleniyor · soru yok"
+ *  - panel yoksa: "Henüz panel çekilmedi" (öneri bilirkişi görüşü gerektiriyorsa " · bilirkişi görüşü gerekli")
+ */
+export function expertVerdict(input: {
+  panel: Pick<ExpertPanelInfo, "reports" | "assignments" | "noExpertAvailable" | "suspensiveFlag"> | null;
+  questionCount: number;
+  requiresExpert?: boolean;
+}): ExpertVerdict {
+  const { panel, questionCount, requiresExpert } = input;
+  const asks = questionCount ? `${questionCount} soru` : "soru yok";
+  if (!panel) {
+    const parts = ["Henüz panel çekilmedi", requiresExpert ? "bilirkişi görüşü gerekli" : null, questionCount ? asks : null];
+    return { text: parts.filter((x): x is string => !!x).join(" · "), tone: "neutral" };
+  }
+  const parts: string[] = [];
+  if (panel.reports.length) {
+    const counts = ASSESSMENT_ORDER.map((a) => {
+      const n = panel.reports.filter((r) => r.assessment === a).length;
+      return n ? `${n} ${ASSESSMENT_LABELS[a].toLocaleLowerCase("tr-TR")}` : null;
+    }).filter((x): x is string => !!x);
+    parts.push(`${panel.reports.length} rapor: ${counts.join(" · ")}`);
+    const avg = averageConfidence(panel.reports);
+    if (avg !== null) parts.push(`ort. güven ${formatPercent(avg, 0)}`);
+  } else if (panel.noExpertAvailable) {
+    parts.push("Uygun bilirkişi yok", "rapor yok");
+  } else {
+    const waiting = panel.assignments.filter((a) => a.status === "invited" || a.status === "accepted").length;
+    parts.push("Henüz rapor yok");
+    if (waiting) parts.push(`${waiting} bilirkişiden rapor bekleniyor`);
+  }
+  parts.push(asks);
+  if (panel.suspensiveFlag) parts.push("askı uyarısı var");
+  return { text: parts.join(" · "), tone: panel.noExpertAvailable || panel.suspensiveFlag ? "warning" : "neutral" };
+}
+
+// ───────────── Satır içi açılım ([Raporu oku], [Soru sor]) ─────────────
+
+/** Tarayıcı hidden="until-found" ve beforematch destekliyorsa true (ui/basic.tsx'teki kartlarla aynı denetim). */
+function canFindInHidden(): boolean {
+  try {
+    return typeof document !== "undefined" && "onbeforematch" in document.documentElement;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Açık/kapalı durum + gövde düğümü. İlk değer görünüm yoğunluğundan gelir ('sade' kapalı, 'tam' açık); kullanıcı dokunmadıysa
+ * yoğunluk değişince uyar. Gövde DOM'da kalır (yazılmış soru, rapor metni kaybolmaz); destekleyen tarayıcıda hidden="until-found"
+ * olur: sayfa içi arama bulur ve gövdeyi açar.
+ */
+function useInlineDisclosure() {
+  const { level } = useDetailLevel();
+  const [open, setOpenState] = useState(() => resolveDefaultOpen(undefined, level));
+  const touched = useRef(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
+
+  const setOpen = useCallback((next: boolean) => {
+    touched.current = true;
+    setOpenState(next);
+  }, []);
+
+  useEffect(() => {
+    if (!touched.current) setOpenState(resolveDefaultOpen(undefined, level));
+  }, [level]);
+
+  useLayoutEffect(() => {
+    if (open || !canFindInHidden()) return;
+    bodyRef.current?.setAttribute("hidden", "until-found");
+  }, [open]);
+
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    const onFound = () => setOpen(true);
+    el.addEventListener("beforematch", onFound);
+    return () => el.removeEventListener("beforematch", onFound);
+  }, [setOpen]);
+
+  return { open, setOpen, bodyRef };
+}
+
+// ───────────── Raporlar ─────────────
+
+function ReportRow({ r, questions }: { r: ExpertReportView; questions: ExpertQuestion[] }) {
   const tone = r.assessment === "feasible" ? "success" : r.assessment === "infeasible" ? "danger" : "warning";
+  const { open, setOpen, bodyRef } = useInlineDisclosure();
+  const bodyId = useId();
+  const metaId = useId();
   return (
-    <li className="list-item stack-sm">
-      <div className="row small">
-        <UserLink id={r.expertId} nickname={r.expertNickname} isExpert />
-        <Badge tone={tone}>{ASSESSMENT_LABELS[r.assessment]}</Badge>
-        <span>güven {formatPercent(r.confidence)}</span>
-        <Time at={r.createdAt} className="muted" />
+    <li className={cx("list-item expert-report", open && "is-open")}>
+      <div className="expert-report-head">
+        <div className="row small expert-report-meta" id={metaId}>
+          <UserLink id={r.expertId} nickname={r.expertNickname} showExpert={false} />
+          <Badge tone={tone}>{ASSESSMENT_LABELS[r.assessment]}</Badge>
+          <span>güven {formatPercent(r.confidence)}</span>
+          <Time at={r.createdAt} className="muted" />
+          {r.lintIssues.length ? <span className="expert-report-flag">⚠ {r.lintIssues.length} hukuki nitelendirme uyarısı</span> : null}
+        </div>
+        <Button size="sm" aria-expanded={open} aria-controls={bodyId} aria-describedby={metaId} onClick={() => setOpen(!open)}>
+          {open ? "Raporu gizle" : "Raporu oku"}
+        </Button>
       </div>
-      <PlainText text={r.body} />
-      {r.risks.length ? (
-        <div className="small">
-          <strong>Riskler:</strong>
-          <ul>
-            {r.risks.map((x, i) => (
-              <li key={i}>{x}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-      {r.answers.length ? (
-        <Details summary={`Sorulara yanıtlar (${r.answers.length})`}>
-          <dl className="qa-list small">
-            {r.answers.map((a) => (
-              <div key={a.questionId}>
-                <dt>{questions.find((q) => q.id === a.questionId)?.body ?? "Soru"}</dt>
-                <dd>{a.answer}</dd>
-              </div>
-            ))}
-          </dl>
-        </Details>
-      ) : null}
-      {r.dissent ? (
-        <div className="small">
-          <strong>Karşı görüş:</strong> {r.dissent}
-        </div>
-      ) : null}
-      {r.lintIssues.length ? (
-        <AiLabel label="Yapay zekâ ile üretildi · hukuki nitelendirme denetimi" hideNote>
-          <p className="small">
-            <strong>Hukuki nitelendirme uyarıları ({r.lintIssues.length}).</strong> Bilirkişi hukuki nitelendirme yapamaz (6754 s. Kanun md. 3/2); aşağıdaki ifadeler
-            danışma amacıyla işaretlendi:
-          </p>
-          <ul className="small">
-            {r.lintIssues.map((l, i) => (
-              <li key={i}>
-                “{l.quote}” — {l.message}
-              </li>
-            ))}
-          </ul>
-        </AiLabel>
-      ) : null}
-      <p className="small muted">
-        Rapor özeti <HashText hash={r.contentHash} chars={8} copy={false} />
-        {r.ledgerTx ? (
-          <>
-            {" "}
-            · defter <HashText hash={r.ledgerTx} chars={8} to={routes.tx(r.ledgerTx)} copy={false} />
-          </>
+      <div className="expert-report-body" id={bodyId} ref={bodyRef} hidden={!open}>
+        <PlainText text={r.body} />
+        {r.risks.length ? (
+          <div className="small">
+            <strong>Riskler:</strong>
+            <ul>
+              {r.risks.map((x, i) => (
+                <li key={i}>{x}</li>
+              ))}
+            </ul>
+          </div>
         ) : null}
-      </p>
+        {r.answers.length ? (
+          <div className="small">
+            <strong>Sorulara yanıtlar ({r.answers.length}):</strong>
+            <dl className="qa-list">
+              {r.answers.map((a) => (
+                <div key={a.questionId}>
+                  <dt>{questions.find((q) => q.id === a.questionId)?.body ?? "Soru"}</dt>
+                  <dd>{a.answer}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        ) : null}
+        {r.dissent ? (
+          <div className="small">
+            <strong>Karşı görüş:</strong> {r.dissent}
+          </div>
+        ) : null}
+        {r.lintIssues.length ? (
+          <AiLabel label="Yapay zekâ ile üretildi · hukuki nitelendirme denetimi" hideNote>
+            <p className="small">
+              <strong>Hukuki nitelendirme uyarıları ({r.lintIssues.length}).</strong> Bilirkişi hukuki nitelendirme yapamaz (6754 s. Kanun md. 3/2); aşağıdaki ifadeler
+              danışma amacıyla işaretlendi:
+            </p>
+            <ul className="small">
+              {r.lintIssues.map((l, i) => (
+                <li key={i}>
+                  “{l.quote}” — {l.message}
+                </li>
+              ))}
+            </ul>
+          </AiLabel>
+        ) : null}
+        <p className="small muted">
+          Rapor özeti <HashText hash={r.contentHash} chars={8} copy={false} />
+          {r.ledgerTx ? (
+            <>
+              {" "}
+              · defter <HashText hash={r.ledgerTx} chars={8} to={routes.tx(r.ledgerTx)} copy={false} />
+            </>
+          ) : null}
+        </p>
+      </div>
     </li>
   );
 }
@@ -237,9 +358,21 @@ export function ExpertPanelCard({ proposal: p, onUpdated }: { proposal: Proposal
   const auth = useAuth();
   const [question, setQuestion] = useState("");
   const [extraQuestions, setExtraQuestions] = useState<ExpertQuestion[]>([]);
+  const askForm = useInlineDisclosure();
+  const askRef = useRef<HTMLTextAreaElement>(null);
+  const focusAsk = useRef(false);
   const panel = p.expertPanel;
   const closed = CLOSED.includes(p.status);
   const canRequest = (p.status === "sponsoring" || p.status === "deliberation") && auth.can("V");
+  const canAsk = !closed && auth.can("V");
+
+  // [Soru sor] ile açılınca odak metin alanına geçer (alan açılmadan önce gizliydi; odak açıldıktan sonra verilir).
+  useEffect(() => {
+    if (askForm.open && focusAsk.current) {
+      focusAsk.current = false;
+      askRef.current?.focus();
+    }
+  }, [askForm.open]);
 
   const request = useAction(() => requestExperts(p.id, "panel"), {
     success: "Bilirkişi talebiniz kaydedildi. Eşiğe ulaşınca (ya da yazar talep ettiyse) kura çekilir.",
@@ -257,20 +390,22 @@ export function ExpertPanelCard({ proposal: p, onUpdated }: { proposal: Proposal
   for (const q of [...(p.expertQuestions ?? []), ...(panel?.questions ?? []), ...extraQuestions]) {
     if (!questions.some((x) => x.id === q.id)) questions.push(q);
   }
+  const verdict = expertVerdict({ panel: panel ?? null, questionCount: questions.length, requiresExpert: !!p.params?.requiresExpert });
+  const formId = useId();
 
   return (
-    <Card title="Bilirkişi görüşü" subtitle="Bilirkişi danışmandır; oy ağırlığı yoktur, oyu 1'dir. Hukuki nitelendirme yapmaz." anchor="bilirkisi">
+    <Card
+      title="Bilirkişi görüşü"
+      summary={verdict.text}
+      summaryTone={verdict.tone}
+      footer={<span className="small muted expert-role-note">Bilirkişi danışmandır; oy ağırlığı yoktur, oyu 1'dir. Hukuki nitelendirme yapmaz.</span>}
+      anchor="bilirkisi"
+    >
       <div className="stack">
         {panel ? (
           <PanelBody panel={panel} />
         ) : (
           <div className="stack-sm">
-            <p className="small">
-              Henüz bilirkişi paneli çekilmedi.{" "}
-              {p.params?.requiresExpert
-                ? "Bu öneri bilirkişi görüşü gerektiriyor: panel tartışma evresinde, önceden taahhüt edilen blokla kurayla çekilir."
-                : "Uygun seçmenlerin %10'u ya da yazar talep ederse panel çekilir."}
-            </p>
             {canRequest ? (
               <div>
                 <Button size="sm" icon="experts" loading={request.loading} onClick={() => void request.run()}>
@@ -278,6 +413,13 @@ export function ExpertPanelCard({ proposal: p, onUpdated }: { proposal: Proposal
                 </Button>
               </div>
             ) : null}
+            <Details summary="Panel ne zaman çekilir?">
+              <p className="small">
+                {p.params?.requiresExpert
+                  ? "Bu öneri bilirkişi görüşü gerektiriyor: panel tartışma evresinde, önceden taahhüt edilen blokla kurayla çekilir."
+                  : "Uygun seçmenlerin %10'u ya da yazar talep ederse panel çekilir."}
+              </p>
+            </Details>
           </div>
         )}
 
@@ -286,16 +428,31 @@ export function ExpertPanelCard({ proposal: p, onUpdated }: { proposal: Proposal
             <SubHeading>Raporlar ({panel.reports.length})</SubHeading>
             <ul className="list">
               {panel.reports.map((r) => (
-                <ReportView key={r.id} r={r} questions={questions} />
+                <ReportRow key={r.id} r={r} questions={questions} />
               ))}
             </ul>
           </div>
         ) : panel && !panel.noExpertAvailable ? (
-          <p className="small muted">Henüz rapor gelmedi. Süre içinde rapor gelmezse oylama raporsuz başlar ve bilirkişinin itibarı düşer.</p>
+          <p className="small muted">Süre içinde rapor gelmezse oylama raporsuz başlar ve bilirkişinin itibarı düşer.</p>
         ) : null}
 
         <div className="stack-sm">
-          <SubHeading>Bilirkişiye sorular ({questions.length})</SubHeading>
+          <div className="row-between">
+            <SubHeading>Bilirkişiye sorular ({questions.length})</SubHeading>
+            {canAsk ? (
+              <Button
+                size="sm"
+                aria-expanded={askForm.open}
+                aria-controls={formId}
+                onClick={() => {
+                  focusAsk.current = !askForm.open;
+                  askForm.setOpen(!askForm.open);
+                }}
+              >
+                {askForm.open ? "Soru formunu gizle" : question.trim() ? "Soru sor (taslak var)" : "Soru sor"}
+              </Button>
+            ) : null}
+          </div>
           {questions.length ? (
             <ul className="list">
               {questions.map((q) => (
@@ -316,29 +473,32 @@ export function ExpertPanelCard({ proposal: p, onUpdated }: { proposal: Proposal
           ) : (
             <p className="small muted">Henüz soru yok.</p>
           )}
-          {!closed && auth.can("V") ? (
-            <form
-              className="stack-sm"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void ask.run();
-              }}
-            >
-              <Textarea
-                label="Bilirkişiye soru sor"
-                hint={`${TEXT_LIMITS.expertQuestion.min}–${TEXT_LIMITS.expertQuestion.max} karakter. En küçük anlamlı görüş grubundan gelen ilk soru “azınlık güvenceli” olur: henüz rapor vermemiş bilirkişiler bu soruyu yanıtlamadan rapor gönderemez.`}
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-                maxLength={TEXT_LIMITS.expertQuestion.max}
-                showCount
-                rows={3}
-              />
-              <div className="form-actions">
-                <Button type="submit" loading={ask.loading} disabled={question.trim().length < TEXT_LIMITS.expertQuestion.min}>
-                  Soruyu gönder
-                </Button>
-              </div>
-            </form>
+          {canAsk ? (
+            <div id={formId} ref={askForm.bodyRef} hidden={!askForm.open}>
+              <form
+                className="stack-sm"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void ask.run();
+                }}
+              >
+                <Textarea
+                  ref={askRef}
+                  label="Bilirkişiye soru sor"
+                  hint={`${TEXT_LIMITS.expertQuestion.min}–${TEXT_LIMITS.expertQuestion.max} karakter. En küçük anlamlı görüş grubundan gelen ilk soru “azınlık güvenceli” olur: henüz rapor vermemiş bilirkişiler bu soruyu yanıtlamadan rapor gönderemez.`}
+                  value={question}
+                  onChange={(e) => setQuestion(e.target.value)}
+                  maxLength={TEXT_LIMITS.expertQuestion.max}
+                  showCount
+                  rows={3}
+                />
+                <div className="form-actions">
+                  <Button type="submit" loading={ask.loading} disabled={question.trim().length < TEXT_LIMITS.expertQuestion.min}>
+                    Soruyu gönder
+                  </Button>
+                </div>
+              </form>
+            </div>
           ) : null}
         </div>
       </div>

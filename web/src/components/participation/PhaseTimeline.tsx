@@ -140,15 +140,25 @@ export function PhaseTimeline({ proposal: p }: { proposal: ProposalDetail }) {
 }
 
 /** "Zaman çizelgesi" kartı: başlıkta hüküm, gövde kapalı (1 dokunuşla açılır; 'Tam' görünümde açık gelir). */
-export function PhaseTimelineCard({ proposal: p }: { proposal: ProposalDetail }) {
+export function PhaseTimelineCard({ proposal: p, headingLevel = 2 }: { proposal: ProposalDetail; headingLevel?: 2 | 3 }) {
   return (
-    <Card title="Zaman çizelgesi" subtitle="Her evre geçişi dağıtık deftere yazılır." collapsible summary={phaseTimelineSummary(p)} anchor="evreler">
+    <Card
+      title="Zaman çizelgesi"
+      subtitle="Her evre geçişi dağıtık deftere yazılır."
+      headingLevel={headingLevel}
+      collapsible
+      summary={phaseTimelineSummary(p)}
+      anchor="evreler"
+    >
       <PhaseTimeline proposal={p} />
     </Card>
   );
 }
 
-/** Başlığın altında kısa evre şeridi (mobilde de görünür). */
+/**
+ * Başlığın altında kısa evre şeridi. 600 px'in altında kompakttır (participation.css): numaralı/işaretli noktalar ve yalnız
+ * güncel evrenin (terminalde sonucun) etiketi görünür; diğer etiketler ekran okuyucuya okunmaya devam eder.
+ */
 export function PhaseStrip({ proposal: p }: { proposal: ProposalDetail }) {
   const visited = new Set(p.events.map((e) => e.to));
   visited.add(p.status);
@@ -172,7 +182,7 @@ export function PhaseStrip({ proposal: p }: { proposal: ProposalDetail }) {
   const curIndex = terminal ? order.length - 1 : order.indexOf(p.status);
 
   return (
-    <ol className="phase-strip" aria-label="Evreler">
+    <ol className="phase-strip phase-strip-responsive" aria-label="Evreler">
       {steps.map((s, i) => {
         const state = terminal ? (i === order.length - 1 ? "final" : visited.has(s.key as ProposalStatus) ? "done" : "skipped") : i < curIndex ? "done" : i === curIndex ? "current" : "todo";
         const srState = state === "done" ? "tamamlandı" : state === "current" ? "şu anki evre" : state === "final" ? "sonuç" : state === "skipped" ? "yaşanmadı" : "sırada";

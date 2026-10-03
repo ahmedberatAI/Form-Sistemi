@@ -57,11 +57,12 @@ export function auditSummary(audit: AuditReport): string {
   return [audit.admissible ? "✔ Yönetmeliğe uygun" : "✘ Yönetmeliğe aykırı", `${TIER_LABELS[audit.tier]} (${audit.tier})`, counts.length ? counts.join(" · ") : "uyarı yok"].join(" · ");
 }
 
-export function AuditCard({ audit }: { audit: AuditReport | null }) {
+/** headingLevel: kart başlığının düzeyi (öneri sayfasında 'Kanıtlar ve denetim' sütununun altında 3). */
+export function AuditCard({ audit, headingLevel = 2 }: { audit: AuditReport | null; headingLevel?: 2 | 3 }) {
   const { categoryLabel, rightLabel, articleLabel } = useOntology();
   if (!audit) {
     return (
-      <Card title="Ontoloji denetimi" headingLevel={2} anchor="ontoloji">
+      <Card title="Ontoloji denetimi" headingLevel={headingLevel} anchor="ontoloji">
         <p className="small muted">Denetim, destekçiler toplanınca yapılır: katman, eşikler ve yönetmeliğe uygunluk o anda belirlenir.</p>
       </Card>
     );
@@ -73,6 +74,7 @@ export function AuditCard({ audit }: { audit: AuditReport | null }) {
       title="Ontoloji denetimi"
       subtitle="Yönetmelik ontolojisinin otomatik denetimi (OWL/SHACL/N3 kuralları)"
       tone={audit.admissible ? "default" : "danger"}
+      headingLevel={headingLevel}
       collapsible
       // Sorun yoksa defaultOpen verilmez: 'Tam' görünümde kart yine açık gelir.
       defaultOpen={problem ? true : undefined}

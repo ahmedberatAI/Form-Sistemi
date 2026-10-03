@@ -197,3 +197,254 @@ a.showcase-tile:focus-visible {
   font-size: 0.875rem;
   font-weight: 600;
 }
+
+/* ══ Faz 2: role göre 'senden beklenenler' (Greeting, TaskList, QuickActions, SetupNotes, OpenNow, RecentDecisions) ══
+   Yeni renk belirteci yok: açık ve koyu temada styles.css'teki --primary(-soft), --info(-soft), --warning(-soft), --success,
+   --text-muted kullanılır. Mavi eylem ve 'şu an' için, turuncu dikkat için; renk her zaman metin ya da simgeyle birlikte. */
+
+/* Başlık: selam + tek satır özet. Oturum yüklenirken aynı yer tutulur (düzen kaymaz). */
+.home-head {
+  min-height: 3.9rem;
+  margin-bottom: 0;
+}
+.home-head .page-title {
+  overflow-wrap: anywhere;
+}
+.home-greet {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+.home-summary {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.975rem;
+  overflow-wrap: anywhere;
+}
+/* Ziyaretçi başlığı: slogan, giriş/kayıt, 'Okumak için hesap gerekmez.' ve 'Neden kayıt gerekir?' */
+.home-hero {
+  gap: 0.6rem;
+}
+.home-slogan {
+  max-width: 60ch;
+}
+.home-read-free {
+  margin: 0;
+}
+.home-why {
+  max-width: 60ch;
+}
+.home-why p {
+  margin: 0;
+}
+
+/* İki sütun (masaüstünde .split 2/3 + 1/3); telefonda tek sütun, DOM sırasıyla */
+.home-main,
+.home-side {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+/* Sizi bekleyenler: satırın tamamı bağlantı; tür etiketi · başlık / alt satırda kalan süre */
+.home-tasks {
+  border-left: 4px solid var(--primary);
+}
+.home-task-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.home-task-list > li {
+  min-width: 0;
+}
+.home-task-list > li + li {
+  border-top: 1px solid var(--border);
+}
+.home-task {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "main go"
+    "due go";
+  align-items: center;
+  column-gap: 0.5rem;
+  row-gap: 0.15rem;
+  min-height: 44px;
+  padding: 0.55rem 0.35rem;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  text-decoration: none;
+  min-width: 0;
+}
+a.home-task:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+a.home-task:hover .home-task-title {
+  color: var(--primary);
+  text-decoration: underline;
+}
+.home-task-main {
+  grid-area: main;
+  min-width: 0;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.home-task-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.home-task-kind-now {
+  color: var(--primary);
+}
+.home-task-kind-attention {
+  color: var(--warning);
+}
+.home-task-sep {
+  color: var(--text-muted);
+}
+.home-task-due {
+  grid-area: due;
+  justify-self: start;
+  font-size: 0.85rem;
+}
+.home-task-go {
+  grid-area: go;
+  color: var(--text-muted);
+}
+.home-tasks-toggle {
+  margin-top: 0.4rem;
+}
+
+/* Görev yokken role göre ipucu (vurgulu kenar) */
+.home-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 0.6rem;
+  margin: 0;
+  padding: 0.6rem 0.85rem;
+  background: var(--primary-soft);
+  border-left: 4px solid var(--primary);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+/* Satır içi '›' bağlantıları (ipucu, not, bölüm başlıkları, makbuz) */
+.home-inline-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* Hızlı eylemler: düğmeler + 'Oyum kayıtlı mı? (n makbuz)'. Masaüstünde selamın sağında, sağa yaslı. */
+.home-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.home-receipts {
+  min-height: 40px;
+  gap: 0.35rem;
+}
+@media (min-width: 900px) {
+  .home-head-wide {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem 1.5rem;
+  }
+  .home-head-wide .home-greet {
+    flex: 1 1 18rem;
+  }
+  .home-actions-head {
+    align-items: flex-end;
+  }
+  .home-actions-head .home-actions-buttons {
+    justify-content: flex-end;
+  }
+}
+
+/* Oy hakkı notu: tek satır + Profil bağlantısı + 'Notu gizle' */
+.home-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.35rem 0.6rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--info-soft);
+  border: 1px solid var(--info);
+  border-left-width: 4px;
+  border-radius: var(--radius-sm);
+  min-width: 0;
+}
+.home-note-icon {
+  margin-top: 0.15rem;
+  color: var(--info);
+}
+.home-note-body {
+  flex: 1 1 14rem;
+  min-width: 0;
+  font-size: 0.925rem;
+  overflow-wrap: anywhere;
+}
+.home-note-body p {
+  margin: 0;
+}
+.home-note-body p + p {
+  margin-top: 0.25rem;
+}
+.home-note-hide {
+  margin-inline-start: auto;
+}
+
+/* Boş liste tek satır (boş kart yok) ve bölüm başlıkları */
+.home-empty-line {
+  margin: 0;
+  color: var(--text-muted);
+}
+.home-section {
+  gap: 0.5rem;
+}
+
+/* Bekleyen hesap: kısaltılmış 3 adım, 2. adım 'Şimdi' */
+.home-steps > li.home-step-done > strong::before {
+  content: "✔ ";
+  content: "✔ " / "";
+  color: var(--success);
+}
+.home-step-tag {
+  display: inline-block;
+  padding: 0 0.45rem;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 0.775rem;
+  font-weight: 700;
+}
+
+/* Yan sütun (≥ 900 px, ≈ 1/3 genişlik): vitrin 3 yerine 2 sütun, karo iç boşlukları daralır */
+@media (min-width: 900px) {
+  .home-side .showcase-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .home-side .showcase-tile {
+    padding: 0.5rem 0.6rem;
+  }
+}

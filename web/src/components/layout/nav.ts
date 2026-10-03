@@ -1,5 +1,9 @@
-// Gezinme öğeleri (üst gezinme, alt gezinme ve "Daha fazla" menüsü aynı listeden beslenir).
+// Gezinme öğeleri (üst gezinme, alt gezinme ve "Daha fazla" menüsü aynı listeden beslenir), masaüstü üst gezinmenin
+// grup sırası ve "Daha fazla" sayfasındaki "Sistem durumu" bloğunun saf biçimlendirmesi (görünümden ayrı, birim testli).
+import type { SystemInfo } from "@forum/shared";
 import type { AuthContextValue } from "../../auth/AuthContext";
+import { formatDateTime, formatDuration, formatNumber } from "../../lib/format";
+import { routes } from "../../lib/routes";
 import type { IconName } from "../../ui/Icon";
 
 export interface NavItem {
@@ -41,4 +45,64 @@ export const GROUP_LABELS: Record<NavItem["group"], string> = {
 
 export function visibleItems(a: AuthContextValue): NavItem[] {
   return NAV_ITEMS.filter((i) => !i.visible || i.visible(a));
+}
+
+/** Masaüstü üst gezinmede görünen gruplar, soldan sağa. Görev ve hesap öğeleri kullanıcı menüsünde ve "Daha fazla"dadır. */
+export const TOP_NAV_GROUPS: ReadonlyArray<NavItem["group"]> = ["main", "explore"];
+
+/**
+ * Üst gezinme öğelerini grup grup verir (boş gruplar atılır); gruplar arasına görsel ayraç çizilir.
+ * Öğelerin hiçbiri kalkmaz, etiketleri değişmez; yalnız araya çizgi girer.
+ */
+export function topNavSections(items: NavItem[]): NavItem[][] {
+  return TOP_NAV_GROUPS.map((g) => items.filter((i) => i.group === g)).filter((s) => s.length > 0);
+}
+
+// ───────────── "Daha fazla" sayfası: Sistem durumu bloğu ─────────────
+
+/**
+ * Zaman ölçeği metni; Ana sayfa vitrinindeki söz dizimiyle aynıdır (components/home/ShowcaseTiles.scaleText):
+ * 1 → "gerçek zamanlı", 10 → "demo: 1 saat = 6 dakika".
+ */
+export function scaleLabel(scale: number): string {
+  if (!scale || scale === 1) return "gerçek zamanlı";
+  const sec = 3600 / scale;
+  const fmt = (n: number) => (Number.isInteger(n) ? String(n) : formatNumber(n, 1));
+  return sec >= 60 ? `demo: 1 saat = ${fmt(sec / 60)} dakika` : `demo: 1 saat = ${fmt(sec)} saniye`;
+}
+
+export interface SystemRow {
+  key: "defter" | "yz" | "saat" | "yonetmelik" | "istemci";
+  label: string;
+  value: string;
+  /** Verilirse değer bu rotaya bağlantıdır */
+  to?: string;
+  /** Verilirse satır uyarı renginde çizilir ve bu metin değerin altına eklenir */
+  warning?: string;
+}
+
+/**
+ * "Sistem durumu" satırları, masaüstü alt bilgisinin ve Ana sayfa vitrininin mobildeki karşılığı:
+ * defter (yükseklik ve doğrulayıcı sağlığı), YZ kipi, simüle saat ve ölçek, yönetmelik sürümü, istemci sürümü.
+ * Sistem bilgisi yoksa (sunucuya ulaşılamadı) yalnız istemci sürümü kalır. `now`, sunucunun simüle saatidir (ms).
+ */
+export function systemRows(sys: SystemInfo | null, now: number, clientVersion: string): SystemRow[] {
+  const client: SystemRow = { key: "istemci", label: "İstemci sürümü", value: `v${clientVersion}` };
+  if (!sys) return [client];
+  const { ledger } = sys;
+  const unhealthy = Math.max(0, ledger.validators - ledger.healthy);
+  const offset = sys.clockOffsetMs > 0 ? `; yönetici ${formatDuration(sys.clockOffsetMs, false)} ileri aldı` : "";
+  return [
+    {
+      key: "defter",
+      label: "Defter",
+      value: `${formatNumber(ledger.height)}. blok · ${ledger.healthy}/${ledger.validators} doğrulayıcı sağlıklı`,
+      to: routes.ledger(),
+      warning: unhealthy > 0 ? `${unhealthy} doğrulayıcı sağlıksız` : undefined,
+    },
+    { key: "yz", label: "YZ kipi", value: sys.aiMode === "claude" ? `Claude (${sys.aiModel})` : "Çevrimdışı sezgisel mod" },
+    { key: "saat", label: "Simüle saat", value: `${formatDateTime(now, true)} (${scaleLabel(sys.timeScale)}${offset})` },
+    { key: "yonetmelik", label: "Yönetmelik sürümü", value: `v${sys.bylawVersion}` },
+    client,
+  ];
 }

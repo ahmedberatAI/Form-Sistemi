@@ -36,13 +36,15 @@ export interface ParamsCardProps {
   eligible?: number | null;
   /** En son sonuçtaki gerekli katılım (DecisionResult.quorumRequired) */
   resultQuorum?: number | null;
+  /** Kart başlığının düzeyi (öneri sayfasında 'Kanıtlar ve denetim' sütununun altında 3) */
+  headingLevel?: 2 | 3;
 }
 
-export function ParamsCard({ params: p, status, votingRound, eligible, resultQuorum }: ParamsCardProps) {
+export function ParamsCard({ params: p, status, votingRound, eligible, resultQuorum, headingLevel = 2 }: ParamsCardProps) {
   const { categoryLabel } = useOntology();
   if (!p) {
     return (
-      <Card title="Karar parametreleri" anchor="parametreler">
+      <Card title="Karar parametreleri" headingLevel={headingLevel} anchor="parametreler">
         <p className="small muted">Parametreler ontoloji denetimiyle belirlenir (destekçiler toplanınca).</p>
       </Card>
     );
@@ -53,6 +55,7 @@ export function ParamsCard({ params: p, status, votingRound, eligible, resultQuo
     <Card
       title="Karar parametreleri"
       subtitle={fixed ? "Oylama açılırken sabitlendi; geriye etkili değişmez." : "Henüz sabitlenmedi: oylama açılırken güncel yönetmelikle kesinleşir."}
+      headingLevel={headingLevel}
       collapsible
       summary={paramsSummary(p, fixed, quorumCount(p, eligible, resultQuorum))}
       anchor="parametreler"

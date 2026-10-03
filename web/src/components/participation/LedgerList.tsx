@@ -67,11 +67,12 @@ export function LedgerList({ txs, totals }: { txs: LedgerTxs; totals?: LedgerTot
 }
 
 /** "Defter kayıtları" kartı: başlıkta hüküm, gövde kapalı (1 dokunuşla açılır; 'Tam' görünümde açık gelir). */
-export function LedgerCard({ txs, totals }: { txs: LedgerTxs; totals?: LedgerTotals }) {
+export function LedgerCard({ txs, totals, headingLevel = 2 }: { txs: LedgerTxs; totals?: LedgerTotals; headingLevel?: 2 | 3 }) {
   return (
     <Card
       title="Defter kayıtları"
       subtitle="Bu öneriyle ilgili dağıtık defter işlemleri (kişisel veri içermez)."
+      headingLevel={headingLevel}
       collapsible
       summary={ledgerSummary(txs, totals)}
       anchor="defter"

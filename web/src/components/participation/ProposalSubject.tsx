@@ -175,6 +175,11 @@ export function AmendmentDiff({ proposal: p }: { proposal: ProposalDetail }) {
   );
 }
 
+/**
+ * Yürürlük etkisi kartı. Öneri sayfası (Faz 2) bunu ayrıca çizmez: aynı cümleler ve aynı bağlantı lib/nextStep.ts'deki
+ * `enactedEffect` ile 'Sıradaki adım' kartındadır (bağlantı ikilenmesin diye tek yerde). Kurallar değişirse ikisi birlikte
+ * güncellenir (nextStep.test.ts bu cümleleri denetler).
+ */
 export function EnactedEffect({ proposal: p }: { proposal: ProposalDetail }) {
   const last = p.events[p.events.length - 1];
   return (

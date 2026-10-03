@@ -13,6 +13,8 @@ export const PREF_KEYS = {
   detail: "forum.detail",
   receipts: "forum.receipts",
   validators: "forum.validators",
+  /** 'Notu gizle' ile bu cihazda gizlenen notların anahtarları (JSON dizi). Bkz. getDismissed/addDismissed, components/home/SetupNotes */
+  dismissed: "forum.dismissed",
 } as const;
 
 const memory = new Map<string, string>();
@@ -114,4 +116,59 @@ export function getPrefSync(key: string): string | null {
 /** Eşzamanlı yazma (yalnızca localStorage aynası). */
 export function setPrefSync(key: string, value: string): void {
   lsSet(key, value);
+}
+
+// ───────────── Gizlenen notlar (forum.dismissed) ─────────────
+// Tek seferlik bilgi notlarını ('Notu gizle') cihazda hatırlar. Okuma/yazma hiçbir zaman fırlatmaz: kayıt bozuksa ya da depo
+// erişilemezse liste boş sayılır ve not yeniden görünür (bilgi kaybolmaz). İlk çizimde eşzamanlı ayna, sonra kalıcı depo okunur.
+
+/** Saklanan en çok anahtar sayısı (en eskiler düşer). */
+export const MAX_DISMISSED = 50;
+
+/** Kayıtlı JSON metnini doğrular: yalnız dize elemanlar kalır; boş, bozuk ya da dizi olmayan kayıt boş liste. */
+export function parseDismissed(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const v: unknown = JSON.parse(raw);
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.length > 0) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Eşzamanlı okuma (localStorage aynası); ilk çizimde notun bir an görünüp kaybolmaması için. */
+export function getDismissedSync(): string[] {
+  try {
+    return parseDismissed(getPrefSync(PREF_KEYS.dismissed));
+  } catch {
+    return [];
+  }
+}
+
+/** Kalıcı depo (Android'de Preferences) ile aynanın birleşimi: biri temizlenmiş olsa da gizleme korunur. */
+export async function getDismissed(): Promise<string[]> {
+  let stored: string[] = [];
+  try {
+    stored = parseDismissed(await getPref(PREF_KEYS.dismissed));
+  } catch {
+    /* aynayla yetin */
+  }
+  return [...new Set([...stored, ...getDismissedSync()])];
+}
+
+/** Anahtarları gizlenenlere ekler (ayna + kalıcı depo) ve yeni listeyi döner. Yazılamazsa yalnız bu oturumda geçerli olur. */
+export async function addDismissed(keys: string[]): Promise<string[]> {
+  const next = [...new Set([...(await getDismissed()), ...keys.filter(Boolean)])].slice(-MAX_DISMISSED);
+  const raw = JSON.stringify(next);
+  try {
+    setPrefSync(PREF_KEYS.dismissed, raw);
+  } catch {
+    /* yok say */
+  }
+  try {
+    await setPref(PREF_KEYS.dismissed, raw);
+  } catch {
+    /* yok say */
+  }
+  return next;
 }

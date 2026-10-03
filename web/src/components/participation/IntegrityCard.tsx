@@ -55,13 +55,14 @@ export function integritySummary(warnings: IntegrityWarning[]): string {
  * Öneri sayfasındaki kart. Uyarı varsa HER ZAMAN açık gelir (her iki görünüm yoğunluğunda); kullanıcı isterse katlayabilir,
  * hüküm satırı başlıkta kalır. Uyarı yoksa hiçbir şey çizilmez.
  */
-export function IntegrityCard({ warnings }: { warnings: IntegrityWarning[] }) {
+export function IntegrityCard({ warnings, headingLevel = 2 }: { warnings: IntegrityWarning[]; headingLevel?: 2 | 3 }) {
   if (!warnings.length) return null;
   return (
     <Card
       title={`Bütünlük uyarıları (${warnings.length})`}
       subtitle="Kesin sayımda otomatik tarama · karar değiştirilmedi"
       tone="warning"
+      headingLevel={headingLevel}
       collapsible
       defaultOpen
       summary={integritySummary(warnings)}

@@ -3,7 +3,7 @@
    Mobil öncelikli: 360 px'de yatay kaydırma yok; ≥ 900 px masaüstü düzeni.
 
    SINIF KILAVUZU (ayrıntı: src/README.md)
-   Yerleşim   .app .app-header .app-nav .nav-link .app-main .app-footer .bottom-nav .bottom-link .skip-link
+   Yerleşim   .app .app-header .app-nav .nav-link .nav-divider .app-main .app-footer .bottom-nav .bottom-link .more-system .skip-link
    Sayfa      .page .page-narrow (≤ 720px) .page-wide · .page-header .page-title .page-subtitle .page-actions .page-meta .page-back
    Düzen      .stack .stack-sm .stack-lg (dikey boşluk) · .row .row-between .row-end (yatay, sarmalı)
               .grid-2 .grid-3 .grid-auto (duyarlı ızgara) · .split (ana + yan sütun) · .mt .mb .mt-0
@@ -39,7 +39,7 @@
   --primary-hover: #1e40af;
   --primary-soft: #e5ecfc;
   --primary-contrast: #ffffff;
-  --success: #15803d;
+  --success: #147a39; /* #15803d açık yeşil zeminde 4,44:1 idi (WCAG AA 4,5); bu değer 4,8:1 */
   --success-soft: #e5f5ea;
   --warning: #a35207;
   --warning-soft: #fdf2df;
@@ -61,6 +61,9 @@
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   --content-max: 1100px;
   --header-h: 56px;
+  /* Masaüstü üst gezinme satırının yüksekliği (≥ 900 px'de .app-nav görünür); sabit başlık = --sticky-h. Derin bağlantı hedefleri bunun altında kalmaz. */
+  --nav-h: 0px;
+  --sticky-h: calc(var(--header-h) + var(--nav-h));
   --bottom-nav-h: 62px;
   --gutter: 12px;
   color-scheme: light;
@@ -574,6 +577,15 @@ a:focus:not(:focus-visible) {
   border-bottom-color: var(--primary);
   font-weight: 600;
 }
+/* Üst gezinmede 'Katılım' ile 'Keşfet ve doğrula' grupları arasındaki görsel ayraç (yalnız süs; aria-hidden) */
+.nav-divider {
+  flex: none;
+  align-self: center;
+  width: 1px;
+  height: 1.4rem;
+  margin: 0 0.45rem;
+  background: var(--border-strong);
+}
 
 .app-banners {
   max-width: var(--content-max);
@@ -668,8 +680,14 @@ a:focus:not(:focus-visible) {
 }
 
 @media (min-width: 900px) {
+  :root {
+    --nav-h: 47px;
+  }
   .app-nav {
     display: block;
+  }
+  .app-nav-inner {
+    min-height: 46px;
   }
   .bottom-nav {
     display: none;
@@ -710,6 +728,60 @@ a:focus:not(:focus-visible) {
 .more-link.active {
   background: var(--surface-2);
   color: var(--text);
+}
+
+/* 'Daha fazla' sayfasının en altındaki Sistem durumu (masaüstü alt bilgisinin mobildeki karşılığı) */
+.more-system {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+.more-system-list {
+  margin: 0;
+}
+.more-system-row {
+  display: grid;
+  grid-template-columns: 7.25rem minmax(0, 1fr);
+  gap: 0 0.75rem;
+  align-items: baseline;
+  padding: 0.3rem 0;
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+.more-system-row dt {
+  color: var(--text-muted);
+}
+.more-system-row dd {
+  margin: 0;
+  min-width: 0;
+}
+.more-system-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 2.75rem;
+  text-decoration: none;
+}
+.more-system-link:hover span {
+  text-decoration: underline;
+}
+.more-system-warn {
+  display: block;
+  font-weight: 600;
+}
+.more-system-row.is-warn dd,
+.more-system-row.is-warn .more-system-link {
+  color: var(--warning);
+}
+.more-system-empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem 0.75rem;
+  margin-bottom: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--text-muted);
 }
 
 /* ───────────── Sayfa ───────────── */
@@ -959,7 +1031,7 @@ a:focus:not(:focus-visible) {
 .section[id],
 .details[id],
 .clamp-text[id] {
-  scroll-margin-top: calc(var(--header-h) + env(safe-area-inset-top, 0px) + 12px);
+  scroll-margin-top: calc(var(--sticky-h) + env(safe-area-inset-top, 0px) + 12px);
 }
 
 /* ───────────── Düğmeler ───────────── */
@@ -2955,8 +3027,7 @@ a.list-item:hover,
   font-family: var(--mono);
 }
 
-/* Ana sayfa: bekleyen işler ve kalıcı kaybeden göstergesi */
-.task-list,
+/* Ana sayfa: kalıcı kaybeden göstergesi (bekleyen işler artık components/home/home.css'te: .home-task-*) */
 .loser-list {
   list-style: none;
   margin: 0;
@@ -2964,27 +3035,6 @@ a.list-item:hover,
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
-}
-.task-item {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.35rem 0.6rem;
-  padding-bottom: 0.6rem;
-  border-bottom: 1px solid var(--border);
-  min-width: 0;
-}
-.task-item:last-child {
-  border-bottom: 0;
-  padding-bottom: 0;
-}
-.task-title {
-  flex: 1 1 200px;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.task-due {
-  font-size: 0.85rem;
 }
 .loser-list > li {
   display: flex;
@@ -3091,7 +3141,7 @@ h4.sub-heading {
   flex-direction: column;
   gap: 0.5rem;
   min-width: 0;
-  scroll-margin-top: calc(var(--header-h) + 12px);
+  scroll-margin-top: calc(var(--sticky-h) + 12px);
   transition: box-shadow 0.3s, border-color 0.3s;
 }
 .msg-mine {
@@ -3177,7 +3227,9 @@ h4.sub-heading {
   font-size: 0.8rem;
 }
 .btn-primary .msg-count {
-  background: rgb(255 255 255 / 0.22);
+  /* Yarı saydam beyaz zemin üzerinde beyaz küçük yazı 4,2:1 kalıyordu (WCAG AA 4,5): çerçeveli, zeminsiz sayı hapı */
+  background: transparent;
+  box-shadow: inset 0 0 0 1px currentColor;
   color: inherit;
 }
 .msg-bridge {
@@ -3377,9 +3429,6 @@ h4.sub-heading {
 }
 .timeline-reason {
   margin: 0.15rem 0 0.2rem;
-}
-.header-countdown {
-  white-space: normal;
 }
 
 /* Sonuçlar ve doğrulama */

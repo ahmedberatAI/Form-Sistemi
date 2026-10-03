@@ -1,5 +1,7 @@
 // Tek bir tartışma mesajı: yazar, tutum, zaman, sürüm geçmişi, katılıyorum/katılmıyorum, köprü skoru,
 // YZ moderasyon uyarısı (danışma), defter kaydı, gizlenmiş (mezar taşı + tek cevap) ve daraltılmış durumlar.
+// Sade alt satır: iki satırlık hash alt bilgisi tek sessiz satırdır ('özet a1b2c3… · defter d4e5f6… ›'; kopyalama işlem
+// sayfasında). 12 satırı aşan gövde ClampText ile kısalır; `.msg-body` gövdeyi saran düğümde kalır (odak ve e2e bu sınıfa bakar).
 import { useEffect, useId, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { HiddenMessageResponse, MessageVersionView, MessageView } from "@forum/shared";
@@ -9,11 +11,13 @@ import { useOntology } from "../../lib/categories";
 import { proposalRef } from "../../lib/format";
 import { routes } from "../../lib/routes";
 import { useAction } from "../../lib/useAsync";
-import { AiLabel, Alert, Badge, Button, cx, Details, DiffView, DropdownMenu, ErrorView, HashText, Spinner, StanceBadge, Textarea, Time, useConfirm, useToast } from "../../ui";
+import { AiLabel, Alert, Badge, Button, ClampText, cx, Details, DiffView, DropdownMenu, ErrorView, HashText, Spinner, StanceBadge, Textarea, Time, useConfirm, useToast } from "../../ui";
 import { UserLink } from "../UserLink";
 import { Composer } from "./Composer";
 import { fmtDecimal, messageAnchorId, PlainText } from "./common";
+import { MESSAGE_CLAMP_LINES } from "./discussionLogic";
 import { shouldLoadVersions } from "./messageVersions";
+import "./discussion.css";
 
 export const BRIDGE_EXPLANATION =
   "Köprü skoru: farklı görüş gruplarından destek. Her anlamlı görüş grubunda (1 + katılan) / (2 + katılan + katılmayan) hesaplanır; en düşük grup değeri gösterilir. Yüksek skor, mesajın yalnızca bir kesimce değil farklı görüştekilerce de benimsendiğini gösterir.";
@@ -271,7 +275,9 @@ export function MessageItem({ message: m, parentNickname, focused, deletionSeq, 
           />
         ) : (
           <>
-            <PlainText text={m.body} className="msg-body" />
+            <div className="msg-body" tabIndex={-1}>
+              <ClampText text={m.body} lines={MESSAGE_CLAMP_LINES} wideLines={MESSAGE_CLAMP_LINES} />
+            </div>
             {m.pendingDeletionProposalId && !isCollapsed ? (
               <p className="small">
                 <Badge tone="warning" icon="warning">
@@ -382,14 +388,21 @@ export function MessageItem({ message: m, parentNickname, focused, deletionSeq, 
 
       <footer className="msg-meta small muted">
         <span>
-          İçerik özeti <HashText hash={m.contentHash} chars={8} copy={false} label="İçerik özeti" />
+          özet <HashText hash={m.contentHash} chars={6} copy={false} label="İçerik özeti" />
+        </span>
+        <span className="msg-meta-sep" aria-hidden="true">
+          ·
         </span>
         {m.ledgerTx ? (
           <span>
-            Defter <HashText hash={m.ledgerTx} chars={8} copy={false} to={routes.tx(m.ledgerTx)} label="Defter işlemi" />
+            defter <HashText hash={m.ledgerTx} chars={6} copy={false} to={routes.tx(m.ledgerTx)} label="Defter işlemi" />
+            <span className="msg-meta-go" aria-hidden="true">
+              {" "}
+              ›
+            </span>
           </span>
         ) : (
-          <span>Defter kaydı bekleniyor</span>
+          <span>defter kaydı bekleniyor</span>
         )}
       </footer>
     </article>

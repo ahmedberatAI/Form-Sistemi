@@ -1,12 +1,13 @@
-// Uygulama iskeleti: üst çubuk (logo, bildirimler, kullanıcı menüsü), masaüstünde üst gezinme,
-// mobilde alt gezinme + "Daha fazla" sayfası, genel uyarı şeritleri ve alt bilgi.
-import { useEffect, useRef, useState, type ReactNode } from "react";
+// Uygulama iskeleti: üst çubuk (logo, bildirimler, kullanıcı menüsü), masaüstünde grup ayraçlı üst gezinme,
+// mobilde alt gezinme + "Daha fazla" sayfası (en altında "Sistem durumu"), genel uyarı şeritleri ve alt bilgi.
+import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
-import { SURUM } from "@forum/shared";
+import { SURUM, type SystemInfo } from "@forum/shared";
 import { useAuth } from "../../auth/AuthContext";
 import { formatDateTime } from "../../lib/format";
+import { useNow } from "../../lib/hooks";
 import { Alert, Button, cx, DropdownMenu, Icon, Modal } from "../../ui";
-import { GROUP_LABELS, visibleItems, type NavItem } from "./nav";
+import { GROUP_LABELS, systemRows, topNavSections, visibleItems, type NavItem } from "./nav";
 
 function UnreadBadge({ n }: { n: number }) {
   if (n <= 0) return null;
@@ -25,6 +26,57 @@ function Brand() {
       </span>
       <span className="brand-name">Forum Sistemi</span>
     </Link>
+  );
+}
+
+/**
+ * "Daha fazla" sayfasının en altındaki "Sistem durumu": masaüstü alt bilgisinin mobildeki karşılığı, her sayfadan bir dokunuşla.
+ * Veri auth.system'den gelir (AuthProvider 30 sn'de bir yeniler); saniyelik saat yalnız bu bloğu yeniden çizer.
+ */
+export function SystemStatus({ system, onNavigate, onRetry }: { system: SystemInfo | null; onNavigate?: () => void; onRetry?: () => void }) {
+  const titleId = useId();
+  const now = useNow(1000);
+  const rows = systemRows(system, now, SURUM);
+  return (
+    <section className="more-system" aria-labelledby={titleId}>
+      <h3 className="more-group-title" id={titleId}>
+        Sistem durumu
+      </h3>
+      {system ? null : (
+        <div className="more-system-empty" role="status">
+          <span>Sistem bilgisi alınamadı.</span>
+          {onRetry ? (
+            <Button size="sm" variant="ghost" icon="refresh" onClick={onRetry}>
+              Yenile
+            </Button>
+          ) : null}
+        </div>
+      )}
+      <dl className="more-system-list">
+        {rows.map((r) => (
+          <div key={r.key} className={cx("more-system-row", r.warning && "is-warn")}>
+            <dt>{r.label}</dt>
+            <dd>
+              {r.to ? (
+                <Link className="more-system-link" to={r.to} onClick={onNavigate}>
+                  <span>{r.value}</span>
+                  <Icon name="chevronRight" size={14} />
+                </Link>
+              ) : (
+                r.value
+              )}
+              {r.warning ? (
+                <span className="more-system-warn">
+                  <span aria-hidden="true">⚠ </span>
+                  <span className="sr-only">Uyarı: </span>
+                  {r.warning}
+                </span>
+              ) : null}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
   );
 }
 
@@ -78,6 +130,7 @@ function MoreSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
           )}
         </div>
       </nav>
+      <SystemStatus system={auth.system} onNavigate={onClose} onRetry={() => void auth.refreshSystem()} />
     </Modal>
   );
 }
@@ -117,7 +170,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
   const items = visibleItems(auth);
   // Görev sayfaları (kayıt memuru, yönetim) masaüstünde kullanıcı menüsünde, mobilde "Daha fazla"da.
-  const topItems = items.filter((i) => i.group === "main" || i.group === "explore");
+  // Üst gezinme iki gruptur (Katılım | Keşfet ve doğrula); araya görsel ayraç girer.
+  const topSections = topNavSections(items);
   const bottomItems = items.filter((i) => i.bottom);
   const user = auth.user;
   const sys = auth.system;
@@ -184,8 +238,13 @@ export function AppLayout({ children }: { children: ReactNode }) {
         </div>
         <nav className="app-nav" aria-label="Ana gezinme">
           <div className="app-nav-inner">
-            {topItems.map((i) => (
-              <NavLinkItem key={i.to} item={i} unread={auth.unread} />
+            {topSections.map((section, n) => (
+              <Fragment key={section[0].group}>
+                {n > 0 ? <span className="nav-divider" aria-hidden="true" /> : null}
+                {section.map((i) => (
+                  <NavLinkItem key={i.to} item={i} unread={auth.unread} />
+                ))}
+              </Fragment>
             ))}
           </div>
         </nav>

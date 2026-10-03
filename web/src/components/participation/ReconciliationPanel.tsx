@@ -1,7 +1,10 @@
 // Uzlaşma turu (ALGORITMA §7): köken, azınlık raporları, YZ köprü taslakları (yazar birini benimseyebilir),
 // karşı bilirkişi talebi ve metin revizyonu. İnsan onayı olmadan hiçbir şey değişmez.
-import { useState } from "react";
-import type { AiAnalysisInfo, MinorityReport, ProposalDetail } from "@forum/shared";
+// 'Eylem önce': köken bildirimi (role=status) en üsttedir; ardından role göre ilk blok gelir — rapor yazabilen üyede 'Azınlık
+// raporları', yazarda 'Köprü taslakları'. Etkin olmayan (yeniden oylama, sonuçlanmış) panelde taslak setleri açılırda durur;
+// azınlık raporları hiçbir evrede gömülmez.
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import type { AiAnalysisInfo, DecisionParams, MinorityReport, ProposalDetail } from "@forum/shared";
 import { addMinorityReport, approveAiAnalysis, requestAiBridging, requestExperts } from "../../api/endpoints";
 import { useAuth } from "../../auth/AuthContext";
 import { formatPercent } from "../../lib/format";
@@ -10,11 +13,46 @@ import { AiLabel, Alert, Button, Card, Countdown, Details, DiffView, Textarea, u
 import { MinorityReportList } from "./ResultsCard";
 import { PlainText, SubHeading } from "./common";
 import { ProposalEditor } from "./ProposalEditor";
+import "./panels.css";
 
 interface BridgingOutput {
   drafts?: { title: string; body: string; rationale?: string }[];
   baseVersion?: number;
   note?: string | null;
+}
+
+export type ReconciliationBlock = "reports" | "drafts";
+
+/**
+ * Panel içi blok sırası. Etkin uzlaşmada yazar (ve rapor yazma hakkı olmayan) için 'Köprü taslakları' ilk, diğer herkes için
+ * 'Azınlık raporları' ilktir; rapor yazabilen üye yazar da olsa raporlarla başlar. Etkin değilse sıra değişmez.
+ */
+export function reconciliationBlockOrder(o: { active: boolean; isAuthor: boolean; canWriteReport: boolean }): ReconciliationBlock[] {
+  return o.active && o.isAuthor && !o.canWriteReport ? ["drafts", "reports"] : ["reports", "drafts"];
+}
+
+export interface OriginNotice {
+  title: string;
+  /** Bildirimin kısa gövdesi: yeniden oylamada kabul için aranan koşul */
+  requirement: string;
+  /** Kökenin nedeni (açılırda durur) */
+  cause: string;
+}
+
+/** Köken bildirimi metinleri; "objection" dışındaki her köken "tartışmalı sonuç" sayılır. */
+export function reconciliationOriginNotice(origin: ProposalDetail["reconciliationOrigin"], params: DecisionParams | null | undefined): OriginNotice {
+  if (origin === "objection") {
+    return {
+      title: "Köken: geçerli azınlık itirazı",
+      requirement: `Yeniden oylamada onay oranı en az ${params ? formatPercent(params.revoteThreshold.num / params.revoteThreshold.den) : "ρ"} olmalı (güçlü itirazda en az 2/3).`,
+      cause: "İlk turda kabul çıktı ancak geçerli bir azınlık itirazı geldi.",
+    };
+  }
+  return {
+    title: "Köken: tartışmalı sonuç (köprü testi sağlanamadı)",
+    requirement: `Yeniden oylamada köprü testi ya da en az ${params ? formatPercent(params.overrideThreshold.num / params.overrideThreshold.den) : "ω"} onay gerekir.`,
+    cause: "Genel çoğunluk sağlandı ancak en az bir anlamlı görüş grubunun desteği tabanın altında kaldı.",
+  };
 }
 
 /**
@@ -25,6 +63,13 @@ export function MinorityReportForm({ proposal: p, onAdded }: { proposal: Proposa
   const auth = useAuth();
   const [body, setBody] = useState("");
   const [open, setOpen] = useState(false);
+  // Odak yönetimi: form açılınca ilk alana (autoFocus), 'Vazgeç' ile kapanınca tetikleyen düğmeye döner.
+  const trigger = useRef<HTMLButtonElement>(null);
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (wasOpen.current && !open) trigger.current?.focus();
+    wasOpen.current = open;
+  }, [open]);
   const send = useAction(() => addMinorityReport(p.id, body.trim()), {
     success: "Azınlık raporunuz karar kaydına eklendi.",
     onSuccess: (r) => {
@@ -49,7 +94,7 @@ export function MinorityReportForm({ proposal: p, onAdded }: { proposal: Proposa
   if (!open)
     return (
       <div>
-        <Button size="sm" icon="proposals" onClick={() => setOpen(true)}>
+        <Button ref={trigger} size="sm" icon="proposals" onClick={() => setOpen(true)}>
           Azınlık raporu yaz
         </Button>
       </div>
@@ -70,6 +115,7 @@ export function MinorityReportForm({ proposal: p, onAdded }: { proposal: Proposa
         maxLength={5000}
         showCount
         rows={6}
+        autoFocus
       />
       <Alert tone="warning">
         Raporunuz takma adınızla ve görüş grubunuzla (ör. “Görüş Grubu B”) birlikte herkese açık yayımlanır ve deftere grup bilgisiyle yazılır. Bu,
@@ -178,6 +224,7 @@ export function ReconciliationPanel({ proposal: p, onUpdated, onReload, onMinori
   const [revising, setRevising] = useState(false);
   const isAuthor = auth.user?.id === p.authorId;
   const active = p.status === "reconciliation";
+  const canWriteReport = p.canWriteMinorityReport === true;
   const bridging = p.aiAnalyses.filter((a) => a.task === "bridging_drafts").sort((a, b) => b.createdAt - a.createdAt);
   const gen = useAction(() => requestAiBridging(p.id), { success: "Köprü taslakları üretildi.", onSuccess: onNewAnalysis });
   const counter = useAction(() => requestExperts(p.id, "counter"), {
@@ -185,51 +232,82 @@ export function ReconciliationPanel({ proposal: p, onUpdated, onReload, onMinori
     onSuccess: onUpdated,
   });
   const params = p.params;
+  const origin = reconciliationOriginNotice(p.reconciliationOrigin, params);
+  const order = reconciliationBlockOrder({ active, isAuthor, canWriteReport });
+
+  const draftsIntro = (
+    <p className="small muted">
+      Çoğunluk ve azınlık gerekçelerini birlikte gözeten 4–8 alternatif metin. Yazar onaylamadıkça hiçbir şey değişmez; taslaklar yalnızca danışma niteliğindedir.
+    </p>
+  );
+  const previousSets =
+    bridging.length > 1 ? (
+      <Details summary={`Önceki taslak setleri (${bridging.length - 1})`}>
+        <div className="stack">
+          {bridging.slice(1).map((a) => (
+            <BridgingDrafts key={a.id} proposal={p} analysis={a} onReload={onReload} />
+          ))}
+        </div>
+      </Details>
+    ) : null;
+
+  const reportForm = active ? <MinorityReportForm proposal={p} onAdded={onMinorityReport} /> : null;
+  const blocks: Record<ReconciliationBlock, ReactNode> = {
+    reports: (
+      <section key="reports" className="stack-sm" aria-label="Azınlık raporları">
+        <SubHeading>Azınlık raporları ({p.minorityReports.length})</SubHeading>
+        {/* Rapor yazma hakkı olan üyede form listenin önünde durur (ilk denetim 'Azınlık raporu yaz' olur). */}
+        {canWriteReport ? reportForm : null}
+        {p.minorityReports.length ? <MinorityReportList reports={p.minorityReports} /> : <p className="small muted">Henüz azınlık raporu yok.</p>}
+        {canWriteReport ? null : reportForm}
+      </section>
+    ),
+    drafts: (
+      <section key="drafts" className="stack-sm" aria-label="Köprü taslakları">
+        <SubHeading>Yapay zekâ köprü taslakları</SubHeading>
+        {active && auth.can("V") ? (
+          <div>
+            <Button size="sm" icon="ai" loading={gen.loading} onClick={() => void gen.run()}>
+              {bridging.length ? "Yeni taslaklar üret" : "YZ köprü taslakları üret"}
+            </Button>
+          </div>
+        ) : null}
+        {active ? (
+          <>
+            {bridging[0] ? <BridgingDrafts proposal={p} analysis={bridging[0]} onReload={onReload} /> : <p className="small muted">Henüz taslak üretilmedi.</p>}
+            {previousSets}
+            <Details summary="Köprü taslakları nedir?" className="panel-details">
+              {draftsIntro}
+            </Details>
+          </>
+        ) : bridging[0] ? (
+          <Details summary={`Köprü taslak setleri (${bridging.length})`} className="panel-details">
+            <div className="stack">
+              {draftsIntro}
+              <BridgingDrafts proposal={p} analysis={bridging[0]} onReload={onReload} />
+              {previousSets}
+            </div>
+          </Details>
+        ) : (
+          <>
+            <p className="small muted">Henüz taslak üretilmedi.</p>
+            <Details summary="Köprü taslakları nedir?" className="panel-details">
+              {draftsIntro}
+            </Details>
+          </>
+        )}
+      </section>
+    ),
+  };
 
   return (
-    <Card
-      title="Uzlaşma turu"
-      subtitle="Azınlığın gücü erteleyicidir: karar bir kez durdurulur, yeniden düşünülür ve yeniden oylanır."
-      actions={active ? <Countdown to={p.phaseEndsAt} prefix="Yeniden oylamaya" /> : null}
-      tone="warning"
-    >
+    <Card title="Uzlaşma turu" actions={active ? <Countdown to={p.phaseEndsAt} prefix="Yeniden oylamaya" /> : null} tone="warning" className="reconciliation-panel">
       <div className="stack">
-        <Alert tone="info" title={p.reconciliationOrigin === "objection" ? "Köken: geçerli azınlık itirazı" : "Köken: tartışmalı sonuç (köprü testi sağlanamadı)"}>
-          {p.reconciliationOrigin === "objection"
-            ? `İlk turda kabul çıktı ancak geçerli bir azınlık itirazı geldi. Yeniden oylamada onay oranı en az ${params ? formatPercent(params.revoteThreshold.num / params.revoteThreshold.den) : "ρ"} olmalı (güçlü itirazda en az 2/3).`
-            : `Genel çoğunluk sağlandı ancak en az bir anlamlı görüş grubunun desteği tabanın altında kaldı. Yeniden oylamada köprü testi ya da en az ${params ? formatPercent(params.overrideThreshold.num / params.overrideThreshold.den) : "ω"} onay gerekir.`}{" "}
-          Uygun seçmen ve görüş grubu anlık görüntüleri ilk turla aynıdır.
+        <Alert tone="info" title={origin.title}>
+          {origin.requirement}
         </Alert>
 
-        <section className="stack-sm" aria-label="Azınlık raporları">
-          <SubHeading>Azınlık raporları ({p.minorityReports.length})</SubHeading>
-          {p.minorityReports.length ? <MinorityReportList reports={p.minorityReports} /> : <p className="small muted">Henüz azınlık raporu yok.</p>}
-          {active ? <MinorityReportForm proposal={p} onAdded={onMinorityReport} /> : null}
-        </section>
-
-        <section className="stack-sm" aria-label="Köprü taslakları">
-          <SubHeading>Yapay zekâ köprü taslakları</SubHeading>
-          <p className="small muted">
-            Çoğunluk ve azınlık gerekçelerini birlikte gözeten 4–8 alternatif metin. Yazar onaylamadıkça hiçbir şey değişmez; taslaklar yalnızca danışma niteliğindedir.
-          </p>
-          {active && auth.can("V") ? (
-            <div>
-              <Button size="sm" icon="ai" loading={gen.loading} onClick={() => void gen.run()}>
-                {bridging.length ? "Yeni taslaklar üret" : "YZ köprü taslakları üret"}
-              </Button>
-            </div>
-          ) : null}
-          {bridging[0] ? <BridgingDrafts proposal={p} analysis={bridging[0]} onReload={onReload} /> : <p className="small muted">Henüz taslak üretilmedi.</p>}
-          {bridging.length > 1 ? (
-            <Details summary={`Önceki taslak setleri (${bridging.length - 1})`}>
-              <div className="stack">
-                {bridging.slice(1).map((a) => (
-                  <BridgingDrafts key={a.id} proposal={p} analysis={a} onReload={onReload} />
-                ))}
-              </div>
-            </Details>
-          ) : null}
-        </section>
+        {order.map((b) => blocks[b])}
 
         {active ? (
           <section className="stack-sm" aria-label="Bilirkişi ve revizyon">
@@ -262,6 +340,15 @@ export function ReconciliationPanel({ proposal: p, onUpdated, onReload, onMinori
             ) : null}
           </section>
         ) : null}
+
+        <Details summary="Uzlaşma süreci nasıl işler?" className="panel-details">
+          <div className="stack-sm">
+            <p className="small">Azınlığın gücü erteleyicidir: karar bir kez durdurulur, yeniden düşünülür ve yeniden oylanır.</p>
+            <p className="small">
+              {origin.cause} Uygun seçmen ve görüş grubu anlık görüntüleri ilk turla aynıdır.
+            </p>
+          </div>
+        </Details>
       </div>
     </Card>
   );

@@ -1,9 +1,13 @@
 // Senaryo 1 — 360 px sayfa taraması: tüm rotalar (ziyaretçi, üye, bekleyen üye, bilirkişi, kayıt memuru, denetçi, yönetici),
 // sekmeli sayfalarda her sekme ve tohumdaki her öneri sayfası. Her görünümde:
 //   document.documentElement.scrollWidth - innerWidth === 0 (yatay taşma yok) ve sayfa/konsol hatası yok.
+// Faz 2 ekleri: tartışmadaki, oylamadaki ve kabul edilmiş birer öneride (sade ve 'Tam' görünümde) 'Bu sayfada' gezinmesinin her
+// bağlantısına tıklanır (hedef bölüm görünür alana gelir, üst çubuğun altında kalmaz, odak içine taşınır, ?bolum silinir) ve
+// 'Daha fazla' sayfasında Sistem durumu bloğu aranır.
 import { expect, test, type Browser, type Page } from "@playwright/test";
 import type { CommittedTxView, LedgerStatus, ProposalSummary, PublicUser, TopicSummary } from "@forum/shared";
 import { useSeededServer } from "../support/fixtures";
+import { clickEveryOnThisPage } from "../support/sade";
 import { gotoApp, measureOverflow, openSession, waitSettled, type Session } from "../support/ui";
 
 const ctx = useSeededServer("tarama");
@@ -65,12 +69,22 @@ async function scan(s: Session, role: string, views: View[]): Promise<void> {
   }
 }
 
-/** Mobil alt gezinmedeki "Daha fazla" alt sayfası. */
+/** Mobil alt gezinmedeki "Daha fazla" alt sayfası (en altında 'Sistem durumu' bloğu: her sayfadan 1 dokunuşla sistem bilgisi). */
 const moreSheet: View["extra"] = {
   label: "“Daha fazla” alt sayfası",
   run: async (page) => {
     await page.getByRole("button", { name: /Daha fazla/ }).click();
-    await expect(page.getByRole("dialog", { name: "Daha fazla" })).toBeVisible();
+    const dialog = page.getByRole("dialog", { name: "Daha fazla" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("region", { name: "Sistem durumu", exact: true })).toBeVisible();
+  },
+};
+
+/** Öneri sayfasında 'Bu sayfada' gezinmesinin her bağlantısına tıklar (kısa yollar: Metin · eylem · Sonuç · Bilirkişi · Tartışma · Kanıtlar). */
+const onThisPageLinks: View["extra"] = {
+  label: "‘Bu sayfada’ bağlantı tıklamaları",
+  run: async (page) => {
+    await clickEveryOnThisPage(page);
   },
 };
 
@@ -105,6 +119,14 @@ test.beforeAll(async () => {
   expect(data.proposals.length).toBeGreaterThan(30);
 });
 
+/** 'Bu sayfada' tıklamaları için tartışmadaki, oylamadaki ve kabul edilmiş birer öneri. */
+function featured(): Set<string> {
+  const list = data.proposals;
+  const ids = [list.find((p) => p.status === "deliberation"), list.find((p) => p.status === "voting" && p.kind === "topic"), list.find((p) => p.status === "enacted")].map((p) => p?.id);
+  expect(ids.every(Boolean), "tartışmada, oylamada ve kabul edilmiş birer öneri olmalı").toBe(true);
+  return new Set(ids as string[]);
+}
+
 test.afterAll(async () => {
   await Promise.all(sessions.splice(0).map((s) => s.close()));
 });
@@ -130,6 +152,7 @@ test("ziyaretçi: tüm genel sayfalar ve her öneri (360 px)", async ({ browser 
   const s = await phone(browser);
   const t = data.topics;
   const withSub = t.find((x) => t.some((y) => y.parentId === x.id)) ?? t[0];
+  const pick = featured();
   const views: View[] = [
     { label: "Ana sayfa", path: "/", extra: moreSheet },
     { label: "Giriş", path: "/giris" },
@@ -138,7 +161,7 @@ test("ziyaretçi: tüm genel sayfalar ve her öneri (360 px)", async ({ browser 
     { label: "Konu ayrıntısı (gizlenmiş mesajlı)", path: `/konular/${t[0].id}` },
     { label: "Konu ayrıntısı (alt konulu)", path: `/konular/${withSub.id}` },
     { label: "Öneriler", path: "/oneriler", tabs: true },
-    ...data.proposals.map((p) => ({ label: `Öneri #K-${p.seq} (${p.status})`, path: `/oneriler/${p.id}` })),
+    ...data.proposals.map((p): View => ({ label: `Öneri #K-${p.seq} (${p.status})`, path: `/oneriler/${p.id}`, ...(pick.has(p.id) ? { extra: onThisPageLinks } : {}) })),
     { label: "Oyum kayıtlı mı?", path: "/oy-dogrula" },
     { label: "Bilirkişiler", path: "/bilirkisiler", tabs: true },
     { label: "Üye profili", path: `/uyeler/${data.ayse.id}` },
@@ -179,11 +202,12 @@ test("ziyaretçi (Tam görünüm): her öneri ve açık ayrıntılı sayfalar (3
   );
   const t = data.topics;
   const withSub = t.find((x) => t.some((y) => y.parentId === x.id)) ?? t[0];
+  const pick = featured();
   const views: View[] = [
     { label: "Ana sayfa", path: "/" },
     { label: "Konu ayrıntısı (gizlenmiş mesajlı)", path: `/konular/${t[0].id}` },
     { label: "Konu ayrıntısı (alt konulu)", path: `/konular/${withSub.id}` },
-    ...data.proposals.map((p) => ({ label: `Öneri #K-${p.seq} (${p.status})`, path: `/oneriler/${p.id}` })),
+    ...data.proposals.map((p): View => ({ label: `Öneri #K-${p.seq} (${p.status})`, path: `/oneriler/${p.id}`, ...(pick.has(p.id) ? { extra: onThisPageLinks } : {}) })),
     { label: "Bilirkişiler", path: "/bilirkisiler", tabs: true },
     { label: "Graf", path: "/graf", tabs: true },
     { label: "Defter", path: "/defter", tabs: true },
@@ -221,7 +245,7 @@ test("üye ve bekleyen üye: profil, bildirimler, yeni öneri formları, oy pane
     { label: "Yeni öneri: düzenleme teklifi", path: `/oneriler/yeni?tur=amendment&konu=${data.topics[0].id}` },
     { label: "Yeni öneri: silme talebi", path: "/oneriler/yeni?tur=deletion" },
     { label: "Yeni öneri: yönetmelik değişikliği", path: "/oneriler/yeni?tur=regulation" },
-    { label: `Oylamadaki öneri #K-${voting.seq} (oy paneli)`, path: `/oneriler/${voting.id}` },
+    { label: `Oylamadaki öneri #K-${voting.seq} (oy paneli)`, path: `/oneriler/${voting.id}`, extra: onThisPageLinks },
     { label: "Oyum kayıtlı mı?", path: "/oy-dogrula" },
     { label: "Graf (kendi görüş haritası)", path: "/graf", tabs: true },
   ]);

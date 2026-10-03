@@ -1,0 +1,80 @@
+/* ── Tartışma (öneri ve konu sayfası): kapalı yazma kutusu, tek cümlelik notlar, sade mesaj alt satırı, kurallar en altta ──
+   Yeni renk belirteci YOK: yalnız mevcut belirteçler kullanılır (--surface, --border-strong, --text-muted, --primary …);
+   bunları iki koyu tema bloğu da zaten tanımlar. Aşağıdaki seçiciler styles.css'teki .msg-meta kuralından daha özgüldür,
+   böylece CSS dosyalarının yükleme sırası fark etmez. */
+
+/* Kapalı yazma kutusu: tek satır, giriş alanı görünümlü düğme (aria-expanded). 44 px dokunma hedefi. */
+.composer-collapsed {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 0.5rem 0.8rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-muted);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.composer-collapsed:hover {
+  border-color: var(--primary);
+  color: var(--text);
+}
+.composer-collapsed > .icon {
+  flex: none;
+}
+
+/* Anonim, doğrulanmamış, taslak ve arşiv durumları: tek cümlelik, sessiz not. */
+.composer-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.composer-note > .icon {
+  flex: none;
+  margin-top: 0.15rem;
+  color: var(--text-muted);
+}
+.composer-note > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Sade mesaj alt satırı: 'özet a1b2c3… · defter d4e5f6… ›' tek sessiz satır (dar ekranda gerekirse sarar). */
+.msg .msg-meta {
+  gap: 0 0.5rem;
+  line-height: 1.5;
+}
+/* Özet sessiz kalır (rozet arka planı ve koyu metin yok); defter karması içinde durduğu bağlantının rengini alır. */
+.msg .msg-meta .hash {
+  padding: 0 0.1rem;
+  background: none;
+  color: inherit;
+  font-size: 1em;
+}
+
+/* Tartışma kuralları ve köprü skoru: en altta, sessiz başlıklı açılır. */
+.details.discussion-guide > summary {
+  font-weight: 500;
+  font-size: 0.925rem;
+  color: var(--text-muted);
+}
+.discussion-guide > .details-body {
+  min-width: 0;
+}
+.discussion-guide .discussion-rules li {
+  overflow-wrap: anywhere;
+}

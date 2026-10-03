@@ -1,15 +1,23 @@
 // Tartışma mesajı yazma / yanıtlama / düzenleme formu.
 // İsteğe bağlı ön denetim (kişisel veri + YZ moderasyonu, danışma); sunucu 422 pii_detected dönerse
 // maskeli bulgular gösterilir ve kullanıcı "Yine de gönder" (acknowledgePii) seçebilir.
-import { useState } from "react";
+// Yeni mesaj (mode="new") doğrulanmış üyede KAPALI başlar: tek satır görünümlü 'Görüşünüzü yazın…' düğmesi (aria-expanded=false).
+// Düğmeye dokununca düğme formla yer değiştirir ve odak metin alanına geçer ('Yeni mesaj' formu); metin yazılmışsa açık kalır;
+// 'Tam' görünümde baştan açıktır (odak çalmaz). 'Vazgeç' taslağı atar, formu kapatır ve odağı düğmeye geri verir. Kapalıyken form
+// DOM'da olmadığından düğme aria-controls taşımaz (var olmayan kimliğe işaret etmesin). Yanıtla ve Düzenle doğrudan açılır.
+// Anonim, doğrulanmamış, taslak ve arşiv durumları tek cümlelik nottur (metinler discussionLogic.ts).
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { STANCE_LABELS, type MessagePrecheckResponse, type MessageView, type Stance, type ThreadType } from "@forum/shared";
 import { editMessage, postMessage, precheckMessage } from "../../api/endpoints";
 import { useAuth } from "../../auth/AuthContext";
 import { useOntology } from "../../lib/categories";
+import { resolveDefaultOpen, useDetailLevel } from "../../lib/detailLevel";
 import { truncate } from "../../lib/format";
-import { AiLabel, Alert, Badge, Button, RadioGroup, Textarea, useToast } from "../../ui";
+import { AiLabel, Alert, Badge, Button, Icon, RadioGroup, Textarea, useToast } from "../../ui";
 import { piiFromError, PiiNotice, piiKindLabel, type PiiFinding } from "./common";
+import { composerGate, composerIsOpen } from "./discussionLogic";
+import "./discussion.css";
 
 const MAX_LEN = 10000;
 
@@ -49,29 +57,65 @@ export function Composer({ threadType, threadId, mode = "new", parent, message, 
   const [check, setCheck] = useState<MessagePrecheckResponse | null>(null);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Yeni mesaj kutusunun açıklığı: null = kullanıcı dokunmadı (görünüm yoğunluğu belirler), true/false = kendi seçimi.
+  const [choice, setChoice] = useState<boolean | null>(null);
+  const { level } = useDetailLevel();
+  const defaultOpen = resolveDefaultOpen(undefined, level);
+  const open = composerIsOpen({ mode, hasText: body.length > 0, choice, defaultOpen });
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const refocusToggle = useRef(false);
 
-  if (!auth.user) {
+  // Vazgeç ya da gönderim sonrası kutu kapanınca odak yazma düğmesine döner (klavye ve ekran okuyucu yolunu kaybetmesin).
+  useEffect(() => {
+    if (open || !refocusToggle.current) return;
+    refocusToggle.current = false;
+    toggleRef.current?.focus();
+  }, [open]);
+
+  const gate = composerGate({ user: auth.user, canVerify: auth.can("V"), closedReason, mode });
+  if (gate.kind === "anonymous") {
     return (
-      <Alert tone="info" title="Tartışmaya katılmak için giriş yapın">
-        <p>
-          Tartışmayı herkes okuyabilir; mesaj yazmak için doğrulanmış üye olmak gerekir.{" "}
-          <Link to="/giris" state={{ from: location.pathname + location.search }}>
+      <p className="composer-note">
+        <Icon name="info" size={16} />
+        <span>
+          Mesaj yazmak için doğrulanmış üye olmak gerekir:{" "}
+          <Link className="nowrap" to="/giris" state={{ from: location.pathname + location.search }}>
             Giriş yap
           </Link>{" "}
-          · <Link to="/kayit">Kayıt ol</Link>
-        </p>
-      </Alert>
+          ·{" "}
+          <Link className="nowrap" to="/kayit">
+            Kayıt ol
+          </Link>
+        </span>
+      </p>
     );
   }
-  if (!auth.can("V")) {
+  if (gate.kind === "blocked" || gate.kind === "closed") {
     return (
-      <Alert tone="info" title="Hesabınız henüz doğrulanmadı">
-        <p>Kayıt memuru kimliğinizi doğruladıktan sonra mesaj yazabilir, katılım bildirebilir ve öneri verebilirsiniz. Okumak herkese açıktır.</p>
-      </Alert>
+      <p className="composer-note">
+        <Icon name="info" size={16} />
+        <span>{gate.text}</span>
+      </p>
     );
   }
-  if (closedReason && mode !== "edit") {
-    return <Alert tone="info">{closedReason}</Alert>;
+
+  /** Taslağı atar ve (yalnız yeni mesajda) kutuyu kapatır. */
+  const collapse = () => {
+    setBody("");
+    setPii(null);
+    setCheck(null);
+    setError(null);
+    refocusToggle.current = true;
+    setChoice(false);
+  };
+
+  if (mode === "new" && !open) {
+    return (
+      <button ref={toggleRef} type="button" className="composer-collapsed" aria-expanded={false} onClick={() => setChoice(true)}>
+        <span>Görüşünüzü yazın…</span>
+        <Icon name="chevronDown" size={16} />
+      </button>
+    );
   }
 
   const trimmed = body.trim();
@@ -95,6 +139,11 @@ export function Composer({ threadType, threadId, mode = "new", parent, message, 
       setPii(null);
       setCheck(null);
       if (mode !== "edit") setBody("");
+      if (mode === "new") {
+        // Gönderilince kutu varsayılanına döner (sade → kapanır, odak düğmeye gider; tam → açık kalır).
+        setChoice(null);
+        if (!defaultOpen) refocusToggle.current = true;
+      }
       toast.success(mode === "edit" ? "Mesaj düzenlendi; yeni sürüm deftere kaydedildi." : "Mesajınız yayımlandı ve özeti deftere kaydedildi.");
       onDone(m);
     } catch (e) {
@@ -159,7 +208,7 @@ export function Composer({ threadType, threadId, mode = "new", parent, message, 
         maxLength={MAX_LEN}
         showCount
         rows={mode === "new" ? 4 : 3}
-        autoFocus={autoFocus}
+        autoFocus={autoFocus || (mode === "new" && choice === true)}
         required
       />
       {pii ? <PiiNotice findings={pii} loading={sending} onAcknowledge={() => void submit(true)} onCancel={() => setPii(null)} /> : null}
@@ -192,8 +241,8 @@ export function Composer({ threadType, threadId, mode = "new", parent, message, 
         </AiLabel>
       ) : null}
       <div className="form-actions">
-        {onCancel ? (
-          <Button variant="ghost" onClick={onCancel} disabled={sending}>
+        {onCancel || mode === "new" ? (
+          <Button variant="ghost" onClick={onCancel ?? collapse} disabled={sending}>
             Vazgeç
           </Button>
         ) : null}

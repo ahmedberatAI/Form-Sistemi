@@ -1,0 +1,121 @@
+/* ── Sonuç kartı ve sayım doğrulama (öneri sayfası): önce hüküm, ayrıntı adlandırılmış açılırlarda ──
+   Yeni renk belirteci yok; yalnız mevcut --success / --warning / --danger kullanılır (iki koyu tema bloğunda da tanımlı).
+   Renk her zaman metin ve simgeyle birlikte verilir. styles.css'e dokunulmaz: eski kurallar burada daha özgül seçiciyle ayarlanır. */
+
+/* Kartın gövdesi: hüküm, tek satır toplamlar ve iki çubuk arası daha sık */
+.stack.result-summary {
+  gap: 0.75rem;
+}
+
+/* "57 uygun · 41 katıldı · Kabul 30 · Red 8 · Çekimser 3" */
+.result-line {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+/* İşaretli iki çubuk (katılım/yeter sayı, onay/eşik): telefonda alt alta, ≥ 640 px'te yan yana */
+.result-bars {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem;
+}
+@media (min-width: 640px) {
+  .result-bars {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.25rem;
+    align-items: start;
+  }
+}
+
+/* Açılır özetlerin sağındaki hüküm: özet metninin yanında akar (float yok), dar ekranda alt satıra sarar; uzun metin sarar */
+.result-summary .details > summary {
+  padding-block: 0.5rem;
+}
+.result-summary .details > summary .details-meta {
+  float: none;
+  display: inline;
+  margin: 0 0 0 0.6rem;
+  overflow-wrap: anywhere;
+}
+.result-summary .details > .details-body {
+  min-width: 0;
+  padding: 0.65rem 0.8rem;
+}
+.result-verdict-ok {
+  color: var(--success);
+}
+.result-verdict-warn {
+  color: var(--warning);
+  font-weight: 600;
+}
+.result-verdict-fail {
+  color: var(--danger);
+  font-weight: 600;
+}
+.result-verdict-icon {
+  margin-inline-end: 0.3rem;
+}
+
+/* 'Neden bu sonuç?': geçen kontroller ✔ + etiket rozeti (yan yana akar), başarısız/nötr olan tam genişlikte satır;
+   rozetlerin değer/gerekli/açıklama metni 'Kontrol ayrıntıları' açılırında. */
+.result-summary .why-list {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.5rem;
+}
+.result-summary .why-list > .why-row {
+  flex: 1 1 100%;
+}
+.result-summary .why-list > .why-chip {
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.65rem 0.15rem 0.2rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 0.875rem;
+}
+.result-summary .why-list > .why-chip > span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.result-explain-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.result-explain-list > li {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* 'Ayrıntılı sayılar': kutuların altında görünür açıklamalar (eskiden yalnız title ipucuydu) */
+.result-notes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  overflow-wrap: anywhere;
+}
+
+/* Azınlık raporları: "Tümünü göster (n)" düğmesi listenin altında, sola yaslı */
+.result-more {
+  align-self: flex-start;
+}
+
+/* Sayımı kendim doğrulayayım: tek cümle, düğme, sonra 'Neyi denetler?' açılırı */
+.verify-lead {
+  margin: 0;
+}
+.verify-intro > .details-body {
+  min-width: 0;
+}
+.verify-intro > .details-body > p {
+  margin: 0;
+}

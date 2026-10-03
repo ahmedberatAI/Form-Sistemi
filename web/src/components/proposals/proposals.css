@@ -106,3 +106,129 @@
 .pcard-part .progress-labels {
   flex-wrap: wrap;
 }
+
+/* ── Satır görünümü (ProposalRow): ana sayfada 'Şu an açık' ve 'Son kararlar' ──
+   Satırın tamamı bağlantıdır. Telefonda: işaret | başlık (tek satır, …) / alt satırda durum · ilerleme · kalan süre.
+   ≥ 600 px: meta sağda. Renk rolü yalnız işarette ve durum metninde; her zaman metinle birlikte. */
+.prow-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.prow-list > li {
+  min-width: 0;
+}
+.prow-list > li + li {
+  border-top: 1px solid var(--border);
+}
+.prow {
+  display: grid;
+  grid-template-columns: 1rem minmax(0, 1fr);
+  column-gap: 0.5rem;
+  row-gap: 0.1rem;
+  align-items: baseline;
+  min-height: 44px;
+  padding: 0.55rem 0.8rem;
+  color: var(--text);
+  text-decoration: none;
+  min-width: 0;
+}
+.prow:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.prow:hover .prow-title {
+  color: var(--primary);
+  text-decoration: underline;
+}
+/* Kenarlıklı listede odak halkası içeride çizilir (köşe ve komşu satır kesmesin) */
+.prow:focus-visible {
+  outline-offset: -3px;
+}
+.prow-list > li:first-child .prow {
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.prow-list > li:last-child .prow {
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+.prow-list > li:only-child .prow {
+  border-radius: var(--radius);
+}
+.prow-mark {
+  grid-row: 1;
+  grid-column: 1;
+  text-align: center;
+  font-weight: 700;
+  line-height: 1;
+}
+/* Başlık tek satır (…); tam başlık bağlantının erişilebilir adında ve öneri sayfasındadır */
+.prow-head {
+  grid-column: 2;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  line-height: 1.35;
+}
+.prow-ref {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.prow-title {
+  font-weight: 600;
+}
+.prow-meta {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.35rem;
+  min-width: 0;
+  font-size: 0.825rem;
+  color: var(--text-muted);
+}
+.prow-status {
+  font-weight: 600;
+}
+.prow-due {
+  font-weight: 600;
+}
+@media (min-width: 600px) {
+  .prow {
+    grid-template-columns: 1rem minmax(0, 1fr) auto;
+  }
+  .prow-meta {
+    grid-column: 3;
+    grid-row: 1;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+  }
+}
+/* Mavi: şu an · turuncu: dikkat · yeşil ve kırmızı: sonuç · gri: nötr kapanış (koyu temada belirteçler kendiliğinden uyar) */
+.prow-now .prow-mark,
+.prow-now .prow-status {
+  color: var(--primary);
+}
+.prow-attention .prow-mark,
+.prow-attention .prow-status {
+  color: var(--warning);
+}
+.prow-success .prow-mark,
+.prow-success .prow-status {
+  color: var(--success);
+}
+.prow-danger .prow-mark,
+.prow-danger .prow-status {
+  color: var(--danger);
+}
+.prow-neutral .prow-mark {
+  color: var(--text-muted);
+}

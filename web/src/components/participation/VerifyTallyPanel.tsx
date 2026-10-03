@@ -2,6 +2,7 @@
 // TALLY, BALLOT_REVEAL ve her VOTE_COMMIT işlemi defterden alınır; içeriğin istenen işlem özetine ait olduğu
 // (ledgerTxHash) ve dahil olma kanıtı cihazda sabitlenen doğrulayıcı anahtarlarıyla denetlenir. Sunucunun bültende
 // verdiği hazır veriler yalnızca karşılaştırma için kullanılır; sayım defterden kurulan verilerle yapılır.
+// Düzen: önce tek cümle, sonra düğme, sonra 'Neyi denetler?' açılırı (5 satırlık teknik giriş); çalıştırma sonrası adımlar aynen.
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { hashCanonical, OUTCOME_LABELS, revealHash, verifyTally, type BulletinRound, type DecisionResult } from "@forum/shared";
@@ -13,6 +14,10 @@ import { routes } from "../../lib/routes";
 import { describeValidatorDiff, ensurePinnedValidators, type PinnedValidators } from "../../lib/validators";
 import { Alert, Button, Card, Details, HashText, Spinner } from "../../ui";
 import { Tick } from "./common";
+import "./results.css";
+
+/** Düğmenin üstündeki tek cümle (5 satırlık teknik giriş 'Neyi denetler?' açılırındadır). */
+export const VERIFY_LEAD = "Bülteni defterden alıp sayımı bu cihazda yeniden yapın; sunucuya güvenmeniz gerekmez.";
 
 interface Step {
   label: string;
@@ -156,18 +161,22 @@ export function VerifyTallyPanel({ proposalId, results }: { proposalId: string; 
   };
 
   return (
-    <Card title="Sayımı kendim doğrulayayım" tone="accent" headingLevel={3}>
+    // id="dogrula": "Sayımı doğrula" bağlantısının (?bolum=dogrula) hedefi; odak, kartın ilk denetimine (aşağıdaki düğmeye) gider.
+    <Card title="Sayımı kendim doğrulayayım" tone="accent" headingLevel={3} id="dogrula">
       <div className="stack">
-        <p className="small">
-          Defterdeki oy açıklamaları (BALLOT_REVEAL) ve sayım kaydı (TALLY) indirilir; karar fonksiyonu tarayıcınızda aynı girdilerle yeniden çalıştırılır. Her
-          açıklanan doğrudan oy, defterdeki son taahhüdüyle karşılaştırılır. Kimin hangi oyu verdiği açıklanmaz: oy pusulaları öneriye özel rastgele kimliklerle
-          tutulur.
-        </p>
+        <p className="verify-lead">{VERIFY_LEAD}</p>
         <div>
           <Button variant="primary" icon="verify" onClick={() => void run()} loading={running}>
             {checks ? "Yeniden doğrula" : "Sayımı kendim doğrulayayım"}
           </Button>
         </div>
+        <Details className="verify-intro" summary="Neyi denetler?">
+          <p className="small">
+            Defterdeki oy açıklamaları (BALLOT_REVEAL) ve sayım kaydı (TALLY) indirilir; karar fonksiyonu tarayıcınızda aynı girdilerle yeniden çalıştırılır. Her
+            açıklanan doğrudan oy, defterdeki son taahhüdüyle karşılaştırılır. Kimin hangi oyu verdiği açıklanmaz: oy pusulaları öneriye özel rastgele kimliklerle
+            tutulur.
+          </p>
+        </Details>
         {running ? <Spinner showLabel label="Bülten indiriliyor ve sayım yeniden yapılıyor…" /> : null}
         {error ? <Alert tone="error">{error}</Alert> : null}
         {pinNote ? <Alert tone={pinNote.tone}>{pinNote.text}</Alert> : null}

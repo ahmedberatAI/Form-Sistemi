@@ -1,0 +1,60 @@
+/* ── Bilirkişi görüşü ve YZ özeti kartları (öneri sayfası) ──
+   Yeni renk belirteci yok: yalnız mevcut --warning / --border / --surface-2 kullanılır (iki temada da tanımlı).
+   styles.css kabuk ajanınındır; bu dosya yalnız bu iki kartın yerleşim kurallarını taşır. */
+
+/* Rapor satırı: "@bilirkişi · Uygulanabilir · güven %80 · tarih" + [Raporu oku]. Düğme her genişlikte sağda kalır; dar ekranda
+   (360 px) meta kendi içinde sarar (taban genişlik 0: düğmeyi alta itmez). overflow-wrap: anywhere uzun takma adın min-content
+   genişliğini de kırar, böylece meta düğmenin altına taşmaz. */
+.expert-report {
+  min-width: 0;
+}
+.expert-report-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem 0.75rem;
+  min-width: 0;
+}
+.expert-report-meta {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.expert-report-head > .btn {
+  flex: none;
+}
+/* Hukuki nitelendirme uyarısı varsa satırda metinle işaretlenir (renk tek başına anlam taşımaz). */
+.expert-report-flag {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+/* Rapor gövdesi: yalnız açıkken boşluk alır (kapalı hidden="until-found" kutusu sıfır yükseklikte kalır, boşluk bırakmasın). */
+.expert-report-body {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.expert-report.is-open > .expert-report-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+/* Bilirkişinin rolü (kart altlığı): .card-footer sağa yaslıdır; bu not satırı tam genişlikte, sola yaslı okunur. */
+.card-footer > .expert-role-note {
+  flex: 1 1 100%;
+}
+
+/* YZ özeti: açılır bölümler arası ve boş bölüm satırı. */
+.ai-section {
+  min-width: 0;
+}
+.ai-section-empty,
+.ai-stats {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

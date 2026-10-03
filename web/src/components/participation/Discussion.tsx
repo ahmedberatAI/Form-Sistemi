@@ -1,15 +1,21 @@
 // Tartışma bileşeni (konu ve öneri iş parçacıkları). İç içe yanıtlar, katılım bildirimleri, köprü skoru,
 // karartılmış/daraltılmış mesajlar ve yeni mesaj formu. Mesajlar ASLA silinmez (mezar taşı + denetçi erişimi).
+// Sıra: başlık 'Tartışma (n)' ve sıralama → tek satır istatistik → kapalı yazma kutusu (Composer) → mesajlar →
+// 'Tartışma kuralları ve köprü skoru' açılırı EN ALTTA (köprü skoru notu da orada). Tartışma hiçbir zaman açılır içine alınmaz.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
-import type { MessageView, Stance, ThreadType } from "@forum/shared";
-import { STANCE_LABELS } from "@forum/shared";
+import type { MessageView, ThreadType } from "@forum/shared";
 import { getThread, listProposals } from "../../api/endpoints";
 import { useAsync } from "../../lib/useAsync";
 import { Details, EmptyState, ErrorView, Section, Select, Spinner } from "../../ui";
 import { Composer } from "./Composer";
+import { bridgeNote, discussionStats, stanceSummary } from "./discussionLogic";
 import { BRIDGE_EXPLANATION, DELETION_RULES, MessageItem } from "./MessageItem";
 import { scrollToMessage } from "./common";
+import "./discussion.css";
+
+/** Bölüm açıklaması verilmezse kurallar açılırının ilk cümlesi olur (başlığın altında yer tutmaz). */
+const DEFAULT_DESCRIPTION = "Tartışmalar silinmez; her mesajın özeti dağıtık deftere yazılır. Düzenlemeler yeni sürüm oluşturur.";
 
 type SortMode = "old" | "new" | "bridge";
 
@@ -71,13 +77,14 @@ export function Discussion({ threadType, threadId, title = "Tartışma", descrip
     return { roots, children, byId };
   }, [messages, sort]);
 
-  const stanceCounts = useMemo(() => {
-    const c: Record<Stance, number> = { pro: 0, con: 0, neutral: 0, question: 0 };
-    for (const m of messages) if (m.visibility !== "hidden" && m.visibility !== "sealed") c[m.stance]++;
-    return c;
+  const stats = useMemo(() => {
+    const { counts, hidden } = discussionStats(messages);
+    return stanceSummary(counts, hidden);
   }, [messages]);
-  const hiddenCount = messages.filter((m) => m.visibility === "hidden" || m.visibility === "sealed").length;
-  const anyBridge = messages.some((m) => m.bridgingScore !== null);
+  const bridgeHint = bridgeNote(
+    messages.length,
+    messages.some((m) => m.bridgingScore !== null),
+  );
 
   const renderNode = (m: MessageView, depth: number): ReactNode => {
     const kids = children.get(m.id) ?? [];
@@ -118,7 +125,7 @@ export function Discussion({ threadType, threadId, title = "Tartışma", descrip
     <Section
       title={`${title}${data ? ` (${messages.length})` : ""}`}
       id="tartisma"
-      description={description ?? "Tartışmalar silinmez; her mesajın özeti dağıtık deftere yazılır. Düzenlemeler yeni sürüm oluşturur."}
+      description={description}
       actions={
         messages.length > 1 ? (
           <Select
@@ -135,14 +142,7 @@ export function Discussion({ threadType, threadId, title = "Tartışma", descrip
         ) : null
       }
     >
-      <Details summary="Tartışma kuralları ve köprü skoru">
-        <ul className="small stack-sm discussion-rules">
-          <li>{BRIDGE_EXPLANATION}</li>
-          <li>{DELETION_RULES}</li>
-          <li>Yapay zekâ uyarıları yalnızca danışma niteliğindedir; hiçbir mesajı gizlemez.</li>
-          <li>Kendi mesajınıza katılım bildiremezsiniz; katılım bildirimleri görüş gruplarını belirlemek için de kullanılır.</li>
-        </ul>
-      </Details>
+      {data && stats ? <p className="small muted discussion-stats">{stats}</p> : null}
 
       <div className="discussion-composer">
         <Composer threadType={threadType} threadId={threadId} closedReason={closedReason} onDone={upsert} />
@@ -151,21 +151,25 @@ export function Discussion({ threadType, threadId, title = "Tartışma", descrip
       {loading && !data ? <Spinner block label="Tartışma yükleniyor…" /> : null}
       {error && !data ? <ErrorView error={error} onRetry={reload} /> : null}
 
-      {data && messages.length ? (
-        <>
-          <p className="small muted discussion-stats">
-            {(Object.keys(stanceCounts) as Stance[]).map((s) => `${STANCE_LABELS[s]}: ${stanceCounts[s]}`).join(" · ")}
-            {hiddenCount ? ` · Karar ile gizlenen: ${hiddenCount}` : ""}
-            {!anyBridge ? " · Köprü skoru, en az iki anlamlı görüş grubu oluşunca hesaplanır." : ""}
-          </p>
-          <ul className="msg-thread">{roots.map((m) => renderNode(m, 0))}</ul>
-        </>
-      ) : null}
+      {data && messages.length ? <ul className="msg-thread">{roots.map((m) => renderNode(m, 0))}</ul> : null}
       {data && !messages.length ? (
         <EmptyState title="Henüz mesaj yok" icon="topics">
           <p>{closedReason ? "Bu tartışmada henüz mesaj yazılmadı." : "İlk görüşü siz yazın: tutumunuzu seçip gerekçenizi paylaşın."}</p>
         </EmptyState>
       ) : null}
+
+      <Details summary="Tartışma kuralları ve köprü skoru" className="discussion-guide">
+        <div className="stack-sm">
+          {description ? null : <p className="small mt-0">{DEFAULT_DESCRIPTION}</p>}
+          <ul className="small stack-sm discussion-rules">
+            <li>{BRIDGE_EXPLANATION}</li>
+            {bridgeHint ? <li>{bridgeHint}</li> : null}
+            <li>{DELETION_RULES}</li>
+            <li>Yapay zekâ uyarıları yalnızca danışma niteliğindedir; hiçbir mesajı gizlemez.</li>
+            <li>Kendi mesajınıza katılım bildiremezsiniz; katılım bildirimleri görüş gruplarını belirlemek için de kullanılır.</li>
+          </ul>
+        </div>
+      </Details>
     </Section>
   );
 }

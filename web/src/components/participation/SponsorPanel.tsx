@@ -1,11 +1,14 @@
 // Taslak ve destekçi toplama evresi: yazar için düzenle/gönder/geri çek; üyeler için destek (K_s ilerleme çubuğu).
+// 'Eylem önce': Destekle düğmesi ilerleme çubuğunun hemen altındadır; K_s formülü ve evre açıklaması 'Kaç destekçi gerekir?'
+// açılırında durur (kapalı gelir, 'Tam' görünümde açık).
 import { useState } from "react";
 import type { ProposalDetail } from "@forum/shared";
 import { sponsorProposal, submitProposal, withdrawProposal } from "../../api/endpoints";
 import { useAuth } from "../../auth/AuthContext";
 import { useAction } from "../../lib/useAsync";
-import { Alert, Button, Card, Countdown, ProgressBar, useConfirm } from "../../ui";
+import { Alert, Button, Card, Countdown, Details, ProgressBar, useConfirm } from "../../ui";
 import { ProposalEditor } from "./ProposalEditor";
+import "./panels.css";
 
 export interface SponsorPanelProps {
   proposal: ProposalDetail;
@@ -59,10 +62,6 @@ export function SponsorPanel({ proposal: p, onUpdated }: SponsorPanelProps) {
           />
         ) : (
           <div className="stack-sm">
-            <p className="small">
-              Gönderdiğinizde öneri destekçi toplamaya başlar ({p.sponsorsRequired} destekçi gerekir). Destekçiler belirli bir metni imzaladığı için destek toplanırken metin
-              değiştirilemez.
-            </p>
             <div className="row">
               <Button variant="primary" icon="proposals" loading={submit.loading} onClick={() => void submit.run()}>
                 Destekçi toplamaya gönder
@@ -70,6 +69,10 @@ export function SponsorPanel({ proposal: p, onUpdated }: SponsorPanelProps) {
               <Button onClick={() => setEditing(true)}>Metni düzenle</Button>
               <WithdrawButton proposal={p} onUpdated={onUpdated} />
             </div>
+            <p className="small">
+              Gönderdiğinizde öneri destekçi toplamaya başlar ({p.sponsorsRequired} destekçi gerekir). Destekçiler belirli bir metni imzaladığı için destek toplanırken metin
+              değiştirilemez.
+            </p>
           </div>
         )}
       </Card>
@@ -77,7 +80,7 @@ export function SponsorPanel({ proposal: p, onUpdated }: SponsorPanelProps) {
   }
 
   return (
-    <Card title="Destekçi toplama" subtitle="Yeterli destekçi gelince ontoloji (yönetmelik) denetimi yapılır ve tartışma başlar." actions={<Countdown to={p.phaseEndsAt} prefix="Kalan" />}>
+    <Card title="Destekçi toplama" actions={<Countdown to={p.phaseEndsAt} prefix="Kalan" />} className="sponsor-panel">
       <div className="stack">
         <ProgressBar
           label="Destekçi"
@@ -86,9 +89,6 @@ export function SponsorPanel({ proposal: p, onUpdated }: SponsorPanelProps) {
           valueText={`${p.sponsorCount}/${p.sponsorsRequired}`}
           tone={p.sponsorCount >= p.sponsorsRequired ? "success" : "primary"}
         />
-        <p className="small muted">
-          Destek, önerinin oylanmaya değer olduğunu onaylar; lehte oy anlamına gelmez. Gerekli destekçi sayısı K_s = max(2, min(5, ⌈√üye/2⌉)); silme taleplerinde 1.
-        </p>
         {!auth.user ? (
           <Alert tone="info">Desteklemek için giriş yapın.</Alert>
         ) : isAuthor ? (
@@ -107,6 +107,15 @@ export function SponsorPanel({ proposal: p, onUpdated }: SponsorPanelProps) {
             </Button>
           </div>
         )}
+        <p className="small muted">Destek oy değildir; lehte oy anlamına gelmez.</p>
+        <Details summary="Kaç destekçi gerekir?" className="panel-details">
+          <div className="stack-sm">
+            <p className="small">
+              Destek, önerinin oylanmaya değer olduğunu onaylar. Yeterli destekçi gelince ontoloji (yönetmelik) denetimi yapılır ve tartışma başlar.
+            </p>
+            <p className="small">Gerekli destekçi sayısı K_s = max(2, min(5, ⌈√üye/2⌉)); silme taleplerinde 1.</p>
+          </div>
+        </Details>
       </div>
     </Card>
   );

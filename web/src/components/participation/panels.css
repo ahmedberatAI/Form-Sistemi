@@ -1,0 +1,70 @@
+/* ── Eylem panelleri (oy, destek, itiraz, uzlaşma, metin önerileri, hak etkisi): 'eylem önce' düzeni ──
+   Yeni renk belirteci yok (iki temada da var olan değişkenler); yalnız yerleşim ve dar ekran kuralları.
+   styles.css'e dokunulmaz: kurallar panel sınıflarına bağlı, daha özgül seçicilerle yazılır. */
+
+/* Panel içi 'açıklama' açılırları: gövde ve içindeki tablo/liste dar ekranda (360 px) yatay taşma üretmez. */
+.panel-details > .details-body {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.panel-details > .details-body > .stack-sm,
+.panel-details > .details-body > .stack {
+  min-width: 0;
+}
+.panel-details > .details-body > p:first-child {
+  margin-top: 0;
+}
+
+/* Kart içinde yan yana duran tek satırlık özet + düğme (metin önerisi boş durumu, hak etkisi özeti): dar ekranda sarar. */
+.panel-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+  min-width: 0;
+}
+.panel-bar > p,
+.panel-bar > .panel-bar-text {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Başlık ve kalan süre dar ekranda (360 px) mümkünse aynı satırda durur: eylem panelinin ilk denetimi ≈ 28 px yukarı çıkar.
+   styles.css'teki .card-heading { flex: 1 1 200px } kuralı bu panellerde daha özgül seçiciyle gevşetilir. */
+.vote-panel > .card-header > .card-heading,
+.sponsor-panel > .card-header > .card-heading,
+.reconciliation-panel > .card-header > .card-heading {
+  flex-basis: 6rem;
+}
+
+/* Oy paneli: makbuz kutusundaki açılır, kutunun içinde tam genişlikte durur. */
+.vote-panel .receipt-box > .details {
+  background: var(--surface);
+}
+
+/* Katılım çubuğunun altındaki 'Ara sonuç gösterilmez' satırı kartın birincil içeriği değildir: sıkı boşluk. */
+.vote-panel .vote-secret {
+  margin: 0;
+}
+
+/* İtiraz formu içindeki açılır, gönder düğmesinden sonra gelir ve düğmeye yapışmaz. */
+.objection-form > .details {
+  margin-top: 0.25rem;
+}
+
+/* İtiraz değerlendirmesi: rozet satırındaki 'Toplam geçerli imza' metni dar ekranda alta iner, taşmaz. */
+.objection-verdict .row > .small {
+  overflow-wrap: anywhere;
+}
+
+/* Hak etkisi: işaretli hak satırları ve kaldırma düğmesi dar ekranda sarar. */
+.rights-flags .plain-list > li {
+  min-width: 0;
+}
+
+/* Metin önerileri: 'Tümünü göster (n)' düğmesi listeden ayrışsın. */
+.suggestions-more {
+  align-self: flex-start;
+}

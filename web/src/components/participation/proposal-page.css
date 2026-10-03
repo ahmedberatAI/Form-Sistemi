@@ -1,0 +1,217 @@
+/* ── Öneri sayfası iskeleti (Faz 2): Sıradaki adım kartı, 'Bu sayfada' gezinmesi, kategori etiketleri, eylem alanı,
+   'Kanıtlar ve denetim' sütunu ──
+   Yeni renk belirteci YOK: tonlar mevcut değişkenlerden (--primary, --info, --warning, --success, --danger, --border-strong)
+   gelir ve koyu tema blokları bunları zaten değiştirir. Renk her zaman simge ve metinle birlikte kullanılır.
+   Dar ekranda (360 px) yatay taşma olmaz: satırlar sarar, uzun sözcükler kırılır, flex çocukları daralabilir. */
+
+/* ── Sıradaki adım ── */
+.next-step {
+  --next-step-tone: var(--border-strong);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 0;
+  padding: 0.75rem 0.9rem 0.85rem;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--next-step-tone);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+/* Mavi: benden bir iş bekleniyor (vurgulu zemin) · sakin mavi: bilgi · turuncu: dikkat/süre · yeşil/kırmızı: sonuç · gri: nötr */
+.next-step-action {
+  --next-step-tone: var(--primary);
+  background: var(--primary-soft);
+}
+.next-step-info {
+  --next-step-tone: var(--info);
+}
+.next-step-warning {
+  --next-step-tone: var(--warning);
+}
+.next-step-success {
+  --next-step-tone: var(--success);
+}
+.next-step-danger {
+  --next-step-tone: var(--danger);
+}
+.next-step-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.15rem 0.75rem;
+  min-width: 0;
+}
+.next-step-label {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.next-step-deadline {
+  min-width: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+/* Geri sayım (styles.css'te nowrap) dar ekranda sarabilsin: eski başlık geri sayımındaki .header-countdown kuralının karşılığı. */
+.next-step-deadline .countdown {
+  flex-wrap: wrap;
+  white-space: normal;
+}
+.next-step-headline {
+  margin: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.next-step-icon {
+  flex: none;
+  margin-top: 0.12rem;
+  color: var(--next-step-tone);
+}
+.next-step-neutral .next-step-icon {
+  color: var(--text-muted);
+}
+.next-step-detail {
+  margin: 0;
+  font-size: 0.925rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.next-step-pending {
+  color: var(--text-muted);
+}
+.next-step-when {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+.next-step-findings {
+  margin: 0;
+  padding-inline-start: 1.2rem;
+  font-size: 0.925rem;
+  overflow-wrap: anywhere;
+}
+.next-step-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 1rem;
+  margin-top: 0.15rem;
+  min-width: 0;
+}
+.next-step-cta {
+  white-space: normal;
+}
+.next-step-links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1rem;
+  min-width: 0;
+}
+.next-step-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  min-height: 36px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* ── Bu sayfada ── */
+.on-this-page {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.4rem;
+  min-width: 0;
+  font-size: 0.925rem;
+}
+.on-this-page-title {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.on-this-page-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.3rem;
+  min-width: 0;
+}
+.on-this-page-list a {
+  display: inline-block;
+  padding: 0.3rem 0.1rem; /* dokunma hedefi ≈ 30 px yükseklik */
+  font-weight: 600;
+}
+.on-this-page-sep {
+  margin-inline-end: 0.3rem;
+  color: var(--text-muted);
+}
+
+/* ── Başlık bloğu: başlık, kategoriler ve evre şeridi (sayfa aralığından dar) ── */
+.proposal-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.proposal-ref {
+  font-weight: 700;
+  color: var(--text);
+}
+.proposal-cats {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  align-items: center;
+}
+.proposal-cats > li {
+  min-width: 0;
+  max-width: 100%;
+}
+.proposal-cats .cat-tag-toggle {
+  font-family: inherit;
+  color: var(--primary);
+  cursor: pointer;
+}
+.proposal-cats .cat-tag-toggle:hover {
+  border-color: var(--border-strong);
+}
+
+/* ── Ana akış ve kanıt sütunu ── */
+.proposal-main {
+  min-width: 0;
+}
+/* Derin bağlantı hedefleri (?bolum=) sabit üst çubuğun altında kalmasın (kartlar ve bölümler için styles.css'te aynı kural var). */
+.action-area,
+.evidence {
+  min-width: 0;
+  scroll-margin-top: calc(var(--sticky-h) + env(safe-area-inset-top, 0px) + 12px);
+}
+.evidence-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem 0.5rem;
+  min-width: 0;
+}
+.evidence-title {
+  margin: 0;
+  font-size: 1.15rem;
+}

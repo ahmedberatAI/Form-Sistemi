@@ -17,3 +17,26 @@
 .expert-seed {
   overflow-wrap: anywhere;
 }
+
+/* Evre şeridi 600 px'in altında kompakt: noktalar (✔ ya da sıra no) ve yalnız güncel evrenin (terminalde sonucun) etiketi.
+   Gizlenen etiketler .sr-only ile aynı yöntemle görsel olarak gizlenir; ekran okuyucu yine okur. */
+@media (max-width: 599.98px) {
+  .phase-strip.phase-strip-responsive {
+    gap: 0.25rem;
+    align-items: center;
+  }
+  .phase-strip-responsive .phase-step:not(.phase-current):not(.phase-final) {
+    padding: 0.15rem;
+  }
+  .phase-strip-responsive .phase-step:not(.phase-current):not(.phase-final) .phase-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+}

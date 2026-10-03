@@ -1,10 +1,16 @@
-// Öneri ayrıntısı — sistemin vitrini: başlık ve evre, zaman çizelgesi, evreye göre eylem paneli (destek, metin önerileri,
-// oy, itiraz, uzlaşma), kesin sonuçlar ve tarayıcıda yeniden sayım, denetim/parametre kartları, bilirkişi paneli,
-// YZ özeti, sürüm geçmişi, defter kayıtları ve tartışma.
-// Yan sütundaki denetim kartları (zaman çizelgesi, ontoloji denetimi, karar parametreleri, sürüm geçmişi, defter kayıtları)
-// kapalı başlar ve başlıklarının yanında tek satırlık hüküm taşır (aykırılık/ihlal varsa ontoloji denetimi açık gelir); Destekçiler
-// hiç katlanmaz, bütünlük uyarısı varsa kartı açık gelir.
-import { useCallback, useState } from "react";
+// Öneri ayrıntısı — sistemin vitrini. Sayfa SEKMESİZ tek akıştır (DOM sırası = okuma sırası):
+//   1) Başlık: #K-n, durum ve tür; T0 dışı katman, uzatma ve bütünlük uyarısı koşullu; yazar · zaman · sürüm; ilk 3 kategori ve '+n'.
+//   2) Evre şeridi (telefonda kompakt).
+//   3) Sıradaki adım kartı: tek cümle, kalan süre (süre dolunca otomatik yenileme), birincil eylem BAĞLANTISI ve en çok 2 soru
+//      bağlantısı (lib/nextStep.ts). Terminal evrelerde karar/ret/aykırılık/geri çekilme/süre dolması bildirimi buradadır.
+//   4) 'Bu sayfada' gezinmesi (yalnız var olan bölümler).
+//   5) Ana akış: öneri metni (kırpılmış) → eylem alanı (id="eylem") → Sonuçlar (id="sonuclar"; içinde #dogrula) → pasif itiraz
+//      ve uzlaşma → bilirkişi görüşü (#bilirkisi) → (terminalde) metin önerileri → YZ özeti → TARTIŞMA (#tartisma, hep bağlı).
+//   6) 'Kanıtlar ve denetim' sütunu (#kanitlar): masaüstünde sağda, telefonda tartışmadan sonra; bütünlük uyarısı ve yönetmeliğe
+//      aykırılık varsa ilgili kart en üstte ve açık gelir; başlıktaki düğme bütün kartları açar/katlar.
+// Derin bağlantı: ?bolum=<çapa> (lib/sectionParam.ts) veri ve oturum yüklendikten sonra kartı açar, kaydırır, odağı taşır.
+// Hiçbir kart kaldırılmadı; değişen yalnız sıra ve varsayılan açıklıktır ('Tam' görünümde her şey açık gelir).
+import { Fragment, useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   expandIri,
@@ -17,18 +23,21 @@ import {
 } from "@forum/shared";
 import { getProposal } from "../api/endpoints";
 import { useAuth } from "../auth/AuthContext";
+import { NextStepCard } from "../components/common/NextStepCard";
 import { UserLink } from "../components/UserLink";
 import { AiSummaryCard } from "../components/participation/AiSummaryCard";
-import { AuditCard } from "../components/participation/AuditCard";
+import { AuditCard, auditHasProblem } from "../components/participation/AuditCard";
 import { Discussion } from "../components/participation/Discussion";
+import { evidenceOrder, EvidenceColumn, type EvidenceKey } from "../components/participation/EvidenceColumn";
 import { ExpertPanelCard } from "../components/participation/ExpertPanelCard";
 import { IntegrityCard } from "../components/participation/IntegrityCard";
 import { LedgerCard } from "../components/participation/LedgerList";
 import { ObjectionPanel } from "../components/participation/ObjectionPanel";
+import { actionFocusSelector, hasActionArea, OnThisPage, PAGE_ANCHORS, proposalPageSections, showsExpertCard } from "../components/participation/OnThisPage";
 import { ParamsCard } from "../components/participation/ParamsCard";
 import { PhaseStrip, PhaseTimelineCard } from "../components/participation/PhaseTimeline";
 import { ProposalEditor } from "../components/participation/ProposalEditor";
-import { AmendmentDiff, DeletionTargets, EnactedEffect, RegulationPatchView } from "../components/participation/ProposalSubject";
+import { AmendmentDiff, DeletionTargets, RegulationPatchView } from "../components/participation/ProposalSubject";
 import { MinorityReportForm, ReconciliationPanel } from "../components/participation/ReconciliationPanel";
 import { MinorityReportList, ResultsCard } from "../components/participation/ResultsCard";
 import { RightsFlags } from "../components/participation/RightsFlags";
@@ -37,30 +46,64 @@ import { SuggestionsPanel } from "../components/participation/SuggestionsPanel";
 import { VerifyTallyPanel } from "../components/participation/VerifyTallyPanel";
 import { VersionHistory, versionHistorySummary } from "../components/participation/VersionHistory";
 import { VotePanel } from "../components/participation/VotePanel";
+import "../components/participation/proposal-page.css";
 import { useOntology } from "../lib/categories";
+import { useDetailLevel } from "../lib/detailLevel";
 import { proposalRef } from "../lib/format";
+import { proposalNextStep, viewerOf } from "../lib/nextStep";
 import { routes } from "../lib/routes";
+import { useSectionParam } from "../lib/sectionParam";
 import { useAsync } from "../lib/useAsync";
-import { Alert, Badge, Button, Card, ClampText, Countdown, ErrorView, HashText, KindBadge, PageHeader, Section, Spinner, StatusBadge, TierBadge, Time } from "../ui";
+import {
+  Badge,
+  Button,
+  Card,
+  ClampText,
+  Countdown,
+  Details,
+  ErrorView,
+  HashText,
+  Icon,
+  KindBadge,
+  PageHeader,
+  Section,
+  Spinner,
+  StatusBadge,
+  TierBadge,
+  Time,
+} from "../ui";
 
 const TERMINAL: ProposalStatus[] = ["enacted", "rejected", "withdrawn", "expired", "inadmissible"];
 
-const PHASE_PREFIX: Partial<Record<ProposalStatus, string>> = {
-  sponsoring: "Destek süresi",
-  deliberation: "Tartışma",
-  voting: "Oylama",
-  objection_window: "İtiraz süresi",
-  reconciliation: "Uzlaşma",
-  revote: "Yeniden oylama",
+/** Sıradaki adım kartındaki geri sayımın öneki (Countdown ekran okuyucuya sonuna "kaldı" ekler). */
+const DEADLINE_PREFIX: Partial<Record<ProposalStatus, string>> = {
+  sponsoring: "Destek toplamanın bitmesine",
+  deliberation: "Oylamaya",
+  voting: "Oylamanın bitmesine",
+  objection_window: "İtiraz süresinin bitmesine",
+  reconciliation: "Uzlaşmanın bitmesine",
+  revote: "Yeniden oylamanın bitmesine",
 };
+
+/** Başlıkta görünen kategori sayısı; fazlası '+n' ile satır içinde açılır ('Tam' görünümde açık gelir). */
+const HEADER_CATEGORIES = 3;
+
+const EMPTY_MESSAGES: Map<string, MessageView> = new Map();
 
 export default function ProposalDetailPage() {
   const { id = "" } = useParams();
   const auth = useAuth();
-  const { categoryLabel, categoryPath } = useOntology();
   const { data: p, error, loading, reload, setData } = useAsync(() => getProposal(id), [id], { pollMs: 30_000 });
-  const [threadMessages, setThreadMessages] = useState<Map<string, MessageView>>(() => new Map());
+  // Tartışma yüklenince dolar (YZ alıntıları ve 'Tartışma (n)' sayısı); yüklenene kadar null → öneri özetindeki sayı kullanılır.
+  const [threadMessages, setThreadMessages] = useState<Map<string, MessageView> | null>(null);
   const onMessages = useCallback((ms: MessageView[]) => setThreadMessages(new Map(ms.map((m) => [m.id, m] as const))), []);
+  useEffect(() => setThreadMessages(null), [id]);
+
+  // Oturum yüklenirken görüntüleyen anonim görünür: kart ve ?bolum= oturum yüklenince çalışır.
+  const viewer = useMemo(() => viewerOf({ user: auth.user, can: auth.can }), [auth.user, auth.can]);
+  const ready = !!p && !auth.loading;
+  const actionFocus = p ? actionFocusSelector(p, viewer.id) : undefined;
+  useSectionParam(ready, actionFocus ? { focus: { [PAGE_ANCHORS.action]: actionFocus } } : {});
 
   if (loading && !p) return <Spinner block label="Öneri yükleniyor…" />;
   if (error && !p) return <ErrorView error={error} onRetry={reload} />;
@@ -80,61 +123,150 @@ export default function ProposalDetailPage() {
   const lastEvent = p.events.length ? p.events.slice().sort((a, b) => a.at - b.at)[p.events.length - 1] : null;
   const currentVersion = p.versions.find((v) => v.version === p.version);
   const results = p.results.slice().sort((a, b) => a.round - b.round);
+  const messageCount = threadMessages ? threadMessages.size : p.messageCount;
+  // Motor saf kalır; yalnız mesaj sayısı tartışmanın canlı sayısıyla verilir ('Bu sayfada' ve 'Tartışma (n)' ile aynı sayı).
+  const step = auth.loading ? null : proposalNextStep({ ...p, messageCount }, viewer);
+
+  const evidence: Record<EvidenceKey, ReactNode> = {
+    butunluk: <IntegrityCard warnings={integrityWarnings} headingLevel={3} />,
+    destekciler: (
+      // Hep açık (e2e: 'Destekçiler (n/m)' bölgesi görünür).
+      <Card title={`Destekçiler (${p.sponsorCount}/${p.sponsorsRequired})`} headingLevel={3} anchor="destekciler">
+        {p.sponsors.length ? (
+          <ul className="plain-list stack-sm small">
+            {p.sponsors.map((s) => (
+              <li key={s.userId} className="row-between">
+                <UserLink id={s.userId} nickname={s.nickname} />
+                <Time at={s.at} className="muted" />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="small muted">Henüz destekçi yok.</p>
+        )}
+      </Card>
+    ),
+    evreler: <PhaseTimelineCard proposal={p} headingLevel={3} />,
+    ontoloji: <AuditCard audit={p.audit} headingLevel={3} />,
+    parametreler: (
+      <ParamsCard
+        params={p.params}
+        status={p.status}
+        votingRound={p.votingRound}
+        eligible={p.participation?.eligible}
+        resultQuorum={results.length ? results[results.length - 1].quorumRequired : null}
+        headingLevel={3}
+      />
+    ),
+    surumler: (
+      <Card
+        title="Sürüm geçmişi"
+        subtitle="Eski sürümler silinmez; iki sürüm seçip farkı görün."
+        headingLevel={3}
+        collapsible
+        summary={versionHistorySummary(p.versions, auth.now())}
+        anchor="surumler"
+      >
+        <VersionHistory
+          label="Öneri"
+          current={p.version}
+          versions={p.versions.map((v) => {
+            const s = v.viaSuggestionId ? p.suggestions.find((x) => x.id === v.viaSuggestionId) : null;
+            return {
+              version: v.version,
+              title: v.title,
+              body: v.body,
+              createdAt: v.createdAt,
+              contentHash: v.contentHash,
+              note: s ? (
+                <>
+                  <UserLink id={s.authorId} nickname={s.authorNickname} /> önerisiyle (yazar kabul etti)
+                </>
+              ) : (
+                <>
+                  Yazan: <UserLink id={v.authorId} nickname={v.authorNickname} />
+                </>
+              ),
+            };
+          })}
+        />
+      </Card>
+    ),
+    defter: <LedgerCard txs={p.ledgerTxs} totals={p.ledgerTxCounts} headingLevel={3} />,
+  };
+  const evidenceKeys = evidenceOrder({ integrity: integrityWarnings.length > 0, auditProblem: !!p.audit && auditHasProblem(p.audit) });
 
   return (
     <div className="page proposal-page">
-      <PageHeader
-        title={p.title}
-        docTitle={`${proposalRef(p.seq)} ${p.title}`}
-        back={{ to: routes.proposals(), label: "Öneriler" }}
-        meta={
-          <>
-            <Badge tone="neutral">{proposalRef(p.seq)}</Badge>
-            <KindBadge kind={p.kind} />
-            <StatusBadge status={p.status} />
-            {p.tier ? <TierBadge tier={p.tier} /> : null}
-            {p.extensionUsed ? <Badge tone="warning">Süre uzatıldı</Badge> : null}
-            {integrityWarnings.length ? (
-              <Badge tone="warning" icon="warning" title="Kilit adım taraması: karar değişmez, denetim içindir (ayrıntı: Bütünlük uyarıları kartı)">
-                Bütünlük uyarısı ({integrityWarnings.length})
-              </Badge>
-            ) : null}
-          </>
-        }
-        subtitle={
-          <>
-            <UserLink id={p.authorId} nickname={p.authorNickname} /> · <Time at={p.createdAt} /> · sürüm {p.version}
-            {p.parentTopic ? (
-              <>
-                {" "}
-                · Üst konu: <Link to={routes.topic(p.parentTopic.id)}>{p.parentTopic.title}</Link>
-              </>
-            ) : null}
-          </>
-        }
-        actions={
+      {/* Başlık, kategoriler ve evre şeridi tek blok: aralarında sayfa boşluğundan dar boşluk (ilk ekran yer kazanır). */}
+      <div className="proposal-head">
+        <PageHeader
+          title={p.title}
+          docTitle={`${proposalRef(p.seq)} ${p.title}`}
+          back={{ to: routes.proposals(), label: "Öneriler" }}
+          meta={
+            <>
+              {/* Rozet bütçesi: tek renkli durum rozeti; no düz metin, katman yalnız T0 dışındaysa (T0 ontoloji hükmünde yazar). */}
+              <span className="proposal-ref">{proposalRef(p.seq)}</span>
+              <StatusBadge status={p.status} />
+              <KindBadge kind={p.kind} />
+              {p.tier && p.tier !== "T0" ? <TierBadge tier={p.tier} /> : null}
+              {p.extensionUsed ? <Badge tone="warning">Süre uzatıldı</Badge> : null}
+              {integrityWarnings.length ? (
+                <Badge tone="warning" icon="warning" title="Kilit adım taraması: karar değişmez, denetim içindir (ayrıntı: Bütünlük uyarıları kartı)">
+                  Bütünlük uyarısı ({integrityWarnings.length})
+                </Badge>
+              ) : null}
+            </>
+          }
+          subtitle={
+            <>
+              <UserLink id={p.authorId} nickname={p.authorNickname} /> · <Time at={p.createdAt} /> · sürüm {p.version}
+              {p.parentTopic ? (
+                <>
+                  {" "}
+                  · Üst konu: <Link to={routes.topic(p.parentTopic.id)}>{p.parentTopic.title}</Link>
+                </>
+              ) : null}
+            </>
+          }
+        />
+        <CategoryTags categories={p.categories} />
+        <PhaseStrip proposal={p} />
+      </div>
+
+      <NextStepCard
+        proposalId={p.id}
+        step={step}
+        deadline={
           !terminal && p.phaseEndsAt ? (
-            <Countdown to={p.phaseEndsAt} prefix={PHASE_PREFIX[p.status]} onDone={() => window.setTimeout(refresh, 2500)} className="header-countdown" />
+            <Countdown
+              to={p.phaseEndsAt}
+              prefix={DEADLINE_PREFIX[p.status]}
+              doneText="süre doldu — evre geçişi bekleniyor"
+              onDone={() => window.setTimeout(refresh, 2500)}
+            />
           ) : null
         }
-      />
-      {p.categories.length ? (
-        <div className="chips" aria-label="Kategoriler">
-          {p.categories.map((c) => (
-            <span key={c} className="badge badge-info" title={categoryPath(c)}>
-              {categoryLabel(c)}
-            </span>
-          ))}
-        </div>
-      ) : null}
-      <PhaseStrip proposal={p} />
+        when={
+          terminal && lastEvent ? (
+            <p className="next-step-when">
+              <Icon name="clock" size={14} />
+              <Time at={lastEvent.at} mode="both" />
+            </p>
+          ) : null
+        }
+      >
+        {p.status === "inadmissible" ? <InadmissibleExplainer proposal={p} shown={step?.detail ?? null} /> : null}
+      </NextStepCard>
 
-      <StatusNotice proposal={p} lastReason={lastEvent?.reason ?? null} />
+      <OnThisPage proposalId={p.id} sections={proposalPageSections(p, messageCount)} />
 
-      <div className="split">
-        <div className="stack">
+      <div className="split proposal-split">
+        <div className="stack proposal-main">
           <Card
             title={p.kind === "deletion" ? "Silme talebi" : p.kind === "regulation" ? "Yönetmelik değişikliği" : "Öneri metni"}
+            anchor={PAGE_ANCHORS.text}
             footer={
               currentVersion ? (
                 <span className="small muted">
@@ -151,10 +283,15 @@ export default function ProposalDetailPage() {
             </div>
           </Card>
 
-          <ActionArea proposal={p} onUpdated={update} onReload={refresh} setData={setData} onSuggestion={addSuggestion} onMinority={addMinority} onAnalysis={addAnalysis} />
+          {hasActionArea(p.status) ? (
+            // ?bolum=eylem hedefi: evrenin paneli (oy, destek, itiraz, uzlaşma, tartışma evresi, taslak); paneller 'eylem önce'.
+            <div id={PAGE_ANCHORS.action} className="stack action-area">
+              <ActionArea proposal={p} onUpdated={update} onReload={refresh} setData={setData} onSuggestion={addSuggestion} onMinority={addMinority} onAnalysis={addAnalysis} />
+            </div>
+          ) : null}
 
           {results.length ? (
-            <Section title="Sonuçlar" description="Kesin turların sonuçları. Ara sayım hiçbir zaman açıklanmaz." id="sonuclar">
+            <Section title="Sonuçlar" description="Kesin turların sonuçları. Ara sayım hiçbir zaman açıklanmaz." id={PAGE_ANCHORS.results}>
               {results.map((r, i) => (
                 <ResultsCard
                   key={r.round}
@@ -164,92 +301,78 @@ export default function ProposalDetailPage() {
                   myEffectiveVia={i === results.length - 1 ? p.myEffectiveVia : null}
                 />
               ))}
+              {/* Kartın kendisi #dogrula çapasını taşır ('Sayımı doğrula' bağlantısı). */}
               <VerifyTallyPanel proposalId={p.id} results={results} />
             </Section>
           ) : null}
 
+          {/* Pasif itiraz ve uzlaşma kayıtları (katlanmaz; e2e uzlaşma evresinde itiraz kartının içine bakar). */}
           {p.status !== "objection_window" && (p.objectionEvaluation || p.objections.length) ? <ObjectionPanel proposal={p} onUpdated={update} /> : null}
           {p.reconciliationOrigin && p.status !== "reconciliation" && p.status !== "revote" ? (
             <ReconciliationPanel proposal={p} onUpdated={update} onReload={refresh} onMinorityReport={addMinority} onNewAnalysis={addAnalysis} />
           ) : null}
 
-          {p.status !== "draft" ? <AiSummaryCard proposal={p} messages={threadMessages} onNewAnalysis={addAnalysis} /> : null}
-          {p.status !== "draft" && (p.expertPanel || (!terminal && p.kind !== "deletion")) ? <ExpertPanelCard proposal={p} onUpdated={update} /> : null}
+          {showsExpertCard(p) ? <ExpertPanelCard proposal={p} onUpdated={update} /> : null}
           {p.status !== "deliberation" && p.suggestions.length ? (
             <Card title={`Metin önerileri (${p.suggestions.length})`}>
               <SuggestionsPanel proposal={p} onUpdated={update} onAdded={addSuggestion} showHeading={false} />
             </Card>
           ) : null}
+          {/* YZ özeti tartışmanın hemen önünde: alıntılar aşağıdaki mesajlara kaydırır. */}
+          {p.status !== "draft" ? <AiSummaryCard proposal={p} messages={threadMessages ?? EMPTY_MESSAGES} onNewAnalysis={addAnalysis} /> : null}
+
+          <Discussion
+            threadType="proposal"
+            threadId={p.id}
+            onMessagesChange={onMessages}
+            closedReason={p.status === "draft" ? "Taslak önerinin tartışması, öneri destekçi toplamaya gönderilince açılır." : null}
+          />
         </div>
 
-        <aside className="stack" aria-label="Öneri bilgileri">
-          {/* Uyarı ve Destekçiler hep görünür üstte; beş denetim kartı kapalı, başlığında hükümle. */}
-          <IntegrityCard warnings={integrityWarnings} />
-          <Card title={`Destekçiler (${p.sponsorCount}/${p.sponsorsRequired})`} anchor="destekciler">
-            {p.sponsors.length ? (
-              <ul className="plain-list stack-sm small">
-                {p.sponsors.map((s) => (
-                  <li key={s.userId} className="row-between">
-                    <UserLink id={s.userId} nickname={s.nickname} />
-                    <Time at={s.at} className="muted" />
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="small muted">Henüz destekçi yok.</p>
-            )}
-          </Card>
-          <PhaseTimelineCard proposal={p} />
-          <AuditCard audit={p.audit} />
-          <ParamsCard
-            params={p.params}
-            status={p.status}
-            votingRound={p.votingRound}
-            eligible={p.participation?.eligible}
-            resultQuorum={results.length ? results[results.length - 1].quorumRequired : null}
-          />
-          <Card
-            title="Sürüm geçmişi"
-            subtitle="Eski sürümler silinmez; iki sürüm seçip farkı görün."
-            collapsible
-            summary={versionHistorySummary(p.versions, auth.now())}
-            anchor="surumler"
-          >
-            <VersionHistory
-              label="Öneri"
-              current={p.version}
-              versions={p.versions.map((v) => {
-                const s = v.viaSuggestionId ? p.suggestions.find((x) => x.id === v.viaSuggestionId) : null;
-                return {
-                  version: v.version,
-                  title: v.title,
-                  body: v.body,
-                  createdAt: v.createdAt,
-                  contentHash: v.contentHash,
-                  note: s ? (
-                    <>
-                      <UserLink id={s.authorId} nickname={s.authorNickname} /> önerisiyle (yazar kabul etti)
-                    </>
-                  ) : (
-                    <>
-                      Yazan: <UserLink id={v.authorId} nickname={v.authorNickname} />
-                    </>
-                  ),
-                };
-              })}
-            />
-          </Card>
-          <LedgerCard txs={p.ledgerTxs} totals={p.ledgerTxCounts} />
-        </aside>
+        <EvidenceColumn id={PAGE_ANCHORS.evidence}>
+          {evidenceKeys.map((k) => (
+            <Fragment key={k}>{evidence[k]}</Fragment>
+          ))}
+        </EvidenceColumn>
       </div>
-
-      <Discussion
-        threadType="proposal"
-        threadId={p.id}
-        onMessagesChange={onMessages}
-        closedReason={p.status === "draft" ? "Taslak önerinin tartışması, öneri destekçi toplamaya gönderilince açılır." : null}
-      />
     </div>
+  );
+}
+
+/** Başlıktaki kategoriler: ilk 3 etiket ve '+n' (satır içinde açılır; 'Tam' görünümde açık gelir). */
+function CategoryTags({ categories }: { categories: string[] }) {
+  const { categoryLabel, categoryPath } = useOntology();
+  const { full } = useDetailLevel();
+  const listId = useId();
+  // null: kullanıcı dokunmadı → görünüm yoğunluğunu izler.
+  const [open, setOpen] = useState<boolean | null>(null);
+  if (!categories.length) return null;
+  const extra = categories.length - HEADER_CATEGORIES;
+  const expanded = open ?? full;
+  return (
+    <ul className="cat-tags proposal-cats" id={listId} aria-label="Kategoriler">
+      {categories.map((c, i) => (
+        <li key={c} className="cat-tag" title={categoryPath(c)} hidden={i >= HEADER_CATEGORIES && !expanded}>
+          {categoryLabel(c)}
+        </li>
+      ))}
+      {extra > 0 ? (
+        <li>
+          <button type="button" className="cat-tag cat-tag-more cat-tag-toggle" aria-expanded={expanded} aria-controls={listId} onClick={() => setOpen(!expanded)}>
+            {expanded ? (
+              <>
+                Kısalt<span className="sr-only"> (kategori listesi)</span>
+              </>
+            ) : (
+              <>
+                +{extra}
+                <span className="sr-only"> kategori daha göster</span>
+              </>
+            )}
+          </button>
+        </li>
+      ) : null}
+    </ul>
   );
 }
 
@@ -266,11 +389,13 @@ const ENTRENCHED_CODES = new Set([
 ]);
 
 /**
- * "Yönetmeliğe aykırı" bildirimi: açıklama, ihlalin dayandığı maddenin koruma düzeyine göre seçilir. Yalnız değiştirilemez
- * bir hükme aykırılık "kural gereği geçersiz" (Anayasa md. 4 modeli) sayılır; olağan ya da nitelikli bir hükme aykırı öneri
- * (ör. Madde 12 (2) içerik etiketi, Madde 10 (1) üst konu) düzeltilip yeniden sunulabilir.
+ * "Yönetmeliğe aykırı" bildiriminin Sıradaki adım kartındaki gövdesi (başlık ve ilk cümle motordan gelir): bulguların listesi
+ * (kartta zaten yazılan tek bulgu tekrarlanmaz) ve 'Bu ne demek?' açılırında açıklama. Açıklama, ihlalin dayandığı maddenin
+ * koruma düzeyine göre seçilir: yalnız değiştirilemez bir hükme aykırılık "kural gereği geçersiz" (Anayasa md. 4 modeli)
+ * sayılır; olağan ya da nitelikli bir hükme aykırı öneri (ör. Madde 12 (2) içerik etiketi, Madde 10 (1) üst konu) düzeltilip
+ * yeniden sunulabilir. Ayrıntılar ontoloji denetimi kartındadır (aykırılıkta açık gelir).
  */
-function InadmissibleNotice({ proposal: p, lastReason }: { proposal: ProposalDetail; lastReason: string | null }) {
+function InadmissibleExplainer({ proposal: p, shown }: { proposal: ProposalDetail; shown: string | null }) {
   const { ontology } = useOntology();
   const violations = p.audit?.violations ?? [];
   const immutableArticles = new Set((ontology?.articles ?? []).filter((a) => a.protection === "Degistirilemez").map((a) => expandIri(a.iri)));
@@ -278,59 +403,31 @@ function InadmissibleNotice({ proposal: p, lastReason }: { proposal: ProposalDet
     p.audit?.tier === "T3" || violations.some((v) => ENTRENCHED_CODES.has(v.code) || (!!v.article && immutableArticles.has(expandIri(v.article))));
   const articles = [...new Set(violations.map((v) => v.articleLabel).filter((l): l is string => !!l))];
   const where = articles.length ? ` (${articles.join(", ")})` : "";
+  const listed = violations.length === 1 && violations[0].message === shown ? [] : violations;
   return (
-    <Alert tone="error" title="Yönetmeliğe aykırı — oylanamaz">
-      {lastReason ? <p>{lastReason}</p> : null}
-      {violations.length ? (
-        <ul>
-          {violations.map((v, i) => (
+    <>
+      {listed.length ? (
+        <ul className="next-step-findings">
+          {listed.map((v, i) => (
             <li key={i}>{v.message}</li>
           ))}
         </ul>
       ) : null}
-      {entrenched ? (
-        <p className="small">
-          Öneri değiştirilemez bir hükme aykırı{where}. Böyle öneriler oylamaya hiç girmeden kural gereği geçersizdir (Anayasa md. 4 modeli). Ayrıntılar ontoloji
-          denetimi kartında.
-        </p>
-      ) : (
-        <p className="small">
-          Öneri, değiştirilemez olmayan bir yönetmelik hükmüne aykırı bulundu{where}. Bu bir oylama sonucu değil, otomatik denetimin sonucudur; yazar metni düzeltip
-          yeni bir öneri olarak yeniden sunabilir. Ayrıntılar ontoloji denetimi kartında.
-        </p>
-      )}
-    </Alert>
+      <Details summary="Bu ne demek?">
+        {entrenched ? (
+          <p className="small">
+            Öneri değiştirilemez bir hükme aykırı{where}. Böyle öneriler oylamaya hiç girmeden kural gereği geçersizdir (Anayasa md. 4 modeli). Ayrıntılar ontoloji
+            denetimi kartında.
+          </p>
+        ) : (
+          <p className="small">
+            Öneri, değiştirilemez olmayan bir yönetmelik hükmüne aykırı bulundu{where}. Bu bir oylama sonucu değil, otomatik denetimin sonucudur; yazar metni düzeltip
+            yeni bir öneri olarak yeniden sunabilir. Ayrıntılar ontoloji denetimi kartında.
+          </p>
+        )}
+      </Details>
+    </>
   );
-}
-
-function StatusNotice({ proposal: p, lastReason }: { proposal: ProposalDetail; lastReason: string | null }) {
-  switch (p.status) {
-    case "enacted":
-      return <EnactedEffect proposal={p} />;
-    case "rejected":
-      return (
-        <Alert tone="error" title="Öneri reddedildi">
-          {lastReason ? <p>{lastReason}</p> : null}
-          {p.kind === "deletion" ? <p className="small">Silme talebi herkese açık olarak arşivlendi; hedef mesajlar görünür kalır.</p> : null}
-        </Alert>
-      );
-    case "inadmissible":
-      return <InadmissibleNotice proposal={p} lastReason={lastReason} />;
-    case "withdrawn":
-      return (
-        <Alert tone="info" title="Öneri geri çekildi">
-          {lastReason ?? "Yazar öneriyi geri çekti."} Kayıt herkese açık arşivde kalır.
-        </Alert>
-      );
-    case "expired":
-      return (
-        <Alert tone="info" title="Süresi doldu">
-          {lastReason ?? "Destekçi toplama süresinde yeterli destek gelmedi."}
-        </Alert>
-      );
-    default:
-      return null;
-  }
 }
 
 interface ActionAreaProps {
@@ -343,6 +440,10 @@ interface ActionAreaProps {
   onAnalysis: (a: AiAnalysisInfo) => void;
 }
 
+/**
+ * Evrenin eylem paneli ('eylem önce': evrenin asıl işi her zaman ilk paneldir). ?bolum=eylem odağı bu alanın ilk görünür
+ * denetimine gider (oyda ilk radyo, itirazda 'Gerekçe'; bkz. actionFocusSelector).
+ */
 function ActionArea({ proposal: p, onUpdated, onReload, setData, onSuggestion, onMinority, onAnalysis }: ActionAreaProps) {
   switch (p.status) {
     case "draft":
@@ -388,16 +489,17 @@ function ActionArea({ proposal: p, onUpdated, onReload, setData, onSuggestion, o
   }
 }
 
+/**
+ * Tartışma evresi paneli ('eylem önce'): yazarın düğmeleri (metni düzenle, geri çek) en üstte; ardından metin önerileri
+ * (yazar için karar düğmeleri, üyeler için öneri formu) ve hak etkisi bayrakları; evrenin kuralını anlatan cümle en altta.
+ * Oylamaya kalan süre başlıkta.
+ */
 function DeliberationPanel({ proposal: p, onUpdated, onSuggestion }: { proposal: ProposalDetail; onUpdated: (p: ProposalDetail) => void; onSuggestion: (s: Suggestion) => void }) {
   const auth = useAuth();
   const [editing, setEditing] = useState(false);
   const isAuthor = auth.user?.id === p.authorId;
   return (
-    <Card
-      title="Tartışma evresi"
-      subtitle="Metin bu evrede değişebilir; oylama başlarken kilitlenir. Her değişiklik yeni sürüm üretir."
-      actions={<Countdown to={p.phaseEndsAt} prefix="Oylamaya" />}
-    >
+    <Card title="Tartışma evresi" actions={<Countdown to={p.phaseEndsAt} prefix="Oylamaya" />}>
       <div className="stack">
         {isAuthor ? (
           editing ? (
@@ -419,8 +521,12 @@ function DeliberationPanel({ proposal: p, onUpdated, onSuggestion }: { proposal:
             </div>
           )
         ) : null}
-        <SuggestionsPanel proposal={p} onUpdated={onUpdated} onAdded={onSuggestion} />
+        {/* ?bolum=eylem ile gelen yazarın odağı yanıt bekleyen ilk önerinin karar düğmesine gider (actionFocusSelector). */}
+        <div className="deliberation-suggestions">
+          <SuggestionsPanel proposal={p} onUpdated={onUpdated} onAdded={onSuggestion} />
+        </div>
         {p.kind !== "deletion" ? <RightsFlags proposal={p} onUpdated={onUpdated} /> : null}
+        <p className="small muted">Metin bu evrede değişebilir; oylama başlarken kilitlenir. Her değişiklik yeni sürüm üretir.</p>
       </div>
     </Card>
   );

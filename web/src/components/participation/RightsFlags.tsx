@@ -1,7 +1,9 @@
 // Hak etkisi bayrakları ("yalnızca yükseltme", ALGORITMA §12.11): herkes ekleyebilir, yalnızca ilgili alandaki
 // bilirkişi ya da yönetici kaldırabilir. Bayrak katmanı en fazla T1'e yükseltir ve bilirkişiyi zorunlu kılar; öneriyi geçersiz kılamaz.
 // Bayraklar (hak, yön) çiftine göre gruplanır; kaldırma bayrağın KENDİ yönüyle yapılır ("genişletiyor" bayrağı "kısıtlıyor" diye silinmez).
-import { useState } from "react";
+// 'Eylem önce': tek satırlık özet ('İşaretlenmiş hak yok' / '2 hak işaretli · katmanı yükseltir') ve yanında [Hak etkisi bayrağı ekle]
+// düğmesi; form düğmeyle açılır. İşaretli haklar özetin altında görünür kalır.
+import { useEffect, useRef, useState } from "react";
 import type { ProposalDetail, ProposalRightsFlag, RightsFlagSource } from "@forum/shared";
 import { flagRight } from "../../api/endpoints";
 import { useAuth } from "../../auth/AuthContext";
@@ -9,6 +11,7 @@ import { useOntology } from "../../lib/categories";
 import { useAction } from "../../lib/useAsync";
 import { Badge, Button, RadioGroup, Select } from "../../ui";
 import { SubHeading } from "./common";
+import "./panels.css";
 
 type Direction = ProposalRightsFlag["direction"];
 
@@ -34,18 +37,32 @@ export function groupRightsFlags(flags: readonly ProposalRightsFlag[]): RightsFl
   return out;
 }
 
+/** Tek satırlık özet: aynı hak iki yönde işaretlenmişse bir hak sayılır. */
+export function rightsFlagSummary(groups: readonly Pick<RightsFlagGroup, "right">[]): string {
+  const n = new Set(groups.map((g) => g.right)).size;
+  return n ? `${n} hak işaretli · katmanı yükseltir` : "İşaretlenmiş hak yok";
+}
+
 export function RightsFlags({ proposal: p, onUpdated, showHeading = true }: { proposal: ProposalDetail; onUpdated: (p: ProposalDetail) => void; showHeading?: boolean }) {
   const auth = useAuth();
   const { ontology, rightLabel } = useOntology();
   const [right, setRight] = useState("");
   const [direction, setDirection] = useState<"restrict" | "expand">("restrict");
   const [open, setOpen] = useState(false);
+  // Odak yönetimi: form açılınca ilk alana (autoFocus), kapanınca tetikleyen düğmeye döner.
+  const trigger = useRef<HTMLButtonElement>(null);
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (wasOpen.current && !open) trigger.current?.focus();
+    wasOpen.current = open;
+  }, [open]);
   // Eski sunucu `rightsFlags` göndermezse denetim raporundaki hak listesine (yön/kaynak bilinmeden) düşülür.
   const groups = p.rightsFlags
     ? groupRightsFlags(p.rightsFlags)
     : (p.audit?.rightsAffected ?? []).map((r): RightsFlagGroup => ({ right: r, direction: "restrict", sources: [] }));
   const editable = p.status === "sponsoring" || p.status === "deliberation";
   const canRemove = editable && (auth.isExpert || auth.isAdmin);
+  const canAdd = editable && auth.can("V");
 
   const add = useAction(() => flagRight(p.id, { right, direction }), {
     success: "Hak etkisi bayrağı eklendi; denetim yeniden hesaplandı.",
@@ -61,8 +78,16 @@ export function RightsFlags({ proposal: p, onUpdated, showHeading = true }: { pr
   });
 
   return (
-    <div className="stack-sm">
+    <div className="stack-sm rights-flags">
       {showHeading ? <SubHeading>Hak etkisi</SubHeading> : null}
+      <div className="panel-bar">
+        <p className={groups.length ? "small" : "small muted"}>{rightsFlagSummary(groups)}</p>
+        {canAdd && !open ? (
+          <Button ref={trigger} size="sm" icon="warning" onClick={() => setOpen(true)}>
+            Hak etkisi bayrağı ekle
+          </Button>
+        ) : null}
+      </div>
       {groups.length ? (
         <ul className="plain-list stack-sm" aria-label="Hak etkisi bayrakları">
           {groups.map((g) => (
@@ -96,57 +121,48 @@ export function RightsFlags({ proposal: p, onUpdated, showHeading = true }: { pr
             </li>
           ))}
         </ul>
-      ) : (
-        <p className="small muted">Bu öneri için bir hak etkisi bayrağı işaretlenmedi.</p>
-      )}
-      {editable && auth.can("V") ? (
-        open ? (
-          <form
-            className="stack-sm"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void add.run();
-            }}
-          >
-            <Select
-              label="Etkilenen temel hak"
-              placeholder="Seçin…"
-              required
-              value={right}
-              onChange={(e) => setRight(e.target.value)}
-              options={(ontology?.rights ?? []).map((r) => ({ value: r.iri, label: r.label }))}
-              hint={(ontology?.rights ?? []).find((r) => r.iri === right)?.description}
-            />
-            <RadioGroup<"restrict" | "expand">
-              label="Etki yönü"
-              layout="inline"
-              value={direction}
-              onChange={setDirection}
-              options={[
-                { value: "restrict", label: "Kısıtlıyor" },
-                { value: "expand", label: "Genişletiyor" },
-              ]}
-            />
-            <p className="small muted">
-              Yalnızca yükseltme: bayrak kararı en fazla T1 (nitelikli) katmanına yükseltir, uyarı üretir ve bilirkişi görüşünü zorunlu kılar; öneriyi geçersiz (T3)
-              yapamaz. Bayrağı yalnızca ilgili alandaki bilirkişi ya da yönetici kaldırabilir.
-            </p>
-            <div className="form-actions">
-              <Button variant="ghost" onClick={() => setOpen(false)}>
-                Vazgeç
-              </Button>
-              <Button type="submit" variant="primary" loading={add.loading} disabled={!right}>
-                Bayrağı ekle
-              </Button>
-            </div>
-          </form>
-        ) : (
-          <div>
-            <Button size="sm" icon="warning" onClick={() => setOpen(true)}>
-              Hak etkisi bayrağı ekle
+      ) : null}
+      {canAdd && open ? (
+        <form
+          className="stack-sm"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void add.run();
+          }}
+        >
+          <Select
+            label="Etkilenen temel hak"
+            placeholder="Seçin…"
+            required
+            value={right}
+            onChange={(e) => setRight(e.target.value)}
+            options={(ontology?.rights ?? []).map((r) => ({ value: r.iri, label: r.label }))}
+            hint={(ontology?.rights ?? []).find((r) => r.iri === right)?.description}
+            autoFocus
+          />
+          <RadioGroup<"restrict" | "expand">
+            label="Etki yönü"
+            layout="inline"
+            value={direction}
+            onChange={setDirection}
+            options={[
+              { value: "restrict", label: "Kısıtlıyor" },
+              { value: "expand", label: "Genişletiyor" },
+            ]}
+          />
+          <p className="small muted">
+            Yalnızca yükseltme: bayrak kararı en fazla T1 (nitelikli) katmanına yükseltir, uyarı üretir ve bilirkişi görüşünü zorunlu kılar; öneriyi geçersiz (T3)
+            yapamaz. Bayrağı yalnızca ilgili alandaki bilirkişi ya da yönetici kaldırabilir.
+          </p>
+          <div className="form-actions">
+            <Button variant="ghost" onClick={() => setOpen(false)}>
+              Vazgeç
+            </Button>
+            <Button type="submit" variant="primary" loading={add.loading} disabled={!right}>
+              Bayrağı ekle
             </Button>
           </div>
-        )
+        </form>
       ) : null}
     </div>
   );
