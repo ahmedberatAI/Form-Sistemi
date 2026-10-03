@@ -32,6 +32,13 @@ npm start                            # sunucu: http://localhost:4000 (web/dist'i
 
 Tarayıcıda **http://localhost:4000** adresini açın.
 
+**Arayüz:** varsayılan görünüm **Sade**dir: ilk ekran 'ne oldu, benden ne bekleniyor, ne kadar sürem var' sorularını yanıtlar;
+tablo, formül ve hash gibi ayrıntılar adlandırılmış açılırlarda bir dokunuş ötededir. **Ayarlar › Görünüm › 'Tam — tüm ayrıntılar
+açık'** bütün açılırları tek seçimle açar (gösterim için). Hocaya sistemi göstermek için **Keşfet ve doğrula** sayfası (`/kesfet`;
+Ana sayfa vitrinindeki 'Gösterim rehberi ›', masaüstü alt bilgisi ya da mobil 'Daha fazla'): yedi bileşen canlı durumuyla, mevcut
+veriden kurulan 7 adımlı gösterim rehberi, 8 temel ilke ve yönetmelik terimlerinin sözlüğü. Yönetmelik terimleri ekranda aynen
+kalır; dokununca günlük karşılıkları açılır. Ayrıntı: [Arayüz hafifletme planı](docs/ARAYUZ_PLANI.md).
+
 **Geliştirme modu** (sıcak yeniden yükleme):
 
 ```bash
@@ -47,7 +54,7 @@ npm run dev:web                      # yalnız Vite, port 5173 (/api → VITE_AP
 
 ```bash
 npm run typecheck                    # shared + server + web
-npm test                             # sunucu (907) + web (398) testleri
+npm test                             # sunucu (907) + web (668) testleri
 npm run sim -w server                # Monte Carlo simülasyonu → docs/SIMULASYON.md
 ```
 
@@ -55,7 +62,7 @@ npm run sim -w server                # Monte Carlo simülasyonu → docs/SIMULAS
 
 ```bash
 npx playwright install chromium      # bir kez: test tarayıcısı
-npm run e2e                          # Playwright, 6 senaryo dosyası, 33 test (≈5 dk)
+npm run e2e                          # Playwright, 6 senaryo dosyası, 61 test (≈9 dk)
 npm run e2e:typecheck                # e2e/ kaynaklarının tip denetimi
 ```
 
@@ -64,7 +71,8 @@ kaynaklardan eskiyse web'i derler, geçici bir klasörde demo verisini tohumlar 
 dosyası bu verinin taze bir kopyasıyla **4100** portunda kendi sunucusunu açar (`TIME_SCALE=1`, yüksek `RATE_LIMIT_*`) ve sonunda
 kapatır (Windows'ta `taskkill /T /F`). 4000'deki sunucunuza ve `server/data`'ya dokunulmaz. Senaryolar: 360 px'de tüm sayfaların
 taraması, kayıttan kesin sayıma oylama akışı, silme talebi, itiraz/uzlaşma, defter kurcalama ve düğüm çökmesi, sade arayüz
-sözleşmeleri (Sıradaki adım, 'Bu sayfada', derin bağlantılar, 'Tam' görünüm, kontrast)
+sözleşmeleri (Sıradaki adım, 'Bu sayfada', derin bağlantılar, 'Tam' görünüm, kontrast; Faz 3: sözlük penceresi, Keşfet ve
+gösterim rehberi, görev sayısı rozeti, bildirimler, yeni öneri formu, Profil/Ayarlar/Konular)
 ([TEST_RAPORU §3](docs/TEST_RAPORU.md)). Seçenekler: `E2E_PORT` (taban port), `E2E_BUILD=1|0` (web'i her zaman derle / yalnız `web/dist` yoksa derle),
 `E2E_KEEP=1` (geçici klasörü ve sunucu günlüklerini bırak). Rapor: `e2e/playwright-report/index.html`.
 
@@ -163,6 +171,10 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
   "İndir" düğmeleri gizlenir ve "indirildi" denmez. Ön denetimdeki benzer öneriler, yazılan form kaybolmasın diye alt sayfada önizlenir.
 - Doğrulandı (Windows 11, Pixel 7 · API 34): giriş, oy + cihazda makbuz, "Oyum kayıtlı mı?", tarayıcıda yeniden sayım, geri tuşu,
   koyu tema. Ayrıntılar ve ekran görüntüleri: [TEST_RAPORU.md §3.3](docs/TEST_RAPORU.md), [`docs/ekran/`](docs/ekran/).
+- Tam ekran arşivi (arayüz hafifletme Faz 3 sonrası, 3 Ekim 2026): [`gorseller/2026-10-01/index.html`](gorseller/2026-10-01/index.html) galerisi —
+  106 web (Chrome, 1440×1000) ve 107 Android (kurulu APK, 1080×2400) görüntü, CSV envanteri ve derleme kaydı; zip: `gorseller/Forum-Sistemi-Ekran-Goruntuleri-2026-10-01.zip`.
+  Yenileme: ayrı bir veri klasörüyle 4177 portunda sunucu başlatıp `node gorseller/2026-10-01/araclar/ekranlari-kaydet.mjs web|android`
+  (her biri ardından `--details`), sonra `node gorseller/2026-10-01/araclar/galeriyi-olustur.mjs` ([yöntem](docs/ARAYUZ_PLANI.md)).
 
 ## 4. Gereksinim → çözüm eşlemesi
 

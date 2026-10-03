@@ -6,7 +6,10 @@
 
 ## Verilen kararlar
 
-- Kapsam: Faz 1 ve Faz 2 uygulandı (Faz 2 sonrası üç bağımsız inceleme ve düzeltme turu yapıldı); Faz 3 bekliyor.
+- Kapsam: Faz 1, Faz 2 ve Faz 3 uygulandı (Faz 2 ve Faz 3 sonrası üçer bağımsız inceleme ve düzeltme turu yapıldı). Faz 3'ün onaya
+  bağlı maddeleri (Keşfet ve doğrula sayfası ile gösterim rehberi, görev sayısı rozeti) kullanıcı onayıyla yapıldı.
+- Renk: tek mavi (`--info` = `--primary`), mor yalnız yapay zekâ, nesne başına en çok 1 renkli durum rozeti; açık ve iki koyu temada WCAG AA.
+- 'özet' sözcüğü hash anlamında yeniden adlandırılmadı ('terim korunur'); günlük karşılığı 'parmak izi' sözlükte ve hash ipucundadır.
 - Görünüm yoğunluğu: varsayılan **Sade**; Ayarlar › Görünüm'de **Tam — tüm ayrıntılar açık** (gösterimde her şeyi tek seçimle açar).
 - Ana sayfa görevleri ile öneri sayfası bayrakları sunucuda aynı kurala bağlandı (`server/src/forum/eligibility.ts`).
 - Demo verisine dokunulmadı; doğrulama e2e'nin kendi geçici verisiyle yapıldı.
@@ -29,6 +32,35 @@ kapalı yazma kutusuyla tartışma, role göre "Sizi bekleyenler" ana sayfası, 
 masaüstü gezinme ayracı. Testler: `e2e/tests/06-sadelik.spec.ts` (23 test; kontrast dahil). Uygulamadan sonra üç bağımsız
 inceleyici (doğruluk, özellik/sözleşme, telefon/görsel) yalnız düşük önemde 8 bulgu çıkardı; hepsi doğrulanıp düzeltildi.
 
+## Faz 3 — uygulandı
+
+Görsel dil (renk rolleri, rozet bütçesi, `--sp-*`/`--fs-*` belirteçleri), sade dil (`lib/glossary.ts` sözlüğü, `<Term>` penceresi,
+ParamsCard sembol anahtarı), kompakt yeni öneri formu (tür radyoları, 'önce hüküm' ön denetim, duruma göre açılan kurallar), Konular ve
+konu ayrıntısı (tek satır sayaçlar, tartışma yukarıda, katlı sürüm geçmişi), Profil ve Ayarlar (oy hakkı kartı önde, seyrek işler
+katlı, tanılama 'Gelişmiş'te), Bildirimler (tür sınıfı, tarih grupları, satırın tamamı bağlantı), 'Keşfet ve doğrula' sayfası ve
+7 adımlı gösterim rehberi, 'Ana sayfa' görev sayısı rozeti ve kartta 'Sizden bekleniyor', belgeler ve belgeleme aracı.
+
+İnceleme turunda düzeltilenler: yeni öneri formunun yanındaki sözlük pencereleri ve madde atıfları formu terk ettirmez (web'de yeni
+sekme, Android'de bağlantısız; `TermLinksProvider`); görev rozeti Ana sayfa panosuyla eşitlenir ve kişinin kendi eyleminden hemen
+sonra yenilenir; 'YZ önerileri' ilk 'Ekle'de kapanmaz ve odak düşmez; rıza sonrası oy hakkı kartında odak kaybolmaz; Keşfet
+sözlüğünde arama etkinken 'Sözlükte ›' çalışır; özet olmayan değerler (imza, açık anahtar, pusula kimliği) 'Özet' ipucu almaz;
+ön denetimde başlık düzeyi atlanmaz; konu sayfasında açık önerilerin türü ve yazarı geri geldi; silinen iki eğitici cümle açılırda
+ve alt başlıkta korundu; KVKK bağlantısı katlı karta derin bağlanır; itiraz hükmü, defter işlem türleri, hak etkisi ve 'Bilgi'
+bulgusu rozet bütçesine ve renk rollerine uyar; çakışan CSS kuralları tek yere toplandı.
+
+Belgeleme aracı (`gorseller/2026-10-01/araclar/ekranlari-kaydet.mjs`) yeni arayüze uyarlandı: katlı Profil kartları ve 'Uygulama
+hakkında' `?bolum=` ile açık çekilir, /kesfet çekimleri eklendi, Android tercih yedeğine `forum.detail` ve `forum.dismissed` girdi
+(çekimler her zaman 'Sade' görünümde). Araç ayrıca Öneriler listesindeki evre çiplerini ('Oylamada', 'İtiraz ve uzlaşma', 'Kabul
+edilen' …) tek tek çeker, bilirkişi raporunu 'Raporu oku' ile açıp çeker, sözlük penceresini ('Karar parametreleri' › 'Onay eşiği')
+ve 'Tam — tüm ayrıntılar açık' görünümünü (Ayarlar, öneri #K-7, Profil) çeker; 'Tam' çekimlerden sonra 'Sade'ye döner.
+
+Ekran görüntüleri Faz 3 sonrası çalışma ağacıyla yeniden çekildi (3 Ekim 2026): **106 web** (Chrome, 1440×1000) ve **107 Android**
+(Pixel 7 / Android 14 emülatöründe kurulu APK, 1080×2400) görüntü, `gorseller/2026-10-01/` (galeri `index.html`, CSV envanteri,
+`surum-ve-dogrulama.json`, zip arşivi) ve Android'in sekiz öne çıkan ekranı `docs/ekran/`. Çekim ayrı bir geçici veri klasöründe
+(`TIME_SCALE=1`, YZ çevrimdışı) 4177 portundaki sunucuyla yapıldı; `server/data` ve 4000 portuna dokunulmadı. Yenilemek için:
+sunucuyu 4177'de başlatıp `node gorseller/2026-10-01/araclar/ekranlari-kaydet.mjs web` (ardından `web --details`), emülatörde
+`… android` (ardından `android --details`) ve `node gorseller/2026-10-01/araclar/galeriyi-olustur.mjs` çalıştırılır.
+
 ## Ölçüm
 
 Aynı veri (sonuçlanmış demo, @admin) ve aynı tarayıcı betiği; ekran = görünür yükseklik katı:
@@ -45,6 +77,36 @@ Taze tohumda oylamadaki öneri (#K-31, oy bekleyen üye @ayse): telefonda 5,2 ek
 "Oyunuz bekleniyor · kalan süre · Oy bölümüne git" ve "Bu sayfada: Metin · Oy ver · Tartışma (5) · Kanıtlar". Ana sayfa
 görevine dokunmak öneriyi oylama paneline kaydırarak açar. Sonuçlanmış önerilerde tartışmadan önce sonuç kartı, sayım
 doğrulama, bilirkişi ve YZ özeti geldiği için tartışma 4. ekranda kalıyor; "Bu sayfada" ile 1 dokunuştur.
+
+### Faz 3 önce/sonra
+
+Aynı e2e tohumu (taze demo verisi, `TIME_SCALE=1`), aynı betik (`e2e/tests/06-sadelik.spec.ts › ölçüm`, Chromium) ve aynı
+sunucu; 'Önce' = Faz 2 sonu (925bd2d) derlemesi, 'Sonra' = Faz 3 ve inceleme düzeltmeleri (3 Ekim 2026). Ekran = sayfa boyu /
+görünür yükseklik; 'rozet/etiket' renkli ve gri bütün rozetleri sayar. Yukarıdaki tablodan farklı veri (taze tohum, @ayse) olduğu
+için Ana sayfa ve #K-7 değerleri o tabloyla değil, bu tablonun kendi sütunlarıyla karşılaştırılır.
+
+| Görünüm (telefon 375×812, aksi yazmıyorsa) | Önce (Faz 2 sonu) | Sonra (Faz 3) | Plandaki hedef |
+|---|---|---|---|
+| Profil · @ayse | 5 ekran · 481 kelime · 17 tıklanabilir · 3 rozet | **3 ekran** · 250 kelime · 15 tıklanabilir · 2 rozet | ≈ 2,5 ekran |
+| Profil · @ayse · 'Tam' | 6,6 ekran · 692 kelime · 17 tıklanabilir | 7,5 ekran · 773 kelime · 30 tıklanabilir (katlı kart başlıkları ve 'nasıl?' açılırları) | — |
+| Ayarlar · ziyaretçi | 2,3 ekran · 165 kelime | **1,8 ekran** · 131 kelime; ilk okumada TOFU ve Ed25519 yok (06 testi) | TOFU/Ed25519 0 |
+| Konular · ziyaretçi | 3 ekran · 377 kelime · 41 rozet/etiket | 2,8 ekran · 235 kelime · 28 rozet/etiket | — |
+| Konu ayrıntısı (ilk konu) | 5 ekran · tartışma 3,3. ekranda | 4,3 ekran · **tartışma 2,2. ekranda** | tartışma 1,5–2 ekran yukarı (1,1 ekran yukarı geldi) |
+| Bildirimler · @ayse | 21,3 ekran · 175 tıklanabilir | **18,2 ekran** · 175 tıklanabilir; satırda 'Git' düğmesi yerine satırın kendisi bağlantı, tek 'Okundu işaretle' simge düğmesi | satır başına düğme 2 → 1 |
+| Yeni öneri: yeni konu (boş form) | 3,3 ekran · 333 kelime | 2,9 ekran · 265 kelime | — |
+| Yeni öneri: seçili tür radyosundan 'Başlık' alanına (360 px) | 812 px (06 testindeki eski düzen notu) | **353 px** | ≈ 150 px (tür şeridi 360 px'de iki satıra sardığı için hedefe inmedi) |
+| Yeni öneri: dolu ön denetim paneli (360 px, sade) | ≈ 1500 px (plan tahmini) | **632 px** | ≈ 500 px |
+| Yeni öneri: silme talebi (`?mesaj=`) | 4,7 ekran · 477 kelime | **3,3 ekran** · 281 kelime | ≈ 2,5 ekran |
+| Keşfet ve doğrula · ziyaretçi (telefon / masaüstü 1280×860) | yok | 6,3 / 4,1 ekran · 685 kelime · 40 tıklanabilir · 0 rozet; 7 bileşen her biri 1 dokunuş, 7 adımlı rehber | 7 bileşen tek sayfada |
+| Ana sayfa · @ayse (telefon / masaüstü) | 3,4 / 1,7 ekran · 393 kelime · 41 tıklanabilir | 3,4 / 1,7 ekran · 395 kelime · 42 tıklanabilir ('Gösterim rehberi ›') | — |
+| Öneri #K-7 (kabul, bilirkişili) · telefon | 6,6 ekran · 682 kelime · 58 tıklanabilir · 12 rozet/etiket · tartışma 5. ekranda | 6,6 ekran · 682 kelime · 62 tıklanabilir (sözlük terimleri) · 12 rozet/etiket · tartışma 5. ekranda | renkli rozet ≤ 5 (başlıkta ≤ 3: 06 testi; hüküm satırlarında ≤ 1: birim testleri) |
+| Öneri #K-7 · masaüstü | 4,2 ekran · 678 kelime · 57 tıklanabilir | 4,1 ekran · 678 kelime · 61 tıklanabilir | — |
+| Öneri #K-7 · telefon · 'Tam' | 17,3 ekran · 1982 kelime · 97 tıklanabilir | 17,5 ekran · 2047 kelime · 122 tıklanabilir (semboller ve formüller açık) | — |
+
+Sade dil: dokunmatikte yalnız `title` ile verilen terim açıklamaları `<Term>` penceresine taşındı (masaüstü ipucu kalır); ilk
+okumada Yunan sembolü ve formül yok, 'Sembolleri ve formülleri göster' anahtarı ve 'Tam' görünüm hepsini açar (06 testleri).
+Görsel dil: üç tema bloğunda `--info` = `--primary`, mor yalnız YZ; kontrast 06'nın iki kontrast testiyle (açık + iki koyu yol)
+ve `ui/visualLanguage.test.tsx` ile denetlenir.
 
 ## Yol gösteren ilkeler
 
@@ -1066,7 +1128,7 @@ Ana sayfa, Konular, Öneriler, Oyum kayıtlı mı? | masaüstü üst gezinme; mo
 Bilirkişiler, Graf, Defter, Yönetmelik | masaüstü üst gezinme; mobilde 'Daha fazla' | aynen (masaüstünde gruplar arası ayraç) + Ana sayfa vitrini | masaüstü 1 → 1 · mobil 2 → 2 (vitrinden 1)
 Kayıt memuru, Yönetim, Profil, Ayarlar | kullanıcı menüsü; mobilde 'Daha fazla' | aynen | 2 → 2
 Bildirimler | zil | aynen | 1 → 1
-Sistem durumu (saat ve ölçek, ileri alma, YZ kipi ve modeli, defter yüksekliği ve doğrulayıcı sağlığı, yönetmelik sürümü, üye sayıları, istemci sürümü) | masaüstü alt bilgi 0 ve Ana sayfa şeridi 0; mobilde YALNIZ Ana sayfa | masaüstü alt bilgi 0; Ana sayfa vitrini ve alt satırı 0↓; mobil 'Daha fazla' sistem bloğu (yeni); Keşfet (Faz 3, onaya bağlı) | mobil, Ana sayfa dışından: yok → 1
+Sistem durumu (saat ve ölçek, ileri alma, YZ kipi ve modeli, defter yüksekliği ve doğrulayıcı sağlığı, yönetmelik sürümü, üye sayıları, istemci sürümü) | masaüstü alt bilgi 0 ve Ana sayfa şeridi 0; mobilde YALNIZ Ana sayfa | masaüstü alt bilgi 0; Ana sayfa vitrini ve alt satırı 0↓; mobil 'Daha fazla' sistem bloğu (yeni); Keşfet (Faz 3) | mobil, Ana sayfa dışından: yok → 1
 Oturum süresi doldu / Sunucuya ulaşılamıyor şeritleri | her sayfa 0 | aynen | 0 → 0
 Bekleyen, askıdaki, reddedilmiş hesap mesajı | her sayfada şerit, Ana sayfada çift | '/' dışında şerit; '/' rotasında yalnız Ana sayfa kartı | 0 → 0
 Android geri tuşuyla açık kullanıcı menüsünü kapatma | çalışmıyor (hata) | çalışır | — → 1
@@ -1167,7 +1229,12 @@ Yönetmeliğin 58 fıkrası | 0 | bölüm başına 1 (ilk bölüm açık; arama 
 Oy doğrula, makbuz yokken | boş durum | 'Oylamadaki öneriler (n)' 0 / 'Makbuzu elle yapıştır' 0 | — → 0
 Kurcalama demoları (makbuz, defter) | 0 | 0 | 0 → 0
 Bildirimler: Git, Okundu, Tümünü okundu | 0 | satırın kendisi 0, okundu ikonu 0 | 0 → 0
-Gösterim rehberi ve sözlük | yok | /kesfet 1 (onaya bağlı) | yok → 1
+Gösterim rehberi ve sözlük | yok | /kesfet 1 (Ana sayfa vitrini 'Gösterim rehberi ›', masaüstü alt bilgisi, mobil 'Daha fazla') | yok → 1
+Terimin günlük karşılığı ve tanımı | masaüstünde yalnız title | terime dokununca pencere 1 (title masaüstünde kalır); yeni öneri formunun yanında pencere bağlantıları yeni sekmede (Android'de madde düz metin, sözlük Keşfet'ten) | dokunmatikte yok → 1
+Bekleyen iş sayısı | yalnız Ana sayfada | 'Ana sayfa' bağlantısında rozet 0 (her sayfa); öneri kartında 'Sizden bekleniyor' 0 | Ana sayfa dışından yok → 0
+Konu ayrıntısı: açık önerilerin türü ve yazarı | 0 (rozet + @yazar) | satırın meta metninde 0 (düz metin) | 0 → 0
+Profil: görüş kümesinin yöntemi (Polis benzeri kümeleme) ve köprü testindeki rolü | 0 (ipucu) | ilk cümle 0; 'Görüş kümesi nasıl hesaplanır?' 1 | 0 → 1
+Silme formundan KVKK bölümüne | Profil'in başı (kaydırma) | /profil?bolum=kvkk (kart açık, odaklı) | 1+kaydırma → 1
 
 ## Elenen fikirler
 

@@ -17,7 +17,8 @@ src/
   auth/AuthContext.tsx     AuthProvider, useAuth(), useServerNow(), Permission
   auth/guards.tsx          RequireAuth, RequireRole
   ui/                      yeniden kullanılabilir bileşenler (hepsi `../ui`'dan içe aktarılır)
-  lib/                     format, prefs, receipts, validators, diff, useAsync, categories, hooks, routes, download
+  lib/                     format, prefs, receipts, validators, diff, useAsync, categories, hooks, routes, download, detailLevel, sectionParam,
+                           nextStep, glossary (sözlük), taskStore (görev sayısı), notificationKinds (bildirim sınıfları)
   components/              RegistrationForm, CategoryPicker, UserLink, KvkkNotice, PlaceholderPage, layout/, system/theme.ts,
                            common/ (NextStepCard), home/ (Ana sayfa parçaları), participation/ (öneri sayfası kartları ve panelleri), proposals/
   pages/                   rota başına bir sayfa (varsayılan dışa aktarım)
@@ -121,6 +122,7 @@ await auth.login({ login, password });  await auth.register(input);  await auth.
 await auth.refresh();         // /api/me yeniden (Me | null)
 await auth.refreshSystem();   // saat ileri alındıktan sonra
 await auth.refreshUnread();   // bildirim okununca
+await auth.refreshTasks({ maxAgeMs? }); // bekleyen işler (GET /api/me/tasks → lib/taskStore); veri maxAgeMs'den tazeyse istek atmaz
 auth.setUser(me);             // PATCH /api/me/consents yanıtıyla güncelle
 auth.now()                    // sunucu (simüle) saatine göre "şimdi" (ms)
 auth.can("U"|"V"|"VV"|"R"|"D"|"A"|"E")  // docs/API.md yetki kısaltmaları; A, R ve D'yi kapsar
@@ -168,7 +170,16 @@ auth.hasRole("registrar"); auth.isVerified; auth.isVoter; auth.isExpert; auth.is
   doğrulamada **her zaman** `pinned.validators` kullanın: `verifyInclusionProof(proof, pinned.validators)`. `status === "changed"` ise
   `describeValidatorDiff(diff)` metniyle uyarı gösterin. Ayrıca `getPinnedValidators()`, `pinValidators(keys)`, `resetPinnedValidators(all?)`, `listPinnedValidators()`, `compareValidators()`.
 - **diff.ts:** `diffLines(a,b)`, `diffWords(a,b)` → `{type: "same"|"add"|"del", text}[]`; `diffText(a,b)` → satır + satır içi kelime farkı (`DiffLine.words`); `diffStats()`. Görsel: `<DiffView>`.
-- **routes.ts:** `routes.proposal(id, {bolum?})`, `routes.topic(id)`, `routes.user(id)`, `routes.block(h)`, `routes.tx(hash)`, `routes.newProposal({kind, parentTopicId, messageId})` (sorgu: `tur`, `konu`, `mesaj`), `routes.verifyVote({proposalId})` (`?oneri=`)…;
+- **glossary.ts:** sözlük (yaklaşık 34 terim, 6 konu): `GLOSSARY`, `GLOSSARY_GROUPS`, `findTerm(id)`, `getTerm(id)`, `glossaryByGroup()`, `searchGlossary(q)` (Türkçe duyarsız; terim, sembol, günlük karşılık ve tanımda arar),
+  `termAnchor(id)` (`terim-<kimlik>`), `termForTier(tier)`, `termForDecisionCheck(key)`. Her girdi: terim (ekranda AYNEN yazıldığı gibi), `plain` (günlük karşılık), `definition`, varsa `symbol` ve `bylawLink` (yönetmelikte yeri).
+  Tanımlar parametre DEĞERİ içermez (yönetmelik değişince bayatlamasın). 'özet' sözcüğü hash anlamında yeniden adlandırılmaz: günlük karşılığı 'parmak izi' yalnız sözlükte ve ipucunda geçer.
+- **taskStore.ts:** oturumdaki üyenin bekleyen işleri (`useSyncExternalStore` deposu). `AuthProvider` açılışta, girişte, 60 sn'de bir ve sekmeye dönünce doldurur (`auth.refreshTasks`); `AppLayout` sayfa değişince 10 sn'den bayatsa yeniler;
+  Ana sayfa her pano yüklemesinde depoyu panonun `tasks` listesiyle eşitler (ikisi aynı sunucu kuralı: liste ile rozet çelişmez); öneri sayfası görüntüleyenin kendi eyleminden (oy, destek, itiraz, rapor …) sonra, Profil rıza değişince yeniler
+  (süren bir isteğe denk gelen zorunlu yenileme o istek bitince bir kez daha sorar); oturum değişince/kapanınca boşalır. Okuyucular: `useTaskCount()` ('Ana sayfa' rozeti), `useProposalExpectations(id)` (öneri kartında 'Sizden bekleniyor'). Saf: `countBadgeText(n)` (0 → rozet yok, 99+), `taskCountText(n)` ('n iş sizi bekliyor'),
+  `taskProposalId(task)` (bağlantıdan öneri kimliği; sunucu değişmedi), `proposalExpectations(tasks, id)`.
+- **notificationKinds.ts:** sunucudaki tüm bildirim türlerinin açık eşlemesi → 8 sınıf (oylama, öneri, tartışma, bilirkişi, vekâlet, hesap, yönetim görevi, varsayılan); her sınıf bir simge, ekran okuyucu etiketi ve ton alır
+  (`classifyKind` tanınmayan türü varsayılana düşürür). Ayrıca `groupByAge` (Bugün / Bu hafta / Daha eski), `defaultFilter`, `filterNotifications`, `markReadLocally`, `readButtonLabel` ('Okundu işaretle: <başlık>'), `focusCandidates`.
+- **routes.ts:** `routes.kesfet({bolum?})` (`/kesfet?bolum=rehber|bilesenler|ilkeler|sozluk|terim-<kimlik>`), `routes.proposal(id, {bolum?})`, `routes.topic(id)`, `routes.user(id)`, `routes.block(h)`, `routes.tx(hash)`, `routes.newProposal({kind, parentTopicId, messageId})` (sorgu: `tur`, `konu`, `mesaj`), `routes.verifyVote({proposalId})` (`?oneri=`)…;
   `toAppPath(link)` sunucu bağlantısını (`/oneriler/x`, `/profile`, `/ledger/txs/h`, `#/…`) uygulama yoluna çevirir.
 - **download.ts:** `downloadText(name, text, mime?)`, `downloadJson(name, data)`, `canDownloadFiles()`. Android uygulamasında
   (Capacitor WebView) dosya indirilemez: indirme denenmez ve `false` döner. "İndir" düğmesini `canDownloadFiles()` ile gizleyin,
@@ -181,9 +192,9 @@ auth.hasRole("registrar"); auth.isVerified; auth.isVoter; auth.isExpert; auth.is
 |---|---|
 | `Button` | `variant?: "primary"\|"secondary"\|"danger"\|"ghost"` (vars. secondary), `size?: "sm"\|"md"`, `loading?`, `block?`, `icon?: IconName` + tüm `<button>` prop'ları (`type` vars. "button") |
 | `LinkButton` | `to` + `variant`, `size`, `block`, `icon` (react-router `Link`) |
-| `Card` | `title?`, `subtitle?`, `actions?`, `footer?`, `tone?: "default"\|"muted"\|"warning"\|"danger"\|"success"\|"accent"`, `headingLevel?: 2\|3\|4`, `id?`. Katlanabilir: `collapsible?` (başlık `aria-expanded` düğmesi olur; `title` düz metin), `defaultOpen?` (verilmezse sade kipte kapalı, tam kipte açık), `openInFull?`, `summary?` (başlığın dışında tek satır hüküm, kapalıyken görünür), `summaryTone?`, `anchor?` (`?bolum=` çapası). Gövde DOM'da kalır (`hidden`). e2e'nin içine baktığı kartlar katlanmaz. |
+| `Card` | `title?`, `subtitle?`, `actions?`, `footer?`, `tone?: "default"\|"muted"\|"action"\|"warning"\|"danger"\|"success"\|"accent"` (`action` = ince mavi kenar, kullanıcıdan eylem bekleyen panel; `accent` YALNIZ YZ), `headingLevel?: 2\|3\|4`, `id?`. Katlanabilir: `collapsible?` (başlık `aria-expanded` düğmesi olur; `title` düz metin), `defaultOpen?` (verilmezse sade kipte kapalı, tam kipte açık), `openInFull?`, `summary?` (başlığın dışında tek satır hüküm, kapalıyken görünür), `summaryTone?`, `anchor?` (`?bolum=` çapası). Gövde DOM'da kalır (`hidden`). e2e'nin içine baktığı kartlar katlanmaz. |
 | `Badge` | `tone?: "neutral"\|"info"\|"success"\|"warning"\|"danger"\|"accent"`, `icon?`, `title?` |
-| `StatusBadge` `{status}` · `TierBadge` `{tier, short?}` · `KindBadge` `{kind}` · `VoteBadge` `{choice}` · `StanceBadge` `{stance}` · `OutcomeBadge` `{outcome}` · `RoleBadge` `{role}` · `UserStatusBadge` `{status}` · `ExpertStatusBadge` `{status}` | Etiketler `@forum/shared/labels`'tan. Ayrıca `statusTone(status)`, `OPEN_STATUSES`, `CLOSED_STATUSES`. |
+| `StatusBadge` `{status}` · `TierBadge` `{tier, short?, neutral?, explain?}` (`neutral`: T3'ü de griye çevirir; `explain`: rozet katmanın sözlük penceresini açan düğme olur) · `KindBadge` `{kind}` · `VoteBadge` `{choice}` · `StanceBadge` `{stance}` · `OutcomeBadge` `{outcome}` · `RoleBadge` `{role}` · `UserStatusBadge` `{status}` · `ExpertStatusBadge` `{status}` | Etiketler `@forum/shared/labels`'tan. Ayrıca `statusTone(status)`, `OPEN_STATUSES`, `CLOSED_STATUSES`. |
 | `Tabs` | `tabs: {id, label, count?, disabled?}[]`, `value`, `onChange`, `label` (erişilebilir ad), `children` = etkin sekmenin içeriği (ok tuşlarıyla gezinme) |
 | `Input` / `Textarea` / `Select` | `label` (zorunlu), `hint?`, `error?`, `hideLabel?` + yerel prop'lar. `Textarea`: `showCount?` (+`maxLength`). `Select`: `options: {value,label,disabled?}[]`, `placeholder?` |
 | `Checkbox` | `label`, `hint?`, `error?`, `checked`, `onChange` |
@@ -198,7 +209,8 @@ auth.hasRole("registrar"); auth.isVerified; auth.isVoter; auth.isExpert; auth.is
 | `Countdown` | `to` (ms, sunucu saati), `prefix?`, `doneText?` ("süre doldu"), `onDone?`, `warnBelowMs?`, `plain?` → "2 sa 13 dk" |
 | `Time` | `at`, `mode?: "relative"\|"absolute"\|"both"` |
 | `AiLabel` | `info?: AiAnalysisInfo` ya da `label?`/`model?`/`at?`/`offline?`; `children` verilirse çerçeveli blok + "danışma niteliğindedir" notu (`hideNote?`) |
-| `HashText` | `hash`, `chars?` (10), `copy?` (true), `to?` (bağlantı), `full?`, `label?` |
+| `HashText` | `hash`, `chars?` (10), `copy?` (true), `to?` (bağlantı), `full?`, `label?`, `digest?` (true: ipucu 'Özet (parmak izi): …'; imza, açık anahtar ve rastgele kimlik gibi özet OLMAYAN değerde `false` → ipucu yalnız değer), `explain?` (yanına 'Özet nedir?' sözlük düğmesi; bağlantı/düğme/`<summary>` içinde kullanılmaz) |
+| `Term` | `id: TermId` (derleme zamanında denetlenir), `children?` (yoksa sözlükteki terim), `className?` — satır içi `<button aria-haspopup="dialog">`; dokununca günlük karşılık, tanım, sembol, 'Yönetmelikte ›' ve 'Sözlükte ›' bir `Modal sheet` içinde açılır (Esc kapatır, odak terime döner). Masaüstünde `title` ipucu da vardır. YALNIZ düz metin akışına konur: başlık (h1–h4, Card başlığı), form etiketi, düğme, bağlantı, `<summary>` ve Uzlaşma/İtiraz panelleri içine KONMAZ. `TermBody` pencerenin içeriğidir (Keşfet sözlüğü de kullanır). Bağlantı kipi `TermLinksProvider mode="page"\|"newTab"\|"none"` (`ui/Term`): yalnız bellekte tutulan bir formun yanında (`NewProposalPage`, açık vekâlet formu) `formTermLinkMode(isNativePlatform())` verilir; pencere bağlantıları ve ön denetimin madde atfı (`TermLink`) web'de yeni sekmede açılır ('(yeni sekmede açılır)' notuyla), yerel uygulamada çizilmez (dayanak madde düz metin kalır) — form kaybolmaz. |
 | `CopyButton` | `text`, `label?`, `iconOnly?`, `size?` · ayrıca `copyToClipboard(text)` |
 | `ProgressBar` | `value`, `max?` (1), `label` (zorunlu), `valueText?`, `tone?`, `marker?` + `markerLabel?` (eşik çizgisi: taban, yeter sayı) |
 | `KeyValue` | `items: ({label, value, hint?} \| null \| false)[]`, `compact?` |
@@ -215,7 +227,7 @@ auth.hasRole("registrar"); auth.isVerified; auth.isVoter; auth.isExpert; auth.is
 
 **Ortak bileşenler (`components/`):**
 - `RegistrationForm` — `onSubmit(input): Promise<void>` (fırlatırsa hata alanlara eşlenir), `mode?: "self"\|"registrar"`, `submitLabel?`, `resetOnSuccess?`, `initial?`. Kayıt memuru sayfası: `<RegistrationForm mode="registrar" resetOnSuccess onSubmit={async (i) => { await registrarCreateUser(i); toast.success(…); }} />`.
-- `CategoryPicker` — `value: string[]`, `onChange`, `label?`, `hint?`, `error?`, `max?`, `disabled?`, `required?`, `suggestions?: {iri, label?, confidence?}[]` (precheck sınıflandırmasından).
+- `CategoryPicker` — `value: string[]`, `onChange`, `label?`, `hint?`, `error?`, `max?`, `disabled?`, `required?`, `suggestions?: {iri, label?, confidence?}[]` (precheck sınıflandırmasından), `collapsible?` (isteğe bağlı seçimde kapalı açılır; özet satırında seçili sayısı).
 - `UserLink` — `id` + `nickname` (+ `status?`, `isExpert?`) ya da `user`; silinmiş üye düz metin.
 - `KvkkNotice` — aydınlatma metni (Profil sayfasında da gösterin).
 - `PlaceholderPage` — `title`, `description?`.
@@ -245,6 +257,38 @@ bilirkişi görevi `?bolum=bilirkisi`), görev yoksa role göre ipucu (`RoleHint
 **Testler:** `e2e/tests/06-sadelik.spec.ts` bu sözleşmeleri kilitler (ilk ekranda sıradaki adım, 'Bu sayfada' kısa yolları, `?bolum=`, kapalı kartların hükümleri, 'Tam' görünüm, kapalı yazma kutusu, uyarının kendiliğinden açılması)
 ve ekran boyu/kelime/tıklanabilir öğe sayılarını annotation olarak kaydeder; `e2e/support/sade.ts` ortak yardımcılardır. `01-tarama` 'Bu sayfada' bağlantılarına tıklar (sade ve 'Tam' görünümde).
 
+## Sade dil, ikincil sayfalar ve Keşfet (Faz 3)
+
+**Terim korunur, günlük karşılık yanına eklenir.** Yönetmelik terimleri (köprü testi, ontoloji denetimi, dağıtık defter, 'özet') başlıklarda ve etiketlerde aynen kalır; günlük karşılık `<Term>` penceresinde ve ParamsCard'ın sade satırlarında verilir.
+Karar parametreleri (`participation/ParamsCard`, ön denetimde `DecisionParamsView`) sade adla başlar ('Onay eşiği: %60'); Yunan sembolleri ve formüller 'Sembolleri ve formülleri göster' anahtarının (`role="switch"`) arkasındadır, 'Tam' görünümde açık gelir.
+
+**Keşfet ve doğrula (`/kesfet`, `pages/KesfetPage.tsx`, saf model `pages/kesfet.ts`).** React.lazy ile yüklenir; gezinme öğesi DEĞİLDİR (`NavItem.topNav: false`; üst gezinme 8 öğe kalır). Üç yerden gidilir: Ana sayfa vitrini ('Gösterim rehberi ›', `?bolum=rehber`),
+masaüstü alt bilgisi ('Gösterim rehberi ve sözlük ›') ve mobil 'Daha fazla' sayfasında 'Keşfet ve doğrula' grubunun sonu. Bölümler (hepsi `?bolum=` çapalı, odak bölüm başlığındadır): **bilesenler** (yedi bileşen, canlı durumuyla; veri `auth.system` + `getDashboard` + bu cihazdaki makbuz sayısı;
+uyarı yalnız gerekince, mor yalnız YZ satırında) · **rehber** (7 adımlı gösterim rehberi; adımlar son karar `Dashboard.recentEnacted[0]`, listedeki ilk aykırı öneri ve sabit rotalardan kurulur, sabit öneri numarası yoktur; veri yoksa adım genel sayfaya düşer ve bunu bir notla söyler;
+yöneticide defter adımına ek 'Kurcalama demosu' bağlantısı) · **ilkeler** (8 temel ilkenin tam metni) · **sozluk** (arama + konu bölümleri; 'Sade'de kapalı, 'Tam'da açık, aramada eşleşenler açık; `?bolum=terim-<kimlik>` terimi açar ve adına odaklanır).
+
+**Görev sayısı.** 'Ana sayfa' bağlantısında (üst ve alt gezinme) mavi `.count-badge` bekleyen iş sayısını yazar; rozet `aria-hidden`, bağlantı adı 'Ana sayfa' kalır, sayı `aria-describedby` ile ('n iş sizi bekliyor') okunur. Öneri kartında 'Sizden bekleniyor: Oy · Bilirkişi görevi' düz metin satırıdır (rozet değil).
+
+**Bildirimler (`pages/NotificationsPage.tsx`).** Okunmamış varsa 'Okunmamış' açılır; liste Bugün / Bu hafta / Daha eski `h2` başlıklarıyla bölünür (başlıklar sekme DEĞİLDİR: ilk `main` tablist 'Bildirim filtresi' kalır); satırın tamamı tek bağlantıdır ('Git: …', tıklayınca okundu işaretler);
+satır başına tek düğme 'Okundu işaretle: <başlık>' (okundu işaretlenince odak sıradaki satırın düğmesine geçer). Her satırda tür simgesi + ekran okuyucu metni vardır.
+
+**Yeni öneri (`pages/NewProposalPage.tsx`).** Tür seçilince `KindPicker` 5 kartı tek satırlık radyo hapına daraltır (radyolar DOM'da ve işaretli kalır, açıklamalar 'Türler ne demek?' açılırında). `PrecheckPanel` 'önce hüküm': uygunluk hükmü → Katman ve 'Gerekli destekçi' satırları → açılırlar
+('Bulgular (n)': ihlal/uyarı varsa açık; 'Karar parametreleri'; 'YZ önerileri': yalnız hiç kategori seçilmemişken ve öneri varken açık; 'Benzer öneriler (n)': benzerlik ≥ %50 ise açık); 'Tam' görünümde hepsi açık. Alt konu ve düzenlemede 'Ek kategoriler (isteğe bağlı)' kapalı başlar.
+Silme talebinde kurallar canlı sayaçlı tek satırdır (`role="status"`; `role="alert"` yalnız acil gerekçe uyarısında), dört kural 'Silme kuralları (4)' açılırında (sınıra 1 kala ya da sınırda kendiliğinden açık).
+
+**Konular.** Sayaçlar tek satır hap (`TopicCounters`); telefonda Kategori ve Arşiv 'Süz' açılırında (`topicsLogic.ts`). Konu ayrıntısında telefon sırası: metin → Açık öneriler → Tartışma → Alt konular → 'Sürüm geçmişi (n)' (katlı);
+masaüstünde yan sütun korunur. Açık öneri satırları (`ProposalRowList showKind showAuthor`) türü ve '@yazar'ı düz metinle yazar (rozet değil; `proposalRowDetails`); açık öneri yokken alt başlık yeni öneri düğmelerine yönlendirir.
+Çapalar: `?bolum=konu-metni|acik-oneriler|tartisma|alt-konular|surumler`.
+
+**Profil ve Ayarlar (`system/accountLogic.ts`).** Profil en üstte 'Oy hakkınız: Var/Yok' kartıyla açılır (eksik koşullar yazılır, üyenin elindeki TEK eylem 'Siyasi görüş rızası ver'); Hesap özeti, Açık rızalar ve Vekâletler açık; Bilirkişilik, Takma ad, Şifre, KVKK ve Kimlik düzeltme katlı kartlardır
+(başlık görünür, yanında tek satır hüküm). Ayarlar sırası: Görünüm → Sunucu bağlantısı → Bu cihazdaki oy makbuzları → Gelişmiş (Doğrulayıcı anahtarları, Uygulama hakkında; katlı). Çapalar: `?bolum=kvkk|duzeltme|rizalar|…` ve `?bolum=anahtarlar|hakkinda`.
+
+**Test-güvenli adlandırma (Faz 3 eklemeleri).** Yeni düğme, bağlantı, bölge ve etiket adları 'Destekle', 'Oyumu ver', 'Daha fazla', 'Sayımı kendim doğrulayayım', 'Kapat', 'Gerekçe', 'Açıklama', 'Azınlık raporu', 'Düğüm' parçalarını İÇERMEZ
+(`e2e/support/sade.ts › reservedParts`; Term düğmeleri 06-sadelik'te taranır). Silme kurallarının canlı satırı `role="status"`'tur. Yeni bölge adları 'Oylama', 'Uzlaşma turu', 'Azınlık raporları', 'Destekçiler (', '1. tur sonucu', 'Azınlık itirazı' içermez.
+
+**Testler.** Saf mantık birim testlidir (`glossary`, `taskStore`, `notificationKinds`, `kesfet`, `topicsLogic`, `accountLogic`, `newProposal`, `visualLanguage`, `Term`; bileşen düzeyinde rozet bütçesi `components/badgeBudget.test.tsx` — `ui` katmanı bileşen içe aktaramaz). e2e: `06-sadelik.spec.ts` Faz 3 bölümü — Term penceresi (Esc, odak dönüşü, 'Yönetmelikte ›' / 'Sözlükte ›'), sembol anahtarı,
+Keşfet'in yedi bileşeni ve yedi adımının her bağlantısı, erişim yolları, sözlük, görev rozeti ile Ana sayfa görev sayısının tutarlılığı (Ana sayfaya dönünce eşitlenmesi dahil), bildirim grupları ve satır bağlantısı, yeni öneri ön denetimi (hüküm önce; sözlük penceresinin formu terk ettirmemesi, 'YZ önerileri'nin ilk 'Ekle'de kapanmaması), Profil/Ayarlar/Konular düzeni ve yeni sayfaların kontrastı; `01-tarama.spec.ts` yeni sayfaları ve durumları (Term penceresi açık, 'Süz' açık, çapalar) 360 px'de tarar.
+
 ## CSS sınıfları (`styles.css`)
 
 - **Sayfa:** her sayfanın kökü `<div className="page">` (dikey boşluklu). Dar içerik: `page page-narrow` (≤ 720 px).
@@ -261,11 +305,46 @@ ve ekran boyu/kelime/tıklanabilir öğe sayılarını annotation olarak kaydede
   --success(-soft) --warning(-soft) --danger(-soft) --info(-soft) --accent(-soft) --radius --radius-sm --shadow`. Koyu tema bu değişkenleri değiştirir;
   sabit renk kullanmayın.
 
+## Görsel dil (Faz 3)
+
+**Renk rolleri.** Renk anlam taşır ve her zaman metinle (çoğu kez simgeyle de) gelir; renk tek başına bilgi değildir.
+
+| Renk | Belirteç / ton | Ne için | Örnek |
+|---|---|---|---|
+| Mavi | `--primary` (= `--info`), `tone="info"`, Card `tone="action"`, ProgressBar `primary` | eylem ve 'şu an' | birincil düğme, bağlantı, etkin sekme, güncel evre, destek/tartışma/oylama durumu, 'Sıradaki adım', okunmamış ve görev sayısı (`.count-badge`) |
+| Yeşil / kırmızı | `--success` / `--danger` | sonuç (kırmızı ayrıca hata ve geri alınamaz eylem) | Kabul edildi, Reddedildi, Yönetmeliğe aykırı, ✔/✘ hükümleri, oy seçimi, lehte/karşı |
+| Turuncu | `--warning` | dikkat ve süre | itiraz ve uzlaşma evresi, azalan süre, askı uyarısı, sınıra yaklaşma |
+| Mor | `--accent`, `tone="accent"` | **YALNIZ yapay zekâ** | `AiLabel`, `.ai-*`, YZ alıntı düğmeleri (`.cite-link`), vitrinin YZ karosu |
+| Gri | `neutral`, `--text-muted`, `--border-strong` | geri kalan her şey | tür, katman (T3 dışı), rol, sürüm, panel türü, sayılar, köprü skoru, tamamlanan evreler |
+
+- **Tek mavi:** `--info` ve `--info-soft` üç tema bloğunda da `var(--primary)` / `var(--primary-soft)`'tur; ayrı bir gök mavisi yoktur.
+- **Rozet bütçesi:** nesne (kart, liste satırı, başlık) başına en çok **1 renkli durum rozeti**. `StatusBadge` eşlemesi: destek, tartışma,
+  oylama, yeniden oylama → mavi · itiraz penceresi, uzlaşma → turuncu · kabul → yeşil · red, aykırı → kırmızı · taslak, geri çekilen, süresi
+  dolan → gri. `KindBadge` ve `RoleBadge` her zaman gri; `TierBadge` yalnız T3'te kırmızı (`tierTone(tier)`, `ui/badges`). Aynı nesnede renkli
+  bir durum rozeti zaten varsa `<TierBadge neutral />` (ör. Ontoloji denetiminde 'Yönetmeliğe uygun/aykırı' yanında). Yeni rozet eklerken
+  önce `tone="neutral"` düşünün; renk yalnız o nesnenin tek durumunu söylüyorsa kullanılır. İtiraz hükmünde tek renkli rozet geçerlilik hükmüdür (kural ve
+  'Güçlü itiraz' gri); defter işlem türü rozeti gridir (`system/marks › txTypeTone`; yalnız hatalı doğrulayıcı kanıtı `EVIDENCE` kırmızı); 'genişletir' hak
+  etkisi ve 'Bilgi' bulgusu her ekranda gridir.
+- **Kart tonları:** `action` ince mavi kenar (kullanıcıdan eylem bekleyen panel: Oylama, Sayımı kendim doğrulayayım) · `warning` / `danger` /
+  `success` kalın sol kenar (uyarı ve sonuç) · `muted` gri zemin · `accent` yalnız YZ içeriği. Kart başına renkli öğe hedefi 1'dir: evre şeridi
+  ve zaman çizelgesinde tamamlanan evreler gri ✔, renk yalnız güncel evrede (mavi) ve sonuçtadır (yeşil/kırmızı).
+- **Uyarı yalnız gerektiğinde bağırır:** turuncu ve kırmızı, olağan durumda görünmez; büyük harf etiket kullanılmaz (vurgu kalınlıkla verilir).
+
+**Boşluk ve yazı belirteçleri** (`:root`; renk olmadıkları için koyu tema bloklarında yoktur): `--sp-1` 0.25rem · `--sp-2` 0.5rem ·
+`--sp-3` 0.75rem · `--sp-4` 1rem · `--sp-5` 1.5rem · `--sp-6` 2rem · `--fs-xs` 0.75rem (rozet) · `--fs-sm` 0.875rem (`.small`, meta ve hüküm
+satırları) · `--fs-md` 1rem (gövde) · `--fs-lg` 1.15rem (bölüm başlığı) · `--fs-xl` 1.45rem (telefonda sayfa başlığı) · `--measure` 70ch
+(`.prose`). Yeni kuralda sabit rem yerine bu belirteçleri kullanın.
+
+**Yeni renk eklerken:** değeri üç blokta da tanımlayın (`:root`, `:root[data-theme="dark"]`, `@media (prefers-color-scheme: dark)` içindeki
+blok) ve kullanıldığı her metin/zemin çiftinde WCAG AA'yı (normal metin 4,5:1, metin dışı öğe 3:1) sağlayın. `ui/visualLanguage.test.tsx`
+belirteç çiftlerini üç blokta e2e taramasıyla (`e2e/support/sade.ts › scanContrast`) aynı formülle denetler; rozet tonlarını da kilitler.
+
 ## Yerleşim ve rotalar
 
 `components/layout/AppLayout.tsx`: üst çubuk (logo, bildirim zili + sayı, kullanıcı menüsü), ≥ 900 px'de üst gezinme, mobilde alt gezinme
 (Ana sayfa, Konular, Öneriler, Oy doğrula, Daha fazla) ve "Daha fazla" alt sayfası. Gezinme öğeleri: `components/layout/nav.ts`.
 Bekleyen hesap, oturum süresi dolması ve bağlantı hatası şeritleri otomatik gösterilir (bekleyen/askıdaki/reddedilmiş hesap şeridi `/` rotasında gizlidir: Ana sayfa bunu kendi kartında söyler).
+Gezinme öğesi `topNav: false` ise (Keşfet ve doğrula sayfası) masaüstü üst gezinmede yoktur; 'Daha fazla' sayfasında 'Keşfet ve doğrula' grubunun sonunda ve alt bilgide bağlantısı vardır. 'Ana sayfa' bağlantısında görev sayısı rozeti (`lib/taskStore`).
 Masaüstü üst gezinmede 'Katılım' ile 'Keşfet ve doğrula' grupları arasında görsel ayraç (`span.nav-divider`, aria-hidden) vardır; öğe ve etiketler aynıdır. 'Daha fazla' sayfasının
 en altındaki 'Sistem durumu' bloğu (`SystemStatus`, veri `auth.system`; satırların biçimi `nav.ts › systemRows`) masaüstü alt bilgisinin mobildeki karşılığıdır: her sayfadan 1 dokunuşla defter,
 YZ kipi, simüle saat, yönetmelik ve istemci sürümü. Sabit başlık yüksekliği `--sticky-h` (= `--header-h` + masaüstünde gezinme satırı `--nav-h`); `?bolum=` hedefleri
@@ -288,5 +367,6 @@ YZ kipi, simüle saat, yönetmelik ve istemci sürümü. Sabit başlık yüksekl
 | `/graf` | GraphPage | — |
 | `/defter`, `/defter/blok/:height`, `/defter/islem/:hash` | LedgerPage, BlockPage, TxPage | — |
 | `/yonetmelik` | OntologyPage | — |
+| `/kesfet` | KesfetPage (Keşfet ve doğrula; gezinme öğesi değil) | — |
 
 Sunucu bildirim bağlantıları Türkçe web yollarıdır (`/oneriler/<id>`, `/konular/<id>`); `toAppPath()` İngilizce olanları da çevirir.

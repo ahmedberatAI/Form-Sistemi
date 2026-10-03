@@ -8,12 +8,12 @@
 | Kontrol | Sonuç |
 |---|---|
 | `npm run typecheck` (shared + server + web) | ✔ 0 hata |
-| `npm test` (sunucu 86 dosya + web 26 dosya) | ✔ **907 / 907** sunucu ve **398 / 398** web testi geçti (Windows/Node 24; 3 Ekim 2026, arayüz hafifletme Faz 2 inceleme düzeltmeleri sonrası) |
+| `npm test` (sunucu 86 dosya + web 40 dosya) | ✔ **907 / 907** sunucu ve **668 / 668** web testi geçti (Windows/Node 24; 3 Ekim 2026, arayüz hafifletme Faz 3 ve inceleme düzeltmeleri sonrası) |
 | `npm run build` (web, Vite) | ✔ |
 | `npm run seed -- --reset` (tohum doğrulamaları, 18 kontrol) | ✔ (~30 sn, Windows) |
 | `npm run sim -w server` (Monte Carlo, belirlenimci) | ✔ (~30 sn) → [SIMULASYON.md](SIMULASYON.md) |
-| `npm run e2e` — tarayıcı uçtan uca test paketi (Playwright/Chromium, 6 dosya; Windows 11, Node 24) | ✔ **33 / 33** test (~5,3 dk; bkz. §3.1) |
-| 360 px'de 169 sayfa/sekme görünümü (7 rol; 56'sı 'Tam' görünümde, bütün açılırlar açık; 'Bu sayfada' tıklamaları dahil): yatay taşma / sayfa-konsol hatası | ✔ 0 / 0 |
+| `npm run e2e` — tarayıcı uçtan uca test paketi (Playwright/Chromium, 6 dosya; Windows 11, Node 24) | ✔ **61 / 61** test (~9,2 dk; bkz. §3.1) |
+| 360 px'de 219 sayfa/sekme görünümü (7 rol; 79'u 'Tam' görünümde, bütün açılırlar açık; 'Bu sayfada' tıklamaları, açık Term penceresi ve 'Süz' açılırı dahil): yatay taşma / sayfa-konsol hatası | ✔ 0 / 0 |
 | Android: `npx cap sync android` + `gradlew assembleDebug` (JDK 21) | ✔ APK (~4,6 MB) derlendi, `Pixel_7_API_34` emülatöründe kuruldu ve `http://10.0.2.2:4000` sunucusuna bağlandı (bkz. §3.3) |
 
 ## 2. Birim ve entegrasyon testleri (modül bazında)
@@ -54,13 +54,14 @@ iz (trace) ve sunucu günlüğü rapora eklenir (`e2e/playwright-report`).
 
 | Dosya | Test | Doğrulananlar | Süre |
 |---|---|---|---|
-| `01-tarama.spec.ts` | ziyaretçi | 360 px'de tüm genel sayfalar, tohumdaki **33 önerinin her biri** (her evre), sekmeli sayfaların her sekmesi, "Daha fazla" alt sayfası (en altında "Sistem durumu" bloğu), bulunamadı sayfası; tartışmadaki, oylamadaki ve kabul edilmiş birer öneride "Bu sayfada" gezinmesinin her bağlantısı (hedef görünür alana gelir, sabit üst çubuğun altında kalmaz, odak içine taşınır, `?bolum` silinir) — 70 görünüm | 51,9 sn |
-| | ziyaretçi (Tam görünüm) | Ayarlar'daki "Tam — tüm ayrıntılar açık" tercihiyle (sade görünümde kapalı gelen bütün kartlar ve açılırlar açık): 33 önerinin her biri, ana sayfa, iki konu ayrıntısı, Bilirkişiler, Graf, Defter ve Yönetmelik sekmeleri; tercihin gerçekten uygulandığı da denetlenir — 56 görünüm (aynı "Bu sayfada" tıklamaları dahil) | 49,0 sn |
-| | üye ve bekleyen üye | profil, bildirimler, 5 öneri türünün formu, oy paneli, kendi görüş haritası; bekleyen hesap şeridi ve "doğrulama gerekli"; oylamadaki öneride "Bu sayfada" tıklamaları — 20 görünüm | 20,7 sn |
-| | görevliler | kayıt memuru (amaçlı kişisel veri penceresi dahil), denetçi, yönetici (tüm sekmeler, kurcalama demosu), bilirkişi — 23 görünüm | 13,9 sn |
+| `01-tarama.spec.ts` | ziyaretçi | 360 px'de tüm genel sayfalar, tohumdaki **33 önerinin her biri** (her evre), sekmeli sayfaların her sekmesi, "Daha fazla" alt sayfası (en altında "Sistem durumu" bloğu), bulunamadı sayfası; tartışmadaki, oylamadaki ve kabul edilmiş birer öneride "Bu sayfada" gezinmesinin her bağlantısı (hedef görünür alana gelir, sabit üst çubuğun altında kalmaz, odak içine taşınır, `?bolum` silinir); Faz 3: Keşfet ve doğrula ('Bu sayfada' tıklamaları, sözlük araması, açık Term penceresi), Konular 'Süz' açılırı, konu ayrıntısı çapaları — 87 görünüm | 72 sn |
+| | ziyaretçi (Tam görünüm) | Ayarlar'daki "Tam — tüm ayrıntılar açık" tercihiyle (sade görünümde kapalı gelen bütün kartlar ve açılırlar açık): 33 önerinin her biri, ana sayfa, iki konu ayrıntısı, Bilirkişiler, Graf, Defter ve Yönetmelik sekmeleri; tercihin gerçekten uygulandığı da denetlenir; Faz 3: Keşfet, sembol/formül anahtarı açık Karar parametreleri ve Term penceresi — 62 görünüm (aynı "Bu sayfada" tıklamaları dahil) | 57,8 sn |
+| | üye ve bekleyen üye | profil, bildirimler, 5 öneri türünün formu, oy paneli, kendi görüş haritası; bekleyen hesap şeridi ve "doğrulama gerekli"; oylamadaki öneride "Bu sayfada" tıklamaları; Faz 3: Profil/Ayarlar çapaları, dolu canlı ön denetim paneli, `?mesaj=` ile silme talebi formu — 29 görünüm | 32,4 sn |
+| | üye (Tam görünüm) | profil, ayarlar, bildirimler, yeni öneri formları, ön denetim paneli ve Keşfet, bütün açılırlar açık — 17 görünüm | 18,5 sn |
+| | görevliler | kayıt memuru (amaçlı kişisel veri penceresi dahil), denetçi, yönetici (tüm sekmeler, kurcalama demosu, Keşfet'in yönetici adımı), bilirkişi — 24 görünüm | 14,2 sn |
 | `02-oylama.spec.ts` | kayıttan kesin sayıma | `/kayit` formu (aydınlatma ≠ açık rıza, YZ rızası kapalı) → kayıt memuru: amaçsız erişim engellenir, amaçla kişisel veri (TCKN maskeli) → onay; `identity.pii_access` kaydında amaç var, TCKN yok → `/giris` → yeni konu önerisi: canlı ön denetim **T0 · Yönetmeliğe uygun**, K_s = 4 → "Destekle" (arayüz) + 3 destek → tartışma → yönetici **+72 sa** (hâlâ tartışma) ve **+24 sa** (oylama; geçiş listesinde "Tartışmada → Oylamada") → "Kabul" + "Oyumu ver": makbuz `localStorage["forum.receipts"]`'ta, sonuç gizli → 12 oy (API, her bloktan ≥ 2) → "Oyum kayıtlı mı?": **4 ✔ + 2 henüz** → **+72 sa**: kabul (yeter sayı ✔, eşik ✔; vekâletle sayılanlar dahil) → "Sayımı kendim doğrulayayım": **1. tur: sayım doğrulandı**, hiç ✘ yok → `/oy-dogrula` **6/6 ✔**; makbuz kurcalanınca "Kurcalama yakalandı" ✘ | 13,2 sn |
 | `03-silme.spec.ts` | silme talebi | mesaj menüsü → "Silme talebi aç" → onay → form (hedef mesaj dolu): **"Görüş ayrılığı" seçilemez**, "Tehdit" acil uyarısı, ön denetim **DEL** → gönder (K_s = 1) → mesaj **"Gözden geçiriliyor" olarak katlanır** (silinmez) → destek (arayüz) → tartışma → oylama (yazar seçmen değil) → 16 "kabul" → kabul edildi → **mezar taşı** (asıl metin ziyaretçiye ve API'ye kapalı) → yazar **tek cevabını** ekler, ikinci cevap reddedilir → denetçi onaylı okuma: gizli metin görünür, `message.read_hidden` denetim günlüğünde (arayüz süzgeci + API) | 12,4 sn |
-| `04-itiraz-uzlasma.spec.ts` | itiraz (#K-29) | ilk turda "Red" diyen uygun seçmen (yalnızca kendi görünümünde `canObject`) arayüzden imzalar; bir kez; ziyaretçiye ve API'de tüm imzacılar "Anonim imzacı"; geçerlilik koşulu (tohumda küme kuralı a) sağlanınca zamanlayıcı süre dolmadan **uzlaşma turunu** başlatır (köken: itiraz) | 2,7 sn |
+| `04-itiraz-uzlasma.spec.ts` | itiraz (#K-29) | ilk turda "Red" diyen uygun seçmen (yalnızca kendi görünümünde `canObject`) arayüzden imzalar; bir kez; ziyaretçiye ve API'de tüm imzacılar "Anonim imzacı"; geçerlilik koşulu sağlanana kadar hak sahipleri imzalar (tohumun zamana bağlı küçük farkları yüzünden kural a — tek kümede %75 — ya da kural b — iki kümeden 6 imza — gerekebilir; hak sahibi listesi 3'te kesilmez) ve zamanlayıcı süre dolmadan **uzlaşma turunu** başlatır (köken: itiraz) | 2,7 sn |
 | | uzlaşma (#K-28) | "Red" diyen üye **azınlık raporu** yazar (takma adıyla listede) → yazar **YZ köprü taslakları** üretir ("Yapay zekâ ile üretildi" etiketi) → "Bu taslağı benimse" → **sürüm 2**, metin taslakla aynı, evre değişmez | 2,1 sn |
 | | saat ileri | uzlaşma süresi biten #K-28 benimsenen metinle **yeniden oylamaya** girer ("Sonuç kesindir."); #K-29'un uzlaşması sürer | 1,1 sn |
 | `05-defter.spec.ts` | defter | kurcalama demosu: v2'de #120 → **✘ bozuk** (diğer düğümler ✔) → "Düğümü onar" → **✔ Zincir yeniden geçerli** → zincir doğrulama 4/4 ✔ → v3 **çökertilir** → yeni işlemle bloklar 3 düğümle üretilir ("hata sürerken N yeni blok üretildi", v3 geride) → "Normale döndür" → v3 yetişir (yükseklik eşit, sağlıklı) → 4/4 ✔ | 10,7 sn |
@@ -72,11 +73,23 @@ iz (trace) ve sunucu günlüğü rapora eklenir (`e2e/playwright-report`).
 | | Uyarı yalnız gerektiğinde bağırır (3 test) | yönetmeliğe aykırı öneride Ontoloji denetimi Destekçiler'in önünde ve açık, "Hangi madde?" kartı açıp odaklar; **bütünlük uyarısı** (14 üyenin saniyeler içinde aynı oyu vermesiyle üretilir): başlıkta rozet, kanıt sütununda en üstte açık kart, denetçiye "Bütünlük uyarısını incele"; bilirkişi görevi Ana sayfadan Bilirkişi görüşü kartına | 5,3 sn |
 | | Taslak ve kabuk (2 test) | 5 kategorili taslak: ilk 3 etiket ve "+2" (`aria-expanded`), "Taslak işlemlerine git" → odak "Destekçi toplamaya gönder"; "Daha fazla" sayfasında Sistem durumu bloğu (5 satır, defter bağlantısı sayfayı kapatır) ve masaüstü gezinmede tek ayraç | 4,1 sn |
 | | Ölçüm | ekran boyu, kelime, tıklanabilir öğe, rozet ve tartışmanın başladığı ekran **annotation** olarak kaydedilir (kesin beklenti değil) | 8,6 sn |
-| | Kontrast | Ana sayfa ve 5 öneri sayfası, 360 px, üç yolla (açık; sistem koyu; Ayarlar'dan koyu), 'Tam' kipte: her metin için WCAG AA (4,5:1; büyük metinde 3:1) ve yatay taşma 0 | 24,2 sn |
+| | Kontrast | Ana sayfa ve 5 öneri sayfası, 360 px, üç yolla (açık; sistem koyu; Ayarlar'dan koyu), 'Tam' kipte: her metin için WCAG AA (4,5:1; büyük metinde 3:1) ve yatay taşma 0 | 24,5 sn |
+| | Sade dil (4 test) | Term düğmesi (dokunmatik, 360 px) pencere açar, Esc kapatır ve odak terime döner; 'Yönetmelikte ›' yönetmelik sekmesine, 'Sözlükte ›' Keşfet sözlüğündeki terime götürür; 'Karar parametreleri'nde Yunan sembolü ve formül ilk okumada yok, anahtar (klavyeyle) hepsini açar, 'Tam' kipte açık; Term düğmeleri ('Tam' görünümde taranır) ayrılmış ad parçası içermez ve başlık, bağlantı, düğme, `<summary>`, etiket ya da Uzlaşma/İtiraz paneli içinde değildir; T1 ve üstü katman rozeti sözlük penceresini açar | 13,7 sn |
+| | Keşfet ve doğrula (7 test) | yedi bileşen canlı durumuyla (uyarı yalnız gerekince, mor yalnız YZ satırında) ve her satır tek dokunuşla ilgili yere; yedi adımlı rehberin her bağlantısı mevcut veriden kurulur ve doğru sekmeye/çapaya gider; erişim yolları (vitrin, masaüstü alt bilgisi, mobil 'Daha fazla'; üst gezinme 8 öğe kalır); 8 ilkenin tam metni ve 'Bu sayfada'; sözlük (Türkçe duyarsız arama, 'özet' aynen ve günlük karşılığı 'parmak izi', `?bolum=terim-…`); 360 px 'Tam' görünümde taşma yok | 36,7 sn |
+| | Görev rozeti ve 'Sizden bekleniyor' (2 test) | 'Ana sayfa' rozeti sunucunun görev sayısıyla ve 'Sizi bekleyenler (n)' ile aynı; rozet `aria-hidden`, bağlantı adı değişmez, sayı `aria-describedby` ile okunur; alt gezinmede kesilmeden görünür; ziyaretçide yok; oy bekleyen kartta düz metin 'Sizden bekleniyor: Oy' | 4,1 sn |
+| | Bildirimler | okunmamış varsa 'Okunmamış' açılır; Bugün / Bu hafta / Daha eski `h2` grupları; satırın tamamı bağlantı; satır başına tek 'Okundu işaretle: <başlık>' düğmesi | 3,7 sn |
+| | Yeni öneri (4 test) | tür seçilince 5 radyo kompakt şeride iner (radyolar DOM'da, ok tuşları), 'Başlık' alanına uzaklık annotation; ön denetim 'önce hüküm' (hüküm → katman ve destekçi satırları → açılırlar), sade kipte kapalı, 'Tam'da açık; alt konu ve düzenlemede 'Ek kategoriler' kapalı; **sözlük penceresinin bağlantıları yeni sekmede açılır, form adresi ve yazılanlar yerinde kalır**; **'YZ önerileri' ilk 'Ekle'de kapanmaz, odak sıradaki 'Ekle'ye geçer**; silme talebinde 'Tartışma silinmez' tek cümle, kurallar canlı sayaçlı tek satır (`role="status"`), dört kural açılırda | 15,0 sn |
+| | Profil, Ayarlar, Konular (5 test) | Profil: 'Oy hakkınız' kartı en üstte, eksik koşullar ve TEK eylem; seyrek işler başlığı görünür katlı kartlarda, `?bolum=` açar; Ayarlar: Görünüm → Sunucu → Makbuzlar → Gelişmiş, TOFU ve Ed25519 ilk okumada yok; Konular: tek satır sayaçlar, telefonda 'Süz'; Konu ayrıntısı: metin → açık öneriler → tartışma → alt konular → katlı sürüm geçmişi, çapalar | 19,6 sn |
+| | Kontrast (Faz 3) | Keşfet, Öneriler, Konular, Bildirimler, Profil, Ayarlar, yeni öneri ve Term penceresi — açık ve iki koyu temada WCAG AA, 360 px'de taşma 0 | 28,3 sn |
+| | Veri üreten (3 test) | bir iş tamamlanınca 'Ana sayfa' rozeti Ana sayfaya girmeden sayfa gezinince yenilenir; **iş tamamlanıp hemen Ana sayfaya dönülünce rozet panoyla eşitlenir (yoklamayı beklemez)**; 'Okundu işaretle' satırı süzgeçten çıkarır ve odağı sıradaki satıra taşır, satır bağlantısı okundu işaretler, 'Tümünü okundu işaretle' | 17,7 sn |
 
-**Sonuç (3 Ekim 2026, Windows 11, Node 24.15, Playwright 1.63 / Chromium):** 33 / 33 test geçti, toplam ~5,3 dk (küresel
-kurulum ~20–30 sn dahil); arayüz hafifletme Faz 2 ve inceleme düzeltmeleri sonrası tam koşu yeşil. 360 px'de **169 görünüm,
-yatay taşma 0, sayfa/konsol hatası 0**. Koşu sonunda geçici klasör silinir, 4100 portunda dinleyen süreç kalmaz.
+**Sonuç (3 Ekim 2026, Windows 11, Node 24.15, Playwright 1.63 / Chromium):** 61 / 61 test geçti, toplam ~9,2 dk (küresel
+kurulum ~16–30 sn dahil); arayüz hafifletme Faz 3 ve inceleme düzeltmeleri sonrası tam koşu yeşil. 360 px'de **219 görünüm,
+yatay taşma 0, sayfa/konsol hatası 0**. Koşu sonunda geçici klasör silinir, 4100 portunda dinleyen süreç kalmaz. (Faz 2 sonu:
+33 / 33 test, 169 görünüm, ~5,3 dk.) Faz 3'ün önce/sonra ölçümü aynı tohum ve aynı betikle (06 › 'ölçüm') alındı:
+[ARAYUZ_PLANI.md › Ölçüm](ARAYUZ_PLANI.md#ölçüm). Not: bu turun ilk tam koşusunda `04-itiraz` testi, tohumun zamana bağlı küçük bir
+farkı yüzünden kırmızı çıktı (hak sahibi listesi 3'te kesildiği için K-29'da yalnız 5 imza toplanabildi; çapraz küme kuralı 6 ister).
+Hak sahibi sınırı 8'e çıkarıldı (uygulama değişmedi); sonraki tam koşu 61 / 61.
 
 Gözlem (uygulama, düzeltilmedi): oylama kapandıktan hemen sonra (yaklaşık bir blok aralığı, ~0,5 sn) bültendeki TALLY/BALLOT_REVEAL
 işlemleri henüz bir bloğa girmemiştir; bu arada "Sayımı kendim doğrulayayım"a basılırsa panel "İşlem bulunamadı" ile kırmızı
@@ -111,7 +124,7 @@ Denenen akış ve sonuçlar:
 
 | Adım | Sonuç |
 |---|---|
-| Açılış: canlı pano (simüle saat, defter yüksekliği, 4/4 doğrulayıcı, üye sayısı) | ✔ |
+| Açılış: canlı pano (simüle saat, defter yüksekliği, 4/4 doğrulayıcı, üye sayısı; bu bilgiler arayüz hafifletmeden sonra Ana sayfa vitrininde ve mobilde 'Daha fazla › Sistem durumu' bloğundadır) | ✔ |
 | `ayse` ile giriş; oturum belirteci `@capacitor/preferences` ile saklanır, uygulama yeniden kurulunca da korunur | ✔ |
 | #K-31'de oy: "Kabul" → "Oyumu ver" → makbuz cihaza kaydedildi | ✔ |
 | "Oyum kayıtlı mı?": Merkle yolu, blok özeti, sabitlenmiş anahtarlarla 3 imza, taahhüt eşleşmesi, son taahhüt (oylama sürerken açıklama ve sayım adımları "henüz") | ✔ 4 + 2 bekliyor |
@@ -122,7 +135,11 @@ Denenen akış ve sonuçlar:
 | Sunucu verisi sıfırlanınca eski oturum | ✔ "Oturumunuz sona erdi" uyarısı ve yeniden giriş düğmesi |
 | Alt gezinme, güvenli alan (çentik/gezinme çubuğu), 1080×2400 ekranda taşma | ✔ |
 
-Ekran görüntüleri: [`docs/ekran/`](ekran/) (`android-01-acilis.png` … `android-08-koyu-tema.png`).
+Ekran görüntüleri: [`docs/ekran/`](ekran/) (`android-01-acilis.png` … `android-08-koyu-tema.png`). Sekiz görüntü 3 Ekim 2026'da Faz 3
+sonrası arayüzle, kurulu debug APK'dan (`Pixel_7_API_34`, 1080×2400; `http://10.0.2.2:4177` üzerindeki ayrı demo verisi) yeniden alındı;
+tam arşiv (106 web + 107 Android görüntü, CSV envanteri, derleme ve doğrulama kaydı) `gorseller/2026-10-01/index.html` galerisindedir.
+Çekilen görünümlerde (web 1440×1000, Android 1080×2400) yatay taşma 0 ve sayfa hatası 0 çıktı; tek konsol kaydı web'de tarayıcının
+otomatik `/favicon.ico` 404'üdür (Android'de konsol kaydı yok). Araç: `gorseller/2026-10-01/araclar/ekranlari-kaydet.mjs` (yöntem: [ARAYUZ_PLANI.md](ARAYUZ_PLANI.md)).
 
 ## 4. Simülasyon (özet)
 
