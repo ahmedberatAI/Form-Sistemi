@@ -1,106 +1,108 @@
 {
-  "createdAt": "2026-10-01T17:05:56.702Z",
+  "createdAt": "2026-10-03T11:56:33.686Z",
   "capturedFrom": "Mevcut yerel çalışma ağacı; uncommitted değişiklikler dahil",
   "repository": "https://github.com/ahmedberatAI/Form-Sistemi",
-  "head": "2dae436bc2a840de9c6dd9d3487736eab6504173",
-  "remoteHead": "2dae436bc2a840de9c6dd9d3487736eab6504173",
+  "head": "925bd2d83a26338046bf718abf9ae0527756c489",
+  "remoteHead": "925bd2d83a26338046bf718abf9ae0527756c489",
   "workingTreeChanges": [
     "M README.md",
-    " M docs/ALGORITMA.md",
-    " M docs/API.md",
-    " M docs/ARASTIRMA.md",
-    " M docs/KVKK.md",
-    " M docs/MIMARI.md",
-    " M docs/SIMULASYON.md",
+    " M docs/ARAYUZ_PLANI.md",
     " M docs/TEST_RAPORU.md",
-    " M docs/YONETMELIK.md",
-    " M server/ontology/fy-schema.ttl",
-    " M server/ontology/yonetmelik-kurallar.n3",
-    " M server/ontology/yonetmelik-sekiller.ttl",
-    " M server/ontology/yonetmelik.ttl",
-    " M server/package.json",
-    " M server/scripts/simulate.ts",
-    " M server/src/ai/claude.ts",
-    " M server/src/ai/heuristics.ts",
-    " M server/src/ai/lexicons.ts",
-    " M server/src/ai/service.ts",
-    " M server/src/app.ts",
-    " M server/src/core/config.ts",
-    " M server/src/core/contracts.ts",
-    " M server/src/db/schema.sql",
-    " M server/src/experts/index.ts",
-    " M server/src/forum/community.ts",
-    " M server/src/forum/detail.ts",
-    " M server/src/forum/lifecycle.ts",
-    " M server/src/forum/proposals.ts",
-    " M server/src/forum/views.ts",
-    " M server/src/http/routes/admin.ts",
-    " M server/src/http/routes/me.ts",
-    " M server/src/http/schemas.ts",
-    " M server/src/identity/index.ts",
-    " M server/src/identity/users.ts",
-    " M server/src/identity/validation.ts",
-    " D server/src/ledger/standalone.ts",
-    " M server/src/ontology/audit.ts",
-    " M server/src/ontology/index.ts",
-    " M server/src/ontology/patch.ts",
-    " M server/src/ontology/reasoner.ts",
-    " M server/src/seed/people.ts",
-    " M server/src/seed/scenario.ts",
-    " M server/src/seed/verify.ts",
-    " M server/test/ai/claude.test.ts",
-    " M server/test/ai/offline.test.ts",
-    " M server/test/ai/sink.test.ts",
-    " M server/test/experts/report.test.ts",
-    " M server/test/forum/deletion.test.ts",
-    " M server/test/forum/proposals.test.ts",
-    " M server/test/governance/decision.test.ts",
-    " M server/test/helpers/fakes.ts",
-    " M server/test/http/privacy.test.ts",
-    " M server/test/http/smoke.test.ts",
-    " M server/test/identity/identity.test.ts",
-    " M server/test/ontology/audit.test.ts",
-    " M server/test/ontology/patch.test.ts",
-    " M server/test/ontology/vocab.test.ts",
-    " M server/test/seed/seed.test.ts",
-    " M shared/src/api.ts",
-    " M shared/src/decision.ts",
-    " M shared/src/index.ts",
-    " M shared/src/types.ts",
-    " M shared/src/vocab.ts",
+    " M docs/ekran/android-01-acilis.png",
+    " M docs/ekran/android-02-oy-makbuz.png",
+    " M docs/ekran/android-03-giris-sonrasi.png",
+    " M docs/ekran/android-04-oy-dogrula.png",
+    " M docs/ekran/android-05-sayim-dogrulama.png",
+    " M docs/ekran/android-06-kabul-asma-esigi.png",
+    " M docs/ekran/android-07-ayarlar-baglanti.png",
+    " M docs/ekran/android-08-koyu-tema.png",
+    " M e2e/support/sade.ts",
+    " M e2e/tests/01-tarama.spec.ts",
+    " M e2e/tests/06-sadelik.spec.ts",
+    " M web/src/App.tsx",
     " M web/src/README.md",
-    " M web/src/api/endpoints.ts",
-    " M web/src/components/KvkkNotice.tsx",
-    " M web/src/components/RegistrationForm.tsx",
+    " M web/src/auth/AuthContext.tsx",
+    " M web/src/components/CategoryPicker.tsx",
     " M web/src/components/community/ExpertReportForm.tsx",
+    " M web/src/components/home/ShowcaseTiles.tsx",
+    " M web/src/components/home/home.css",
+    " M web/src/components/home/home.test.tsx",
+    " M web/src/components/layout/AppLayout.tsx",
+    " M web/src/components/layout/nav.ts",
+    " M web/src/components/participation/AuditCard.tsx",
     " M web/src/components/participation/ExpertPanelCard.tsx",
-    " M web/src/components/participation/MessageItem.tsx",
-    " M web/src/components/participation/ProposalEditor.tsx",
-    " M web/src/components/participation/ReconciliationPanel.tsx",
-    " M web/src/components/participation/SuggestionsPanel.tsx",
+    " M web/src/components/participation/ObjectionPanel.tsx",
+    " M web/src/components/participation/ParamsCard.tsx",
+    " M web/src/components/participation/ResultsCard.tsx",
+    " M web/src/components/participation/RightsFlags.tsx",
+    " M web/src/components/participation/VerifyTallyPanel.tsx",
+    " M web/src/components/participation/VotePanel.tsx",
+    " M web/src/components/participation/proposal-page.css",
     " M web/src/components/proposals/DeletionForm.tsx",
+    " M web/src/components/proposals/KindPicker.tsx",
     " M web/src/components/proposals/PatchBuilder.tsx",
     " M web/src/components/proposals/PrecheckPanel.tsx",
+    " M web/src/components/proposals/ProposalCard.tsx",
+    " M web/src/components/proposals/TopicTree.tsx",
+    " M web/src/components/proposals/proposals.css",
+    " M web/src/components/system/AdminPanels.tsx",
+    " M web/src/components/system/ledger.tsx",
+    " M web/src/components/system/marks.tsx",
     " M web/src/components/system/ontology.tsx",
-    " M web/src/lib/download.ts",
+    " M web/src/components/system/pinned.tsx",
+    " M web/src/lib/routes.ts",
+    " M web/src/pages/BlockPage.tsx",
+    " M web/src/pages/ExpertsPage.tsx",
+    " M web/src/pages/GraphPage.tsx",
+    " M web/src/pages/HomePage.tsx",
     " M web/src/pages/NewProposalPage.tsx",
+    " M web/src/pages/NotificationsPage.tsx",
+    " M web/src/pages/OntologyPage.tsx",
     " M web/src/pages/ProfilePage.tsx",
     " M web/src/pages/ProposalDetailPage.tsx",
     " M web/src/pages/RegistrarPage.tsx",
-    " M web/src/pages/VerifyVotePage.tsx",
+    " M web/src/pages/SettingsPage.tsx",
+    " M web/src/pages/TopicDetailPage.tsx",
+    " M web/src/pages/TopicsPage.tsx",
+    " M web/src/pages/TxPage.tsx",
+    " M web/src/pages/UserPage.tsx",
+    " M web/src/pages/proposalsTabs.test.ts",
     " M web/src/styles.css",
-    "?? server/src/ai/targeting.ts",
-    "?? server/src/identity/nickname.ts",
-    "?? server/test/forum/ai-advisory.test.ts",
-    "?? server/test/http/founding-bylaw.test.ts",
-    "?? server/test/identity/nickname.test.ts",
-    "?? server/test/ledger/mode.test.ts",
-    "?? server/test/ontology/reasoner.test.ts",
-    "?? shared/src/privacy.ts"
+    " M web/src/ui/HashText.tsx",
+    " M web/src/ui/badges.tsx",
+    " M web/src/ui/basic.tsx",
+    " M web/src/ui/index.tsx",
+    "?? web/src/components/badgeBudget.test.tsx",
+    "?? web/src/components/layout/taskSurfaces.test.tsx",
+    "?? web/src/components/participation/termUsage.test.tsx",
+    "?? web/src/components/proposals/new-proposal.css",
+    "?? web/src/components/proposals/newProposal.test.tsx",
+    "?? web/src/components/proposals/topics.css",
+    "?? web/src/components/proposals/topics.test.tsx",
+    "?? web/src/components/proposals/topicsLogic.test.ts",
+    "?? web/src/components/proposals/topicsLogic.ts",
+    "?? web/src/components/system/account.css",
+    "?? web/src/components/system/account.test.tsx",
+    "?? web/src/components/system/accountLogic.ts",
+    "?? web/src/lib/glossary.test.ts",
+    "?? web/src/lib/glossary.ts",
+    "?? web/src/lib/notificationKinds.test.ts",
+    "?? web/src/lib/notificationKinds.ts",
+    "?? web/src/lib/taskStore.test.tsx",
+    "?? web/src/lib/taskStore.ts",
+    "?? web/src/pages/KesfetPage.tsx",
+    "?? web/src/pages/NotificationsPage.test.tsx",
+    "?? web/src/pages/kesfet.css",
+    "?? web/src/pages/kesfet.test.tsx",
+    "?? web/src/pages/kesfet.ts",
+    "?? web/src/pages/notifications.css",
+    "?? web/src/ui/Term.test.tsx",
+    "?? web/src/ui/Term.tsx",
+    "?? web/src/ui/visualLanguage.test.tsx"
   ],
   "apk": {
     "path": "web/android/app/build/outputs/apk/debug/app-debug.apk",
-    "sha256": "3f41b0687dad91b6d1e0425b1ac6e4def87c94a9e76613983c6a1de84b91c152",
+    "sha256": "e42eaec918696f041a86dc00772a23581f7dd36785f1fa396163d231cea49d22",
     "package": "tr.edu.forumsistemi",
     "versionName": "1.0",
     "versionCode": 1,
@@ -139,29 +141,34 @@
   "webAndAndroidAssetsIdentical": true,
   "assetChecks": [
     {
-      "file": "assets/AdminPage-31I1mrys.js",
-      "webSha256": "8deeaaed554b05dfe6ce48385d4fa12a42492f23dd65e636aa103d28f06e3a7c",
-      "androidSha256": "8deeaaed554b05dfe6ce48385d4fa12a42492f23dd65e636aa103d28f06e3a7c"
+      "file": "assets/account-D4xf1Vzg.css",
+      "webSha256": "4621bcee7bb7c734f97db7941309eb022dbfa931f39b8f7c1e4a28eca3b79b90",
+      "androidSha256": "4621bcee7bb7c734f97db7941309eb022dbfa931f39b8f7c1e4a28eca3b79b90"
     },
     {
-      "file": "assets/BlockPage-C_dJZKC2.js",
-      "webSha256": "2de6f4229e4504dd557b98bbf92bd231430801be4f5ef605574787c4f7bb7267",
-      "androidSha256": "2de6f4229e4504dd557b98bbf92bd231430801be4f5ef605574787c4f7bb7267"
+      "file": "assets/accountLogic-DWtuC6le.js",
+      "webSha256": "769c0f9ffe469914f55ec6aa25474d1c3c701b23bc616467f2f82cbaf83ba093",
+      "androidSha256": "769c0f9ffe469914f55ec6aa25474d1c3c701b23bc616467f2f82cbaf83ba093"
     },
     {
-      "file": "assets/categories-ndcOXiQa.js",
-      "webSha256": "6bca28b44f91a6bf61182fa24b2dd4b01e3f39c2e24617c1dd46b221eb770f7b",
-      "androidSha256": "6bca28b44f91a6bf61182fa24b2dd4b01e3f39c2e24617c1dd46b221eb770f7b"
+      "file": "assets/AdminPage-BhWo1bCU.js",
+      "webSha256": "d76f03fca5f67448ad01dcd69f2d3d6872700b609e39be1e1cc6bc3bf489abc1",
+      "androidSha256": "d76f03fca5f67448ad01dcd69f2d3d6872700b609e39be1e1cc6bc3bf489abc1"
     },
     {
-      "file": "assets/CategoryPicker-C8cQYRsu.js",
-      "webSha256": "4d0248775063c506e846722875384cc7d23edd1a083b134c57a09323123de5ff",
-      "androidSha256": "4d0248775063c506e846722875384cc7d23edd1a083b134c57a09323123de5ff"
+      "file": "assets/BlockPage-CoA4GVow.js",
+      "webSha256": "b4a4e7729ca3cea2165b65ca37635cbe7c97989913a637088d8eda892870c1b2",
+      "androidSha256": "b4a4e7729ca3cea2165b65ca37635cbe7c97989913a637088d8eda892870c1b2"
     },
     {
-      "file": "assets/common-BR2VpNLs.js",
-      "webSha256": "43be7a266e7ac41201e2ad20e4f045370cfeeef84fc5e0d749d21281a5cb780c",
-      "androidSha256": "43be7a266e7ac41201e2ad20e4f045370cfeeef84fc5e0d749d21281a5cb780c"
+      "file": "assets/CategoryPicker-DicHgcvv.js",
+      "webSha256": "065a609d39285f3c9cd9ef0394d1413485dd4d9059e69f717ac05d4be08bac53",
+      "androidSha256": "065a609d39285f3c9cd9ef0394d1413485dd4d9059e69f717ac05d4be08bac53"
+    },
+    {
+      "file": "assets/common-DWnaucBE.js",
+      "webSha256": "765d77dc4d9653e8731c2915d4e67dbe79defc3e6d746f4cb3a81b2bb8d3718f",
+      "androidSha256": "765d77dc4d9653e8731c2915d4e67dbe79defc3e6d746f4cb3a81b2bb8d3718f"
     },
     {
       "file": "assets/community-Luztg0o1.css",
@@ -169,9 +176,9 @@
       "androidSha256": "5b4a9fe46d53336e36f5e3033836c36b1e4d935b7d34a3dbc9e59c672eb0b74a"
     },
     {
-      "file": "assets/delegation-eb8nJrGR.js",
-      "webSha256": "8a4f68b383008ca0a7886a020734515a400dc9bb803c148198bd4c8eb5409d2f",
-      "androidSha256": "8a4f68b383008ca0a7886a020734515a400dc9bb803c148198bd4c8eb5409d2f"
+      "file": "assets/delegation-BWQ0wtpN.js",
+      "webSha256": "ccd5d0146cc802047c76bb668ef5278820a3a81949a325cc7c88931bb203ecd9",
+      "androidSha256": "ccd5d0146cc802047c76bb668ef5278820a3a81949a325cc7c88931bb203ecd9"
     },
     {
       "file": "assets/dist-Btb5Jv1E.js",
@@ -179,129 +186,189 @@
       "androidSha256": "020bd3311ec36b945d412865b91d0b0152780fe623ad1ce85bcc570b836c2b92"
     },
     {
-      "file": "assets/download-2usWD3ox.js",
-      "webSha256": "13ab5cd2bef3e2163bb9fc5d059a8f55aff5de04f39e4121ca548234ca809fba",
-      "androidSha256": "13ab5cd2bef3e2163bb9fc5d059a8f55aff5de04f39e4121ca548234ca809fba"
+      "file": "assets/download-Dh0gYxk1.js",
+      "webSha256": "2d38ed9b48cd9a7a1bf693a62774cb4a5ef7aa3d63c014ce1af652e2742e4065",
+      "androidSha256": "2d38ed9b48cd9a7a1bf693a62774cb4a5ef7aa3d63c014ce1af652e2742e4065"
     },
     {
-      "file": "assets/ExpertsPage-Dx6kjl-4.js",
-      "webSha256": "e66165e48a5bc7e05b2fccf4b82db97a01715dea3cd81daa288dcb9aaeb32aca",
-      "androidSha256": "e66165e48a5bc7e05b2fccf4b82db97a01715dea3cd81daa288dcb9aaeb32aca"
+      "file": "assets/ExpertsPage-Bt4aT5SL.js",
+      "webSha256": "e01efd62a7486564769666f438352b5cf2b4dbfdc7c9d031c5588bf841b65a3d",
+      "androidSha256": "e01efd62a7486564769666f438352b5cf2b4dbfdc7c9d031c5588bf841b65a3d"
     },
     {
-      "file": "assets/GraphPage-B55raHsS.js",
-      "webSha256": "7837c773dd37cf416db589a40d890ef0980cc58e1b5ca15c391464902a87e027",
-      "androidSha256": "7837c773dd37cf416db589a40d890ef0980cc58e1b5ca15c391464902a87e027"
+      "file": "assets/GraphPage-Cc3JJnQX.js",
+      "webSha256": "8c0087b3f805d9e68f2e169dca559533987f2419fafd567b497b70b9a152bdcc",
+      "androidSha256": "8c0087b3f805d9e68f2e169dca559533987f2419fafd567b497b70b9a152bdcc"
     },
     {
-      "file": "assets/HomePage-YrXLPzPw.js",
-      "webSha256": "9f7e5bd9a1580aa99cdabd48df0acf65927c42ff7f9031deb069afd803de5233",
-      "androidSha256": "9f7e5bd9a1580aa99cdabd48df0acf65927c42ff7f9031deb069afd803de5233"
+      "file": "assets/HomePage-DVHtOnb4.js",
+      "webSha256": "f180c5edbd21a0475b08a7500d9d8bf6f95e9232dbeeee56c9b7c2678d53a94e",
+      "androidSha256": "f180c5edbd21a0475b08a7500d9d8bf6f95e9232dbeeee56c9b7c2678d53a94e"
     },
     {
-      "file": "assets/index-BbcnPlfm.css",
-      "webSha256": "48d3fe0ffe01c05f900ed72af7ab91d0f581a7f49d473fb2f8e95247375fa457",
-      "androidSha256": "48d3fe0ffe01c05f900ed72af7ab91d0f581a7f49d473fb2f8e95247375fa457"
+      "file": "assets/index-B8PZIm4E.css",
+      "webSha256": "7fee7ac0f7bc1dce6e4b3bdb8995383c27ee4fb2fab78909e81cc8d29a7b42c1",
+      "androidSha256": "7fee7ac0f7bc1dce6e4b3bdb8995383c27ee4fb2fab78909e81cc8d29a7b42c1"
     },
     {
-      "file": "assets/index-ktIo0Ppm.js",
-      "webSha256": "c9477901dc3bbbe534eba1772024529d181d3f35f091a2fc6b583bb00987b5c8",
-      "androidSha256": "c9477901dc3bbbe534eba1772024529d181d3f35f091a2fc6b583bb00987b5c8"
+      "file": "assets/index-C0CLVQNd.js",
+      "webSha256": "432dfc887058ec135700ed64f38d660a93ca616fd2b5cc8a3561b2cbc188496a",
+      "androidSha256": "432dfc887058ec135700ed64f38d660a93ca616fd2b5cc8a3561b2cbc188496a"
     },
     {
-      "file": "assets/IntegrityCard-DEhvgt6Z.js",
-      "webSha256": "3d5e80bb29479de5b6b5b0de0113c998e7555a8b723ed69cd88053723101e92c",
-      "androidSha256": "3d5e80bb29479de5b6b5b0de0113c998e7555a8b723ed69cd88053723101e92c"
+      "file": "assets/IntegrityCard-BdEt8_Fq.js",
+      "webSha256": "84723fe81dc5dc8c2ed72479281eae51644893a3ec063f8ba4ade4fefe114183",
+      "androidSha256": "84723fe81dc5dc8c2ed72479281eae51644893a3ec063f8ba4ade4fefe114183"
     },
     {
-      "file": "assets/KindPicker-DXpuvR0Q.js",
-      "webSha256": "3a6dfa76fb2881ad688d034d26128737757d193d2a8c24f1c21f80cf28d349fb",
-      "androidSha256": "3a6dfa76fb2881ad688d034d26128737757d193d2a8c24f1c21f80cf28d349fb"
+      "file": "assets/KesfetPage-CJXPp_A-.js",
+      "webSha256": "fba508f665362c600f5ae050290c98ea8cc703b45bea32c75285daf173aa0421",
+      "androidSha256": "fba508f665362c600f5ae050290c98ea8cc703b45bea32c75285daf173aa0421"
     },
     {
-      "file": "assets/KvkkNotice-p66DYe73.js",
-      "webSha256": "c17a7a9d0cbb2b9d71e72d7b2fb6fffd233219b1878ef5a2d0a21a149d2e26a1",
-      "androidSha256": "c17a7a9d0cbb2b9d71e72d7b2fb6fffd233219b1878ef5a2d0a21a149d2e26a1"
+      "file": "assets/KesfetPage-CngdYxam.css",
+      "webSha256": "9825c8a76e9debe822fdadf514d36366d8bd05f7b67797aa08c9dd3a3382aebf",
+      "androidSha256": "9825c8a76e9debe822fdadf514d36366d8bd05f7b67797aa08c9dd3a3382aebf"
     },
     {
-      "file": "assets/LedgerPage-BCHGOFvc.js",
-      "webSha256": "ad20cd09fb67de31c3c9290e0d2aff13301ff55f120187c2c3ae2fd0ba308a37",
-      "androidSha256": "ad20cd09fb67de31c3c9290e0d2aff13301ff55f120187c2c3ae2fd0ba308a37"
+      "file": "assets/KindPicker-a6UWv2iZ.js",
+      "webSha256": "b6b67f27dd6da80f296431728e75c827ce361805fb4c264a54bf812d7f62a2b9",
+      "androidSha256": "b6b67f27dd6da80f296431728e75c827ce361805fb4c264a54bf812d7f62a2b9"
     },
     {
-      "file": "assets/LoginPage-IyQEcuOG.js",
-      "webSha256": "f10643f76cb58a9ed48a196da3c2e3981f05858f58a875f452510fdde533a40c",
-      "androidSha256": "f10643f76cb58a9ed48a196da3c2e3981f05858f58a875f452510fdde533a40c"
+      "file": "assets/KvkkNotice-_YEhDCAf.js",
+      "webSha256": "68fe713560960785305c9244f95d9e1d43c5967692be5e0ba60a5be050d63c11",
+      "androidSha256": "68fe713560960785305c9244f95d9e1d43c5967692be5e0ba60a5be050d63c11"
     },
     {
-      "file": "assets/marks-CTmX8yZ8.js",
-      "webSha256": "9bc40a990cc7172b59ac7fa98bcf3b0f42bd0be3f77c6ecd3b8b03559f6dbfa0",
-      "androidSha256": "9bc40a990cc7172b59ac7fa98bcf3b0f42bd0be3f77c6ecd3b8b03559f6dbfa0"
+      "file": "assets/LedgerPage-BYcWR2WE.js",
+      "webSha256": "1b7581533eda44f1db08f86bfbe3d79c5d0916390808ec0cd080db86e42e1642",
+      "androidSha256": "1b7581533eda44f1db08f86bfbe3d79c5d0916390808ec0cd080db86e42e1642"
     },
     {
-      "file": "assets/NewProposalPage-CjPl4LnE.js",
-      "webSha256": "c495dddb532a73a0d1600f89a05c416c5910a7f988cf6357159631202dfa3a4e",
-      "androidSha256": "c495dddb532a73a0d1600f89a05c416c5910a7f988cf6357159631202dfa3a4e"
+      "file": "assets/ledgerVerify-BZ6vjsx-.js",
+      "webSha256": "2984c4142063bc974b8d9539b1d7f8c010c94204e03970489538578905517000",
+      "androidSha256": "2984c4142063bc974b8d9539b1d7f8c010c94204e03970489538578905517000"
     },
     {
-      "file": "assets/NotificationsPage-Csdmza52.js",
-      "webSha256": "3050509c6f3a2e14925051b34759b693f263871a29ab3ac62c037f5c9b34d1b3",
-      "androidSha256": "3050509c6f3a2e14925051b34759b693f263871a29ab3ac62c037f5c9b34d1b3"
+      "file": "assets/limits-D8hiOJsM.js",
+      "webSha256": "dd98d7e78027c08edf07f61252c5a81dd522ac79665057cbeee34e8aef30fe5e",
+      "androidSha256": "dd98d7e78027c08edf07f61252c5a81dd522ac79665057cbeee34e8aef30fe5e"
     },
     {
-      "file": "assets/OntologyPage-D_WLb0_c.js",
-      "webSha256": "bab325e03ec4a1d6812e34e6df98777e47772389ed4ce5e2d421a4404c18fac1",
-      "androidSha256": "bab325e03ec4a1d6812e34e6df98777e47772389ed4ce5e2d421a4404c18fac1"
+      "file": "assets/LoginPage-zyzX3klB.js",
+      "webSha256": "3ad4b3d6b09a4b572269c6e169109bf8f76dc8683ae295c49da538b1777c2efe",
+      "androidSha256": "3ad4b3d6b09a4b572269c6e169109bf8f76dc8683ae295c49da538b1777c2efe"
     },
     {
-      "file": "assets/PeopleGraph-Cs50wjjY.js",
-      "webSha256": "67616911f38f1442f56633f5d09d6ed091b9cbdbedc5fd7adc92dd21e013143c",
-      "androidSha256": "67616911f38f1442f56633f5d09d6ed091b9cbdbedc5fd7adc92dd21e013143c"
+      "file": "assets/loserStatus-BLrfT7iv.js",
+      "webSha256": "78589cc1cb8aa09351975d07fb97b4f51c071cc38b4057c0c4b3493f5960896c",
+      "androidSha256": "78589cc1cb8aa09351975d07fb97b4f51c071cc38b4057c0c4b3493f5960896c"
     },
     {
-      "file": "assets/pinned-D_evan3q.js",
-      "webSha256": "9cdfd258988439e41751d71aabae6f00b6b0d1d6c066afc7dab84971b8bad81c",
-      "androidSha256": "9cdfd258988439e41751d71aabae6f00b6b0d1d6c066afc7dab84971b8bad81c"
+      "file": "assets/marks-DHQ0ENzO.js",
+      "webSha256": "80c2d9981809cc29242b1305b54b2007e4cb04c26e19309a44d6c5173e06e1fd",
+      "androidSha256": "80c2d9981809cc29242b1305b54b2007e4cb04c26e19309a44d6c5173e06e1fd"
     },
     {
-      "file": "assets/ProfilePage-DyIMvyY6.js",
-      "webSha256": "eaaafbecb79aa04bea7c51a13faef98bf474a0da17dd1e57f4c17c384f76343e",
-      "androidSha256": "eaaafbecb79aa04bea7c51a13faef98bf474a0da17dd1e57f4c17c384f76343e"
+      "file": "assets/new-proposal-CMwyHpUe.css",
+      "webSha256": "e75f67ff236204bab07582fcc61ba1f6e99b6995c7dd95ce8fb6ee01b8a62b8d",
+      "androidSha256": "e75f67ff236204bab07582fcc61ba1f6e99b6995c7dd95ce8fb6ee01b8a62b8d"
     },
     {
-      "file": "assets/ProposalCard-Rc9h6myU.js",
-      "webSha256": "05581f6fd6f570e1bbcbf2ced2156d9e8a7e4f3b3c2875449a9801e0d34056d0",
-      "androidSha256": "05581f6fd6f570e1bbcbf2ced2156d9e8a7e4f3b3c2875449a9801e0d34056d0"
+      "file": "assets/NewProposalPage-DOxRba9y.js",
+      "webSha256": "2668aead135d7db621106e9993a7b1a6f9c631a5c6f25bce3b71bcdfbcf6acaf",
+      "androidSha256": "2668aead135d7db621106e9993a7b1a6f9c631a5c6f25bce3b71bcdfbcf6acaf"
     },
     {
-      "file": "assets/ProposalDetailPage-CkCbKd67.js",
-      "webSha256": "686a373cb5ece104e3836d4494781c7cd10f4aecd3a015a6b99d09c31552fc62",
-      "androidSha256": "686a373cb5ece104e3836d4494781c7cd10f4aecd3a015a6b99d09c31552fc62"
+      "file": "assets/NotificationsPage-5-FdRxlu.js",
+      "webSha256": "ff587a01137c6b2162d5a6741afecfb44ced6ce261f90597122b5ab384ec3e2a",
+      "androidSha256": "ff587a01137c6b2162d5a6741afecfb44ced6ce261f90597122b5ab384ec3e2a"
     },
     {
-      "file": "assets/ProposalsPage-BOQjiD22.js",
-      "webSha256": "fc030ffb028c597c7e7f052b5764f7562cc0f3198470b8cf13353a68067287ab",
-      "androidSha256": "fc030ffb028c597c7e7f052b5764f7562cc0f3198470b8cf13353a68067287ab"
+      "file": "assets/NotificationsPage-CQ7y5SVm.css",
+      "webSha256": "5875b09678c4675f978d06dba50ae0b367bc2a93e46fe4b5c4dd9ae1f2d58435",
+      "androidSha256": "5875b09678c4675f978d06dba50ae0b367bc2a93e46fe4b5c4dd9ae1f2d58435"
     },
     {
-      "file": "assets/RegisterPage-Bc_FdXfQ.js",
-      "webSha256": "c441b5b9a49815ecb3a1e070d125e55d616ab56d074965f74bf7f44b8ca7b241",
-      "androidSha256": "c441b5b9a49815ecb3a1e070d125e55d616ab56d074965f74bf7f44b8ca7b241"
+      "file": "assets/OntologyPage-Wl1BHvGv.js",
+      "webSha256": "7a363b396ca2cfbfa2d5b51e35fa5aa8dbcebec32bdd64c3e263b58cac06de58",
+      "androidSha256": "7a363b396ca2cfbfa2d5b51e35fa5aa8dbcebec32bdd64c3e263b58cac06de58"
     },
     {
-      "file": "assets/RegistrarPage-DyaWQEmk.js",
-      "webSha256": "560a7743755ee8d8435ed071d0c1b6842e23e34e641bc171e9e76152f5e0d9d2",
-      "androidSha256": "560a7743755ee8d8435ed071d0c1b6842e23e34e641bc171e9e76152f5e0d9d2"
+      "file": "assets/ParamsCard-KLhwtBVp.js",
+      "webSha256": "e07008cb71506be4fdd84fdea6bdd66f0625eec368bb20f5d0f452909b469794",
+      "androidSha256": "e07008cb71506be4fdd84fdea6bdd66f0625eec368bb20f5d0f452909b469794"
     },
     {
-      "file": "assets/RegistrationForm-GjO9zSwk.js",
-      "webSha256": "0d8cc6a81a604e9f79b1c111662b548e77eb39576eadba738ec10cbd97cf7836",
-      "androidSha256": "0d8cc6a81a604e9f79b1c111662b548e77eb39576eadba738ec10cbd97cf7836"
+      "file": "assets/PeopleGraph-BmySp1H_.js",
+      "webSha256": "ef4ae920105289b79e71439ddc3cffa55009539665c2a276641fccc9b914bab8",
+      "androidSha256": "ef4ae920105289b79e71439ddc3cffa55009539665c2a276641fccc9b914bab8"
     },
     {
-      "file": "assets/ReputationBar-C-MjMPkV.js",
-      "webSha256": "2904932c90d774f9adcdffffa9d97a2e41e2157b021a25bd4823b36fd9cb7bd3",
-      "androidSha256": "2904932c90d774f9adcdffffa9d97a2e41e2157b021a25bd4823b36fd9cb7bd3"
+      "file": "assets/pinned-D0GhqBfR.js",
+      "webSha256": "781ce88647dd1158a9253c56843bbe2501b2cccd78079e204f2130b68bf10f30",
+      "androidSha256": "781ce88647dd1158a9253c56843bbe2501b2cccd78079e204f2130b68bf10f30"
+    },
+    {
+      "file": "assets/PrinciplesAccordion-BpY5o0ju.js",
+      "webSha256": "d0d43bf61158ea894d58e86c5d1cac3c1baa1f55c31ad9d2e32515bc8aefa599",
+      "androidSha256": "d0d43bf61158ea894d58e86c5d1cac3c1baa1f55c31ad9d2e32515bc8aefa599"
+    },
+    {
+      "file": "assets/PrinciplesAccordion-C5xuCXnP.css",
+      "webSha256": "76173efd61623bfde4132b4834e0700be7901785f77ccc07f5af07aaf8347fc9",
+      "androidSha256": "76173efd61623bfde4132b4834e0700be7901785f77ccc07f5af07aaf8347fc9"
+    },
+    {
+      "file": "assets/ProfilePage-BOsoYIEE.js",
+      "webSha256": "c6d0c8f7a3784b1deddacf999d43f917a9a2fb4b257f2701c707d0cee3babda8",
+      "androidSha256": "c6d0c8f7a3784b1deddacf999d43f917a9a2fb4b257f2701c707d0cee3babda8"
+    },
+    {
+      "file": "assets/ProposalCard-DQVg_QKi.js",
+      "webSha256": "bb2d4550ad0b04ccfabb4e6480b88b60108747eedc102357c5179d67b14a527d",
+      "androidSha256": "bb2d4550ad0b04ccfabb4e6480b88b60108747eedc102357c5179d67b14a527d"
+    },
+    {
+      "file": "assets/ProposalCard-Fi0QfVi7.css",
+      "webSha256": "c81bd00b41c70b85b62b51282b95ae17c8dab9ec26c7d0492bb49beac08dc4d8",
+      "androidSha256": "c81bd00b41c70b85b62b51282b95ae17c8dab9ec26c7d0492bb49beac08dc4d8"
+    },
+    {
+      "file": "assets/ProposalDetailPage-DwN95UvU.css",
+      "webSha256": "cdda23b3f0c039809c255ef11e94722ff159fbc00956c7e7f7526ce8746f5268",
+      "androidSha256": "cdda23b3f0c039809c255ef11e94722ff159fbc00956c7e7f7526ce8746f5268"
+    },
+    {
+      "file": "assets/ProposalDetailPage-VgUI7591.js",
+      "webSha256": "cf3f6ad2b87f4d2315b0bc6ea9d12036182223726b2203ae44aa59dbb8f6a13e",
+      "androidSha256": "cf3f6ad2b87f4d2315b0bc6ea9d12036182223726b2203ae44aa59dbb8f6a13e"
+    },
+    {
+      "file": "assets/ProposalsPage-Ra_fAN3k.js",
+      "webSha256": "ac82bff46d6b0eebbc105cb550b7ab113f323a98763ab618dfb25bdcb778155c",
+      "androidSha256": "ac82bff46d6b0eebbc105cb550b7ab113f323a98763ab618dfb25bdcb778155c"
+    },
+    {
+      "file": "assets/RegisterPage-nbUYeXQ6.js",
+      "webSha256": "f1e27ec18bcaa31889c28fa895df5dfbbc563727053dd754e0502ecf41670781",
+      "androidSha256": "f1e27ec18bcaa31889c28fa895df5dfbbc563727053dd754e0502ecf41670781"
+    },
+    {
+      "file": "assets/RegistrarPage-DnYA2j3d.js",
+      "webSha256": "236463a3893f3792c74cc38260602bfe407409fdf302942644f7acf984e50b30",
+      "androidSha256": "236463a3893f3792c74cc38260602bfe407409fdf302942644f7acf984e50b30"
+    },
+    {
+      "file": "assets/RegistrationForm-BaVhEwDK.js",
+      "webSha256": "f515e6f20c27a8174a21fd5d7647b8a2901451bda072820ca155fc465cbc6a13",
+      "androidSha256": "f515e6f20c27a8174a21fd5d7647b8a2901451bda072820ca155fc465cbc6a13"
+    },
+    {
+      "file": "assets/ReputationBar-D3Om35BA.js",
+      "webSha256": "70ab910a117d2aa912ec29d9e8719d351f1908c081bdf9a5bf07254b9411dfa5",
+      "androidSha256": "70ab910a117d2aa912ec29d9e8719d351f1908c081bdf9a5bf07254b9411dfa5"
     },
     {
       "file": "assets/rolldown-runtime-hePW80VL.js",
@@ -309,64 +376,84 @@
       "androidSha256": "580ad8c58061a4dde99bde0a56905e382f0568516ee2f5b84dbfb52085709021"
     },
     {
-      "file": "assets/SettingsPage-CkiEJzip.js",
-      "webSha256": "d45d75a163e36dd3b6dd549aa5de1e55ea92039f8d251792b792788725539af5",
-      "androidSha256": "d45d75a163e36dd3b6dd549aa5de1e55ea92039f8d251792b792788725539af5"
+      "file": "assets/sectionParam-BXSRmpz-.js",
+      "webSha256": "a754618131a3e18ae014e1714a4090e4c02febbbe04800279247efd19ae89442",
+      "androidSha256": "a754618131a3e18ae014e1714a4090e4c02febbbe04800279247efd19ae89442"
     },
     {
-      "file": "assets/system-CDJGqGWp.css",
-      "webSha256": "c6482f0538b1ba9a968115169c18106f4df054fc614d40b61ec8f3306747f377",
-      "androidSha256": "c6482f0538b1ba9a968115169c18106f4df054fc614d40b61ec8f3306747f377"
+      "file": "assets/SettingsPage-DRAUTceR.js",
+      "webSha256": "ddf2afdd1608fc3614d84c3144ec404751d644f7833eb18d8ad280570ec794e4",
+      "androidSha256": "ddf2afdd1608fc3614d84c3144ec404751d644f7833eb18d8ad280570ec794e4"
     },
     {
-      "file": "assets/TopicDetailPage-BReLY4zM.js",
-      "webSha256": "a82ea6835511e26a554a8a8f473916aca8739c8a0b9a0059237925b29cfa08eb",
-      "androidSha256": "a82ea6835511e26a554a8a8f473916aca8739c8a0b9a0059237925b29cfa08eb"
+      "file": "assets/system-CcDj0Mzw.css",
+      "webSha256": "fa39ef36b978dd74b93cb1ecbbf5a4bc456d9117b21a18d67a11b9e3aebe2355",
+      "androidSha256": "fa39ef36b978dd74b93cb1ecbbf5a4bc456d9117b21a18d67a11b9e3aebe2355"
     },
     {
-      "file": "assets/TopicsPage-Z81Gdh1-.js",
-      "webSha256": "9abc809ceffeda226dfdc8a7056d18ab9c7b7d2db33926f5badac721412ba9e7",
-      "androidSha256": "9abc809ceffeda226dfdc8a7056d18ab9c7b7d2db33926f5badac721412ba9e7"
+      "file": "assets/TopicDetailPage-D11FA2mU.js",
+      "webSha256": "4c98c35418d9e0d645eaee36f11774e20724e7736e0188457e13059253cc800b",
+      "androidSha256": "4c98c35418d9e0d645eaee36f11774e20724e7736e0188457e13059253cc800b"
     },
     {
-      "file": "assets/TxPage-CK6Y5Nb7.js",
-      "webSha256": "50afd83bc7573e18ffd43f79521d2e2d4798a39d09b23035c1e7986572b54e2c",
-      "androidSha256": "50afd83bc7573e18ffd43f79521d2e2d4798a39d09b23035c1e7986572b54e2c"
+      "file": "assets/topics-CK6ohyyp.js",
+      "webSha256": "a44fdcc31cf4d9cc340c81f3e662878edf69d821143fe178b2d0ff3733e847e2",
+      "androidSha256": "a44fdcc31cf4d9cc340c81f3e662878edf69d821143fe178b2d0ff3733e847e2"
     },
     {
-      "file": "assets/ui-Bw_mU7-u.js",
-      "webSha256": "bea9a72f153f17c5783c0f1d17d09520fa9133f36a1478db1c3198c2826bb097",
-      "androidSha256": "bea9a72f153f17c5783c0f1d17d09520fa9133f36a1478db1c3198c2826bb097"
+      "file": "assets/topics-DH0SG_0C.css",
+      "webSha256": "df73fa3b7f7ccd889f222d0c13dff74036c5ef72546cbb9b22d3e3496dec0982",
+      "androidSha256": "df73fa3b7f7ccd889f222d0c13dff74036c5ef72546cbb9b22d3e3496dec0982"
     },
     {
-      "file": "assets/useAsync-COGAGnRg.js",
-      "webSha256": "770412cc3e678d40fc11cdd0278f3b2963977d86763cc250017a5cb1a88aee4e",
-      "androidSha256": "770412cc3e678d40fc11cdd0278f3b2963977d86763cc250017a5cb1a88aee4e"
+      "file": "assets/TopicsPage-DJT5UIcc.js",
+      "webSha256": "82bc85829feef8e0a073185c2bc51c38cc0c9278449bfb3dbbd2e92f245ab430",
+      "androidSha256": "82bc85829feef8e0a073185c2bc51c38cc0c9278449bfb3dbbd2e92f245ab430"
     },
     {
-      "file": "assets/UserLink-BNKK6ktZ.js",
-      "webSha256": "52a9dc61ec3135355f65edcd194bb233004984ac3fd9dc68cc3653169c87e39c",
-      "androidSha256": "52a9dc61ec3135355f65edcd194bb233004984ac3fd9dc68cc3653169c87e39c"
+      "file": "assets/TxPage-VGl04kEn.js",
+      "webSha256": "dc45a3163d7fbb66d967fb7b726b92b623584e7c6a516a0afbaeb01a03838d33",
+      "androidSha256": "dc45a3163d7fbb66d967fb7b726b92b623584e7c6a516a0afbaeb01a03838d33"
     },
     {
-      "file": "assets/UserPage-DzduOMRn.js",
-      "webSha256": "0bc5523b9e990d49e66327154a674f2966d94f8b65106526bfe04ebf7f492342",
-      "androidSha256": "0bc5523b9e990d49e66327154a674f2966d94f8b65106526bfe04ebf7f492342"
+      "file": "assets/ui-DZf878YH.js",
+      "webSha256": "d3c7afa727b5a6e9926077415b188aed4fd09bda232b917660a399ac8376b392",
+      "androidSha256": "d3c7afa727b5a6e9926077415b188aed4fd09bda232b917660a399ac8376b392"
     },
     {
-      "file": "assets/validators-BhpS_Wqg.js",
-      "webSha256": "30c466f57c54822e7bc99e00c52798ea1e3dae09b99a544201f276dd762dc68d",
-      "androidSha256": "30c466f57c54822e7bc99e00c52798ea1e3dae09b99a544201f276dd762dc68d"
+      "file": "assets/useAsync-Dn4KDm35.js",
+      "webSha256": "b206742feaee888b9d775fbebe846f6e9f1d48a772f347a32276ca86a6541085",
+      "androidSha256": "b206742feaee888b9d775fbebe846f6e9f1d48a772f347a32276ca86a6541085"
     },
     {
-      "file": "assets/VerifyVotePage-BSGcr1xA.js",
-      "webSha256": "6ab9e720e4ff624da11fcb70b343f00cb9a91763d8d23cbe89b37bfc1a31f83a",
-      "androidSha256": "6ab9e720e4ff624da11fcb70b343f00cb9a91763d8d23cbe89b37bfc1a31f83a"
+      "file": "assets/UserLink-DqK3VwEu.js",
+      "webSha256": "551dd2d2e61b02e468a7a4b69acc8ecbe65e973ad5a678c843c881f137ebc397",
+      "androidSha256": "551dd2d2e61b02e468a7a4b69acc8ecbe65e973ad5a678c843c881f137ebc397"
     },
     {
-      "file": "assets/VersionHistory-CHSHlWJQ.js",
-      "webSha256": "f31147f50f9550e58785fa78db2adacc1be3cd3f22dce8e3073c0e1b4869d510",
-      "androidSha256": "f31147f50f9550e58785fa78db2adacc1be3cd3f22dce8e3073c0e1b4869d510"
+      "file": "assets/UserPage-FHZXc1iv.js",
+      "webSha256": "e60386d04f2ac4e66691922e405c376e9ddd8197a6cbe38fd70c95fb047fb7b6",
+      "androidSha256": "e60386d04f2ac4e66691922e405c376e9ddd8197a6cbe38fd70c95fb047fb7b6"
+    },
+    {
+      "file": "assets/validators-DbQAYKfY.js",
+      "webSha256": "a28e84ca253a0b1c4a2e59dba9ce146f689f14ac5482bbcfd185e24455b6fb6f",
+      "androidSha256": "a28e84ca253a0b1c4a2e59dba9ce146f689f14ac5482bbcfd185e24455b6fb6f"
+    },
+    {
+      "file": "assets/VerifyVotePage-wX0LVWG3.js",
+      "webSha256": "b84d9e1c93981767d960e4667267739f922b76c874a5657310f6d50616d6858d",
+      "androidSha256": "b84d9e1c93981767d960e4667267739f922b76c874a5657310f6d50616d6858d"
+    },
+    {
+      "file": "assets/VersionHistory-CpvHsnxp.css",
+      "webSha256": "73ee339aea8f0279c56b04befadef9c6a3b8939c0bef25f5c915dd791f43b47e",
+      "androidSha256": "73ee339aea8f0279c56b04befadef9c6a3b8939c0bef25f5c915dd791f43b47e"
+    },
+    {
+      "file": "assets/VersionHistory-DC7M2YOu.js",
+      "webSha256": "ff917f6a748f41d3aa7e6f0a45432601ee9ff546c1190d7aeace03f4d5642db0",
+      "androidSha256": "ff917f6a748f41d3aa7e6f0a45432601ee9ff546c1190d7aeace03f4d5642db0"
     },
     {
       "file": "assets/web-BP-1yMvb.js",
@@ -380,21 +467,16 @@
     },
     {
       "file": "index.html",
-      "webSha256": "ac3d68f2211d1f30dc732efbed963381cc95686739c48395f0d1987a2adfe5bf",
-      "androidSha256": "ac3d68f2211d1f30dc732efbed963381cc95686739c48395f0d1987a2adfe5bf"
+      "webSha256": "d3fcb30c19a11b8e164eab9668fc62c130b53ed9743bd0080e0780e7a41ee623",
+      "androidSha256": "d3fcb30c19a11b8e164eab9668fc62c130b53ed9743bd0080e0780e7a41ee623"
     }
   ],
   "screenshots": [
     {
       "platform": "web",
-      "count": 96,
-      "bytes": 8733504,
+      "count": 106,
+      "bytes": 9047659,
       "issues": [
-        {
-          "type": "console",
-          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
-          "path": "http://127.0.0.1:4177/"
-        },
         {
           "type": "console",
           "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
@@ -427,8 +509,8 @@
     },
     {
       "platform": "android",
-      "count": 97,
-      "bytes": 26279311,
+      "count": 107,
+      "bytes": 28564524,
       "issues": [],
       "checks": [
         {
@@ -451,6 +533,7 @@
     }
   ],
   "observations": [
+    "Ekran görüntüleri arayüz hafifletme Faz 3 sonrası çalışma ağacından yeniden çekildi; çekimler varsayılan Sade görünümdedir, Tam görünüm çekimleri adlarında \"Tam görünüm\" geçer.",
     "Web favicon.ico isteği 404.",
     "Yakalanan görünümlerde JavaScript pageerror ve yatay taşma yok.",
     "Android tercihleri her çekim sonunda geri yüklendi.",

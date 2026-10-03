@@ -104,7 +104,8 @@ async function capture(title, note = '', anchor) {
   console.log(`[${platform}] ${file}`);
 }
 async function view(title,path,note='',anchor) { await go(path); await capture(title,note,anchor); }
-async function tabs(title,path,note='') {
+// chips=true: Öneriler listesindeki 'Evre' çipleri de (Oylamada, İtiraz ve uzlaşma, Kabul edilen…) ayrı çekilir; 'Hepsi' sekme çekimidir.
+async function tabs(title,path,note='',chips=false) {
   await go(path);
   const list=page.locator('main [role=tablist]').first();
   if(!await list.count()) { await capture(title,note); return; }
@@ -116,6 +117,18 @@ async function tabs(title,path,note='') {
     await tab.click(); await settle();
     await page.evaluate(()=>window.scrollTo(0,0));
     await capture(`${title} — ${label}`,note,platform==='android'?list:undefined);
+    const group=page.getByRole('group',{name:'Evre',exact:true});
+    if(!chips || !await group.count()) continue;
+    const m=await group.getByRole('button').count();
+    for(let j=1;j<m;j++) {
+      const chip=group.getByRole('button').nth(j);
+      if(((await chip.getAttribute('class'))||'').includes('phase-chip-empty')) continue;
+      const chipLabel=(await chip.innerText()).replace(/\s+/g,' ').trim();
+      await chip.click(); await settle();
+      await page.evaluate(()=>window.scrollTo(0,0));
+      await capture(`${title} — ${chipLabel}`,note,platform==='android'?list:undefined);
+      await chip.click(); await settle(); // seçili çipe yeniden dokunmak 'Hepsi'ne döner
+    }
   }
 }
 
@@ -133,12 +146,13 @@ try {
   page.setDefaultTimeout(20000);
   page.on('console',msg=>{if(msg.type()==='error') issues.push({type:'console',message:msg.text(),path:page.url()});});
   if(platform==='android') {
-    backup=await page.evaluate(async()=>({url:location.href,values:await Promise.all(['forum.token','forum.serverUrl','forum.theme','forum.receipts','forum.validators'].map(async key=>({key,native:(await window.Capacitor.Plugins.Preferences.get({key})).value,web:localStorage.getItem(key)})))}));
+    backup=await page.evaluate(async()=>({url:location.href,values:await Promise.all(['forum.token','forum.serverUrl','forum.theme','forum.detail','forum.dismissed','forum.receipts','forum.validators'].map(async key=>({key,native:(await window.Capacitor.Plugins.Preferences.get({key})).value,web:localStorage.getItem(key)})))}));
     const tmp=readFileSync(join(tmpdir(),'forum-inceleme-current.txt'),'utf8').trim();
     const backupFile=join(tmp,'android-original-preferences.json');
     if(!existsSync(backupFile)) writeFileSync(backupFile,JSON.stringify(backup));
-    await prefs({'forum.serverUrl':'http://10.0.2.2:4177','forum.theme':'light','forum.token':null,'forum.receipts':null,'forum.validators':null});
-  } else await prefs({'forum.theme':'light'});
+    // Görünüm yoğunluğu ve gizlenen notlar da sıfırlanır: çekimler varsayılan 'Sade' görünümde ve notlar görünür olsun.
+    await prefs({'forum.serverUrl':'http://10.0.2.2:4177','forum.theme':'light','forum.detail':null,'forum.dismissed':null,'forum.token':null,'forum.receipts':null,'forum.validators':null});
+  } else await prefs({'forum.theme':'light','forum.detail':null,'forum.dismissed':null});
   await as();
   if(details) {
     replaceCapture=true;
@@ -155,11 +169,15 @@ try {
     await page.locator('summary').filter({hasText:/^Kura ve adillik kanıtı/}).click();
     await page.locator('summary').filter({hasText:/^Kura kayıtları/}).click();
     await capture('Bilirkişi kurası — adaylar ve seçim','Tohum, aday havuzu ve seçilen üyeler.',page.locator('summary').filter({hasText:/^Kura kayıtları/}));
-    await view('Bilirkişi raporu ve sorular',ppath(32),'Uygulanabilirlik raporu ve üye soruları.','Raporlar (1)');
+    // Rapor satırı sade görünümde kapalıdır: 'Raporu oku' gövdeyi, riskleri ve karşı görüşü satır içinde açar.
+    await go(ppath(32));
+    await page.getByRole('button',{name:'Raporu oku'}).first().click();
+    await capture('Bilirkişi raporu ve sorular','Uygulanabilirlik raporu (açık) ve üye soruları.','Raporlar (1)');
     await view('Yapay zekâ — tartışma özeti',ppath(32),'Çevrimdışı sezgisel mod.','Tartışma özeti (yapay zekâ)');
     await view('Yapay zekâ — köprü taslakları',ppath(28),'Danışma amaçlı uzlaşma metinleri.','Yapay zekâ köprü taslakları');
-    for(const title of ['Açık rızalar','Vekâletler','Kimlik bilgilerimi düzelt','Takma ad değiştir','Kişisel verilerim (KVKK)'])
-      await view('Profil — '+title,'/profil','Form görüntülendi; veri değiştirilmedi.',title);
+    // Katlı kartlar (sade görünüm) ?bolum= ile açık gelir; başlık görünür kalır, çekim kartın açık gövdesini gösterir.
+    for(const [title,anchor] of [['Açık rızalar','rizalar'],['Vekâletler','vekaletler'],['Kimlik bilgilerimi düzelt','duzeltme'],['Takma ad değiştir','takma-ad'],['Kişisel verilerim (KVKK)','kvkk']])
+      await view('Profil — '+title,'/profil?bolum='+anchor,'Form görüntülendi; veri değiştirilmedi.',title);
     await as('bk_saglik1'); replaceCapture=true;
     await view('Bilirkişi — görevli olduğu öneri',ppath(32),'Bilirkişi hesabının görüntüsü.','Bilirkişi görüşü');
   } else {
@@ -170,7 +188,10 @@ try {
   await view('Kayıt — aydınlatma ve onaylar','/kayit','Başvuru gönderilmedi.',page.getByRole('button',{name:/Kayıt ol|Başvuruyu gönder/}).last());
   await view('Konular','/konular');
   await view('Konu ayrıntısı ve alt konular','/konular/'+topics.find(t=>topics.some(x=>x.parentId===t.id)).id);
-  await tabs('Öneriler','/oneriler');
+  await tabs('Öneriler','/oneriler','Sekmeler ve evre çipleri.',true);
+  await view('Keşfet ve doğrula','/kesfet','Yedi bileşen canlı durumuyla; gösterim rehberi, temel ilkeler ve sözlük.');
+  await view('Keşfet — gösterim rehberi','/kesfet','Yedi adım mevcut veriden kurulur (son karar, ilk aykırı öneri).','Gösterim rehberi');
+  await view('Keşfet — sözlük','/kesfet','Terim aynen; günlük karşılık, tanım ve dayanak madde.','Sözlük');
   await as('ayse');
   await capture('Ana sayfa — üye','Üyeye ait katılım görevleri.');
   if(platform==='android') {
@@ -212,6 +233,12 @@ try {
   await page.getByRole('button',{name:'Sayımı kendim doğrulayayım',exact:true}).click(); await settle();
   await capture('Kesin sayımı cihazda doğrulama','Bülten verilerinden sayım yeniden hesaplanır.','Sayımı kendim doğrulayayım');
   checks.push({test:'Kesin sayım doğrulama ekranı',text:await page.locator('main').innerText()});
+  // Sade dil: parametreler günlük adlarıyla, semboller anahtarın arkasında; terimler sözlük penceresi açar.
+  await view('Karar parametreleri — sade dil',ppath(7)+'?bolum=parametreler','Her parametre günlük adıyla; semboller ve formüller anahtarın arkasında.','Karar parametreleri');
+  await page.getByRole('button',{name:/^Onay eşiği/}).first().click();
+  await capture('Sözlük penceresi — terim açıklaması','Terim aynen kalır; günlük karşılık, tanım ve dayanak madde pencerede açılır.');
+  await page.keyboard.press('Escape');
+  if(await page.locator('dialog[open]').count()) await page.getByRole('button',{name:/Kapat/}).first().click();
   await tabs('Graf','/graf');
   await tabs('Bilirkişiler','/bilirkisiler');
   await view('Üye profili — ilişkiler ve vekâlet','/uyeler/'+users.find(u=>u.nickname==='ayse').id);
@@ -227,10 +254,18 @@ try {
   await page.waitForFunction(()=>document.querySelector('main')?.innerText.includes('Sunucuya ulaşıldı'));
   checks.push({test:'Sunucu bağlantısı',ok:true});
   await capture('Ayarlar — bağlantı ve tema');
+  // 'Uygulama hakkında' Gelişmiş altında katlı karttır: ?bolum=hakkinda ile açık gelir.
+  await go('/ayarlar?bolum=hakkinda');
   await capture('Ayarlar — sürüm ve platform','Platform bilgisini gösterir.','Uygulama hakkında');
   await page.getByRole('radio',{name:'Koyu',exact:true}).check(); await go('/');
   await capture('Ana sayfa — koyu tema');
   await go('/ayarlar'); await page.getByRole('radio',{name:'Açık',exact:true}).check();
+  // 'Tam — tüm ayrıntılar açık': gösterimde her şeyi tek seçimle açar. Çekimler bitince varsayılan 'Sade'ye dönülür.
+  await page.getByRole('radio',{name:'Tam — tüm ayrıntılar açık',exact:true}).check();
+  await capture('Ayarlar — Tam görünüm','Görünüm yoğunluğu: Tam — tüm ayrıntılar açık.');
+  await view('Tam görünüm — öneri sayfası (#K-7)',ppath(7),'Bütün kartlar, semboller ve formüller açık.','Karar parametreleri');
+  await view('Tam görünüm — Profil','/profil','Katlı kartların hepsi açık.');
+  await go('/ayarlar'); await page.getByRole('radio',{name:'Sade (önerilen)',exact:true}).check();
   await as('kayitmemuru'); await tabs('Kayıt memuru','/kayit-memuru');
   await as('yonetici'); await tabs('Yönetim','/yonetim');
   await tabs('Bilirkişi yönetimi','/bilirkisiler');
