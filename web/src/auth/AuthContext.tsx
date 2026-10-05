@@ -12,7 +12,8 @@ import { clearTasks, getTasksLoadedAt, isStale, setTasks } from "../lib/taskStor
  * docs/API.md yetki kısaltmaları:
  * U oturum açmış · V doğrulanmış · VV oy verebilir (doğrulanmış + reşit + siyasi görüş rızası)
  * R kayıt memuru · D denetçi · A yönetici · E etkin bilirkişi.
- * Yönetici (A) R ve D yetkilerini de kapsar; E yalnızca bilirkişi durumuna bağlıdır.
+ * Yönetici (A) R ve D yetkilerini de kapsar. R, D, A ve E yalnızca DOĞRULANMIŞ hesapta geçerlidir (sunucudaki requireRole ve
+ * requireExpert gibi): kayıt memuru onayını bekleyen bir üyeye rol verilmiş olsa bile menüde ve sayfalarda görev yetkisi görünmez.
  */
 export type Permission = "U" | "V" | "VV" | "R" | "D" | "A" | "E";
 
@@ -52,11 +53,53 @@ export interface AuthContextValue {
   /** Sunucunun simüle saatine göre düzeltilmiş "şimdi" (ms). Geri sayımlar bunu kullanır. */
   now(): number;
   can(perm: Permission): boolean;
+  /** Hesapta bu rol var mı? Görev rolleri (kayıt memuru, denetçi, yönetici) yalnızca doğrulanmış hesapta sayılır; "member" her zaman. */
   hasRole(role: Role): boolean;
   isVerified: boolean;
   isVoter: boolean;
+  /** Etkin bilirkişi (doğrulanmış hesapta) */
   isExpert: boolean;
+  /** Doğrulanmış yönetici */
   isAdmin: boolean;
+}
+
+export type Permissions = Pick<AuthContextValue, "can" | "hasRole" | "isVerified" | "isVoter" | "isExpert" | "isAdmin">;
+
+/** Görev rolleri: sunucuda requireRole bunları doğrulanmış hesaba bağlar. */
+const DUTY_ROLES: readonly Role[] = ["registrar", "auditor", "admin"];
+
+/**
+ * Kullanıcının yetkileri (saf işlev; birim testli). Sunucudaki denetimlerin aynası: oy verme, görev rolleri ve bilirkişilik
+ * hesap durumuna bağlıdır. Arayüzün can("R"/"D"/"A") denetimi bununla sunucudaki requireRole ile aynı sonucu verir; böylece
+ * doğrulanmamış (bekleyen) bir hesapta görev menüsü görünüp sayfalar "Hesabınız etkin değil" hatası vermez.
+ */
+export function derivePermissions(user: Me | null): Permissions {
+  const roles = user?.roles ?? [];
+  const isVerified = user?.status === "verified";
+  const hasRole = (r: Role) => roles.includes(r) && (isVerified || !DUTY_ROLES.includes(r));
+  const isAdmin = hasRole("admin");
+  const isVoter = !!user && isVerified && user.isAdult && user.politicalConsent;
+  const isExpert = isVerified && !!user?.isExpert;
+  const can = (p: Permission): boolean => {
+    if (!user) return false;
+    switch (p) {
+      case "U":
+        return true;
+      case "V":
+        return isVerified;
+      case "VV":
+        return isVoter;
+      case "R":
+        return isAdmin || hasRole("registrar");
+      case "D":
+        return isAdmin || hasRole("auditor");
+      case "A":
+        return isAdmin;
+      case "E":
+        return isExpert;
+    }
+  };
+  return { can, hasRole, isVerified, isVoter, isExpert, isAdmin };
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -283,31 +326,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AuthContextValue>(() => {
-    const roles = user?.roles ?? [];
-    const hasRole = (r: Role) => roles.includes(r);
-    const isAdmin = hasRole("admin");
-    const isVerified = user?.status === "verified";
-    const isVoter = !!user && isVerified && user.isAdult && user.politicalConsent;
-    const isExpert = !!user?.isExpert;
-    const can = (p: Permission): boolean => {
-      if (!user) return false;
-      switch (p) {
-        case "U":
-          return true;
-        case "V":
-          return isVerified;
-        case "VV":
-          return isVoter;
-        case "R":
-          return isAdmin || hasRole("registrar");
-        case "D":
-          return isAdmin || hasRole("auditor");
-        case "A":
-          return isAdmin;
-        case "E":
-          return isExpert;
-      }
-    };
+    const perms = derivePermissions(user);
     return {
       user,
       token,
@@ -325,12 +344,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       refreshTasks,
       setUser,
       now,
-      can,
-      hasRole,
-      isVerified,
-      isVoter,
-      isExpert,
-      isAdmin,
+      ...perms,
     };
   }, [user, token, loading, system, connectionError, sessionExpired, unread, login, register, logout, refresh, refreshSystem, refreshUnread, refreshTasks, setUser, now]);
 

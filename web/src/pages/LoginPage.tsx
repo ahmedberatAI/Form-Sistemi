@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { ApiError } from "../api/client";
 import { Alert, Button, Card, ErrorView, Input, PageHeader } from "../ui";
 
 export default function LoginPage() {
@@ -64,7 +65,7 @@ export default function LoginPage() {
             error={errors.password}
             required
           />
-          {error ? <ErrorView error={error} title="Giriş yapılamadı" compact /> : null}
+          {error ? <ErrorView error={error} title={error instanceof ApiError && error.code === "login_locked" ? "Giriş geçici olarak durduruldu" : "Giriş yapılamadı"} compact /> : null}
           <Button type="submit" variant="primary" block loading={busy}>
             Giriş yap
           </Button>

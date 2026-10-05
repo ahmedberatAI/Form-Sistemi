@@ -12,15 +12,18 @@ src/
   main.tsx                 applySavedTheme() → <DetailLevelProvider><ErrorBoundary><ToastProvider><AuthProvider><App/>…
   App.tsx                  HashRouter + rotalar (sayfalar React.lazy ile yüklenir)
   styles.css               tüm stiller (CSS değişkenleri, açık/koyu tema, sınıf kılavuzu dosya başında)
-  api/client.ts            fetch sarmalayıcı, ApiError, sunucu adresi, belirteç, qs()
+  api/client.ts            fetch sarmalayıcı, ApiError, sunucu adresi, belirteç, qs(), otomatik Idempotency-Key
   api/endpoints.ts         docs/API.md'deki HER uç nokta için tipli fonksiyon
-  auth/AuthContext.tsx     AuthProvider, useAuth(), useServerNow(), Permission
+  auth/AuthContext.tsx     AuthProvider, useAuth(), useServerNow(), Permission, derivePermissions (saf yetki işlevi)
   auth/guards.tsx          RequireAuth, RequireRole
   ui/                      yeniden kullanılabilir bileşenler (hepsi `../ui`'dan içe aktarılır)
   lib/                     format, prefs, receipts, validators, diff, useAsync, categories, hooks, routes, download, detailLevel, sectionParam,
-                           nextStep, glossary (sözlük), taskStore (görev sayısı), notificationKinds (bildirim sınıfları)
-  components/              RegistrationForm, CategoryPicker, UserLink, KvkkNotice, PlaceholderPage, layout/, system/theme.ts,
-                           common/ (NextStepCard), home/ (Ana sayfa parçaları), participation/ (öneri sayfası kartları ve panelleri), proposals/
+                           nextStep, glossary (sözlük), taskStore (görev sayısı), notificationKinds (bildirim sınıfları),
+                           ledgerVerify / blockVerify (tarayıcıda doğrulama), native (Android geri tuşu)
+  components/              RegistrationForm, CategoryPicker, UserLink, KvkkNotice, layout/ (AppLayout, nav.ts), common/ (NextStepCard),
+                           home/ (Ana sayfa parçaları), participation/ (öneri sayfası kartları ve panelleri), proposals/ (kartlar, yeni öneri,
+                           konular), community/ (graf, görüş haritası, bilirkişi paneli ve raporu, vekâlet), system/ (defter, ontoloji,
+                           yönetim panelleri, tema, hesap mantığı, hata sınırı); PlaceholderPage (hiçbir yol kullanmıyor, bkz. aşağıda)
   pages/                   rota başına bir sayfa (varsayılan dışa aktarım)
 ```
 
@@ -75,26 +78,45 @@ export default function ProposalDetailPage() {
 | `qs(obj)` | Sorgu dizesi: `undefined/null/""/false` atlanır, `true → "1"`, diziler virgülle. |
 | `getServerUrl()`, `setServerUrl(url \| null)`, `getSavedServerUrl()`, `defaultServerUrl()`, `NATIVE_DEFAULT_SERVER` | Sunucu adresi (web: `""` aynı köken; Android: `http://10.0.2.2:4000`). |
 | `pingServer(url?)` | `/api/health` sınaması → `{ ok, ms, message }` (fırlatmaz). |
-| `setAuthToken`, `getAuthToken`, `onUnauthorized(fn)` | AuthContext kullanır; belirteçli istek 401 alınca oturum temizlenir. |
+| `setAuthToken`, `onUnauthorized(fn)` | AuthContext kullanır; belirteçli istek 401 alınca oturum temizlenir. Belirteç değişince bekleyen `Idempotency-Key` denemeleri unutulur. (`getAuthToken` de dışa aktarılır ama şu an hiçbir yerden çağrılmaz.) |
+| `newIdempotencyKey()`, `IDEMPOTENCY_HEADER`, seçenek `idempotencyKey?: string \| false` | Aşağıdaki "Çift kayıt önleme". |
+
+**Çift kayıt önleme (`Idempotency-Key`).** Oturumlu her `POST/PUT/PATCH/DELETE` isteğine (`/api/auth/*` hariç) `request()` otomatik bir UUID anahtarı koyar;
+sayfaların bir şey yapması gerekmez. Yanıt belirsiz kalırsa (ağ hatası, zaman aşımı, 502/503/504 ya da `idempotency_in_progress`) AYNI yöntem, adres ve gövdeyle
+yeniden gönderilen istek AYNI anahtarı kullanır; sunucu işlemi tekrarlamadan ilk yanıtı döndürür ([API.md](../../docs/API.md#yeniden-gönderim-idempotency-key)). Kesin bir yanıt
+(başarı ya da sunucunun verdiği hata) anahtarı unutturur: sonraki gönderim yeni bir işlemdir. Bekleyen anahtar 10 dakika sonra bırakılır (sunucu da 10 dakika saklar); hesap
+değişince hepsi silinir. Anahtar yalnız aynı içerikte geçerlidir: kullanıcı metni değiştirip gönderirse yeni anahtar kullanılır. Anahtar ayrıca yalnız o
+kaynağa yapılan **en son** istek bu belirsiz denemeyse yeniden kullanılır: aynı kaynağa (sorgusuz yol) ya da doğrudan üst/alt kaynağına (ör. vekâlet ver
+`POST /api/me/delegations` ↔ geri al `DELETE /api/me/delegations/:id`) başka bir değiştiren istek gidince eski deneme unutulur. Yoksa "Evet (belirsiz) → Hayır →
+Evet" dizisinde sunucu eski "Evet" makbuzunu yeniden döndürür, oy sessizce "Hayır" kalırdı (takip/bırak, taslak A→B→A için de aynı). Zaman aşımı ve "bağlantı kesildi" iletilerinin sonuna
+"Aynı içeriği yeniden gönderirseniz çift kayıt oluşmaz." eklenir. Güvenli olmayan bağlamda (ör. yerel ağdan `http://`) `crypto.randomUUID` yoktur; anahtar `getRandomValues` ile üretilir.
+`request()` seçeneği `idempotencyKey`: metin → bu anahtar, `false` → başlık eklenmez. "Tekrar dene" düğmeleri formu AYNI gövdeyle yeniden göndermelidir.
 
 ## Uç noktalar (`api/endpoints.ts`)
 
-Hepsi `Promise` döner, tipler `@forum/shared`'dan. (docs/API.md ile birebir; 104 uç nokta.)
+Hepsi `Promise` döner, tipler `@forum/shared`'dan. (docs/API.md ile birebir; 104 uç nokta. **Çağıranı olmayan altı işlev** — `getHealth`, `getFollowing`,
+`getReceipts`, `getVoters`, `getClusterSnapshot`, `getAiStatus` — aşağıda "(çağıranı yok)" ile işaretlidir: arayüzde henüz bir ekranı yoktur ve istemci sözleşmesi
+API.md'yi tam karşılasın diye tutulur.)
 
-- **Sistem:** `getHealth()`, `getSystem()`, `getDashboard()`
+- **Sistem:** `getSystem()`, `getDashboard()`, `getHealth()` (çağıranı yok; bağlantı sınaması `pingServer` aynı adresi doğrudan çağırır)
 - **Kimlik/hesap:** `register(input)`, `login({login, password})`, `logout()`, `getMe()`, `updateConsents({aiConsent?, politicalConsent?})`,
   `changePassword({oldPassword, newPassword})`, `changeNickname({nickname, password})`, `exportMyData()`, `eraseMe({confirm: "SİL", password})`,
-  `getMyDelegations()`, `delegate({to, scope, rank})`, `revokeDelegation(id)`, `getFollowing()`,
+  `getMyDelegations()`, `delegate({to, scope, rank})`, `revokeDelegation(id)`, `getFollowing()` (çağıranı yok),
+  `requestCorrection(input)`, `getMyCorrections()`, `withdrawCorrection(id)` (KVKK md. 11/1-d kimlik verisi düzeltme talebi),
   `getNotifications({unread?})`, `markNotificationsRead(ids?)` (boş → tümü), `getMyTasks()`, `getMyAssignments()`
-- **Kayıt memuru:** `getPendingUsers()`, `getUserPii(userId, purpose)`, `verifyUser(userId, {decision, note?})`, `registrarCreateUser(input)`
+  — `eraseMe` gövdesi `confirm` + `password` ister; son yönetici 409 `last_admin`.
+- **Kayıt memuru:** `getPendingUsers()`, `getUserPii(userId, purpose)`, `verifyUser(userId, {decision, note?})`, `registrarCreateUser(input)`,
+  `listCorrections(status?)`, `reviewCorrection(id, purpose)`, `decideCorrection(id, req)`
 - **Yönetim:** `advanceClock(hours)`, `runTick()`, `adminListUsers(q?)`, `setUserRoles(userId, roles)`, `getAuditLog({action?, actorId?, limit?})`, `recomputeClusters()`
-  — saat ileri alındıktan sonra `useAuth().refreshSystem()` çağırın.
-- **Kullanıcılar:** `listUsers({q?, limit?})`, `getUser(id)`, `followUser(id)`, `unfollowUser(id)`, `vouchUser(id, level)`, `relateUser(id, kind)`
+  — saat ileri alındıktan sonra `useAuth().refreshSystem()` çağırın. `setUserRoles` doğrulanmamış hesaba personel rolü verirse 409 `not_verified` döner;
+  Yönetim › Roller hatayı toast olarak gösterir. Görev rolü kutuları doğrulanmamış (bekleyen/askıdaki) hesapta kapalıdır ve nedeni ipucu olarak gösterilir (`roleCheckbox`); verilmiş bir rolü kaldırmak serbesttir; silinmiş/reddedilmiş hesapta hiçbir kutu değişmez. Sunucu ayrıca 409 `not_verified` döner. `recomputeClusters` anonim anlık görüntü döndürür.
+- **Kullanıcılar:** `listUsers({q?, limit?})`, `getUser(id)`, `followUser(id)`, `unfollowUser(id)`, `vouchUser(id, level)`, `unvouchUser(id)`,
+  `relateUser(id, kind)`, `unrelateUser(id, kind?)`
 - **Ontoloji:** `getOntology()`, `getOntologyVersions()`, `getTurtle(version?)` (metin), `validatePatch(patch)`
 - **Öneriler:** `listProposals(query?)`, `precheckProposal(req)`, `createProposal(req)`, `getProposal(id)`, `updateProposal(id, {title, body, acknowledgePii?})`,
   `submitProposal(id)`, `sponsorProposal(id)`, `withdrawProposal(id)`, `addSuggestion(id, body)`, `decideSuggestion(id, sid, "accept"|"reject")`,
-  `flagRight(id, {right, direction, remove?})`, `vote(id, choice)`, `getReceipts(id)`, `submitObjection(id, {ground, statement})`,
-  `addMinorityReport(id, body)`, `requestExperts(id, "panel"|"counter")`, `askExpertQuestion(id, body)`, `getBulletin(id)`, `getVoters(id)`,
+  `flagRight(id, {right, direction, remove?})`, `vote(id, choice)`, `getReceipts(id)` (çağıranı yok; makbuzlar cihazdan okunur), `submitObjection(id, {ground, statement})`,
+  `addMinorityReport(id, body)`, `requestExperts(id, "panel"|"counter")`, `askExpertQuestion(id, body)`, `getBulletin(id)`, `getVoters(id)` (çağıranı yok),
   `requestAiSummary(id)`, `requestAiBridging(id)`, `approveAiAnalysis(analysisId, {draftIndex?})`
 - **Konular/tartışma:** `listTopics()`, `getTopic(id)`, `getThread(type, id)`, `postMessage(type, id, {body, stance, parentId?, acknowledgePii?})`,
   `precheckMessage(body)`, `getMessage(id)`, `editMessage(id, {body, acknowledgePii?})`, `getMessageVersions(id)`, `endorseMessage(id, -1|0|1)`,
@@ -102,10 +124,10 @@ Hepsi `Promise` döner, tipler `@forum/shared`'dan. (docs/API.md ile birebir; 10
   — kişisel veri tespitinde 422 `pii_detected` (`details.pii`); kullanıcı onaylarsa `acknowledgePii: true` ile yeniden gönderin.
 - **Bilirkişi:** `listExperts({status?, domain?})`, `applyExpert({domains, credentials})`, `decideExpert(userId, req)`, `sanctionExpert(userId, req)`,
   `respondAssignment(assignmentId, {decision, reason?})`, `submitExpertReport(assignmentId, req)`, `lintExpertText(text)`
-- **Graf:** `getGraph({types?: EdgeType[], limit?})` → `GraphResponse {nodes, edges}`, `getGraphStats()`, `getLatestClusters()`, `getClusterSnapshot(id)`
+- **Graf:** `getGraph({types?: EdgeType[], limit?})` → `GraphResponse {nodes, edges}`, `getGraphStats()`, `getLatestClusters()`, `getClusterSnapshot(id)` (çağıranı yok)
 - **Defter:** `getLedgerStatus()`, `getValidators()`, `listBlocks({from?, limit?})`, `getBlock(height, node?)`, `listTxs({type?, proposalId?, limit?})`,
   `getTx(hash)`, `getProof(hash)`, `verifyChain(node?)`, `tamperBlock({nodeId, height})`, `repairNode({nodeId})`, `setNodeFault({nodeId, fault})`
-- **YZ:** `getAiStatus()`
+- **YZ:** `getAiStatus()` (çağıranı yok; YZ kipi `auth.system` içinden okunur)
 
 ## Oturum (`auth/AuthContext.tsx`)
 
@@ -129,11 +151,17 @@ auth.can("U"|"V"|"VV"|"R"|"D"|"A"|"E")  // docs/API.md yetki kısaltmaları; A, 
 auth.hasRole("registrar"); auth.isVerified; auth.isVoter; auth.isExpert; auth.isAdmin
 ```
 
+**Yetkiler hesap durumuna bağlıdır** (`derivePermissions(user)`, saf ve birim testli; sunucudaki `requireRole` / `requireExpert` ile aynı sonucu verir): `can("R"|"D"|"A"|"E")`, `isAdmin`, `isExpert` ve görev
+rolleri için `hasRole("registrar"|"auditor"|"admin")` yalnız **`status = "verified"`** hesapta doğrudur. Kayıt memuru onayını bekleyen bir üyeye rol verilmiş olsa bile menüde
+'Kayıt memuru' ve 'Yönetim' görünmez ve `RequireRole` sayfayı kapatır (aksi halde sunucu "Hesabınız etkin değil" derdi). `hasRole("member")` ve `can("U")` hesap durumundan etkilenmez.
+Menü ve sayfa koruması aynı kuralı kullanır: `components/layout/nav.ts › canOpenRegistrar(auth)`, `canOpenAdmin(auth)`.
+
 `useServerNow()` → sağlayıcı dışında da çalışan `now` fonksiyonu.
 
 **Rota korumaları** (`auth/guards.tsx`): `<RequireAuth perm?="V">…</RequireAuth>` (oturum yoksa `/giris`'e yönlendirir, dönüş adresi
 `location.state.from`), `<RequireRole roles={["registrar","auditor"]}>` (yönetici her zaman geçer).
 `/kayit-memuru` → registrar/auditor/admin; `/yonetim` → admin/auditor (denetçi yalnızca denetim günlüğünü görmeli: sayfada `can("A")` ile ayırın);
+rol yalnız **doğrulanmış** hesapta sayılır (bkz. yukarıda);
 `/profil`, `/bildirimler`, `/oneriler/yeni` → oturum gerekir (yeni öneri sayfası `can("V")`'yi kendisi denetlemeli).
 
 ## Kancalar
@@ -148,12 +176,12 @@ auth.hasRole("registrar"); auth.isVerified; auth.isVoter; auth.isExpert; auth.is
 | `useNow(ms=1000)` (`lib/hooks`) | Sunucu saatine göre "şimdi"; her `ms`'de yeniden çizdirir. |
 | `useDebounced(value, ms)` | Canlı ön denetim / arama için. |
 | `useQueryState(key, default)` | URL sorgu parametresine bağlı durum (ör. sekme): `const [tab, setTab] = useQueryState("sekme", "acik")`. Aynı olayda birden çok anahtar güncellenebilir; güncellemeler birbirini ezmez. |
-| `useInterval(fn, delay \| null)` | |
+| `useInterval(fn, delay \| null)` (`lib/hooks`) | `setInterval` sarmalayıcısı; **şu an hiçbir bileşen kullanmıyor** (yoklama `useAsync({pollMs})` ve AuthContext zamanlayıcılarıyla yapılır). |
 | `useDocumentTitle(title)` (`ui`) | `PageHeader` zaten ayarlar. |
 
 ## lib yardımcıları
 
-- **format.ts:** `formatDateTime(ms, short?)` "1 Ekim 2026 14:05", `formatDate`, `formatTime`, `formatIsoDate("2000-05-01")`,
+- **format.ts:** `formatDateTime(ms, short?)` "1 Ekim 2026 14:05", `formatDate`, `formatTime` (çağıranı yok), `formatIsoDate("2000-05-01")`,
   `formatRelative(ms, now)` "3 dakika önce", `formatDuration(ms)` "2 sa 13 dk", `formatHours(h)`, `formatPercent(0.615)` "%61,5",
   `formatNumber(n, digits?)`, `formatRational({num,den})` "2/3 (%66,7)", `shortHash(h, n)`, `proposalRef(seq)` "#K-12", `topicRef(seq)` "#T-7",
   `truncate(s, max)`, `normalizeSearch(s)` (Türkçe duyarsız arama).
@@ -165,10 +193,15 @@ auth.hasRole("registrar"); auth.isVerified; auth.isVoter; auth.isExpert; auth.is
 - **native.ts:** `setupNativeBackButton()` (main.tsx çağırır). Android geri tuşu sırasıyla açık pencereyi/alt sayfayı kapatır, açık menüyü kapatır, uygulama içinde geri gider; geçmiş yoksa uygulamadan çıkar (`@capacitor/app`).
 - **receipts.ts:** `saveReceipt(receipt, {proposalTitle?, proposalSeq?})` — `vote()` yanıtını **her zaman** kaydedin;
   `listReceipts(proposalId?)` (en yeni önce, oturumdaki kullanıcının), `latestReceipt(proposalId, round?)`, `isLatest(r, list)`,
-  `exportReceipts()`, `importReceipts(json)`, `clearReceipts()`. Oy değiştirilince yeni makbuz eklenir; geçerli olan en sonuncusudur.
+  `exportReceipts()`, `importReceipts(json)`, `clearReceipts()` (`latestReceipt`, `importReceipts`, `clearReceipts` yalnız testlerde kullanılır). Oy değiştirilince yeni makbuz eklenir; geçerli olan en sonuncusudur.
 - **validators.ts (TOFU):** `ensurePinnedValidators()` → `{ status: "pinned_now"|"match"|"changed", pinned, fresh, diff }` —
   doğrulamada **her zaman** `pinned.validators` kullanın: `verifyInclusionProof(proof, pinned.validators)`. `status === "changed"` ise
   `describeValidatorDiff(diff)` metniyle uyarı gösterin. Ayrıca `getPinnedValidators()`, `pinValidators(keys)`, `resetPinnedValidators(all?)`, `listPinnedValidators()`, `compareValidators()`.
+- **blockVerify.ts:** blok doğrulaması (saf işlev): özet, Merkle kökü, işlem özetleri ve commit imzaları; imzalar YALNIZ sabitlenmiş anahtarlarla doğrulanır, anahtar yoksa doğrulama kapalı kalır (fail-closed).
+- **ledgerVerify.ts:** tarayıcıda "sunucuya güvenmeden" doğrulama. `loadBoundTx(hash, pinned, tür?)`: işlem içeriğini istenen özete bağlar (`ledgerTxHash`) ve dahil olma kanıtını
+  sabitlenmiş anahtarlarla denetler (404 → `{state: "pending"}`: henüz bloğa girmedi, hata değil); `checkTxPage(adresteki özet, tx, kanıt, sabitlenmiş)`: işlem sayfasının (`/defter/islem/<özet>`) doğrulaması;
+  özet adresten küçük harfe çevrilip (`normalizeTxHash`, sunucu da küçük harfe çevirir) karşılaştırılır. "Tutuyor" yalnız yeniden hesaplanan özet VE sunucunun `hash` iddiası adresteki özetle aynıysa görünür;
+  kanıt `verifyInclusionProof(kanıt, anahtarlar, adrestekiÖzet)` ile ve uygulama imzası adresteki özet üzerinden denetlenir; başka bir işlemin içeriği/kanıtı/imzası uyuşmazlık olarak kırmızı gösterilir.
 - **diff.ts:** `diffLines(a,b)`, `diffWords(a,b)` → `{type: "same"|"add"|"del", text}[]`; `diffText(a,b)` → satır + satır içi kelime farkı (`DiffLine.words`); `diffStats()`. Görsel: `<DiffView>`.
 - **glossary.ts:** sözlük (yaklaşık 34 terim, 6 konu): `GLOSSARY`, `GLOSSARY_GROUPS`, `findTerm(id)`, `getTerm(id)`, `glossaryByGroup()`, `searchGlossary(q)` (Türkçe duyarsız; terim, sembol, günlük karşılık ve tanımda arar),
   `termAnchor(id)` (`terim-<kimlik>`), `termForTier(tier)`, `termForDecisionCheck(key)`. Her girdi: terim (ekranda AYNEN yazıldığı gibi), `plain` (günlük karşılık), `definition`, varsa `symbol` ve `bylawLink` (yönetmelikte yeri).
@@ -227,10 +260,15 @@ auth.hasRole("registrar"); auth.isVerified; auth.isVoter; auth.isExpert; auth.is
 
 **Ortak bileşenler (`components/`):**
 - `RegistrationForm` — `onSubmit(input): Promise<void>` (fırlatırsa hata alanlara eşlenir), `mode?: "self"\|"registrar"`, `submitLabel?`, `resetOnSuccess?`, `initial?`. Kayıt memuru sayfası: `<RegistrationForm mode="registrar" resetOnSuccess onSubmit={async (i) => { await registrarCreateUser(i); toast.success(…); }} />`.
+  Doğrulama kuralları **sunucudaki `parseRegistration` ile aynıdır** (`registrationForm.test.ts` 80 girdi üzerinde ikisini karşılaştırır; sapma testte kırılır) ve form sunucuya NORMALLEŞTİRİLMİŞ değerleri gönderir:
+  takma ad önce NFKC + kırpma, sonra desen ve 3–32 karakter; ad ve soyad, il, ilçe, mahalle, açık adres NFKC + kırpma + boşluk sadeleştirme sonrası ölçülür (ad/soyad ≤ 64, il/ilçe 2–64, mahalle 2–128, açık adres 5–500);
+  e-posta NFKC + kırpma, ≤ 254 karakter ve sunucudaki zod 4 e-posta deseni; doğum tarihi takvimde var olan bir tarih olmalıdır (tam genişlikli "ａｌｉｃｅ" reddedilmez, normalleştirilir).
+  Kalıcı çözüm: kuralları `shared`'e taşıyıp sunucu (`identity/validation.ts`) ve form aynı koddan beslenmeli (şimdilik kopya + eşitlik testi).
 - `CategoryPicker` — `value: string[]`, `onChange`, `label?`, `hint?`, `error?`, `max?`, `disabled?`, `required?`, `suggestions?: {iri, label?, confidence?}[]` (precheck sınıflandırmasından), `collapsible?` (isteğe bağlı seçimde kapalı açılır; özet satırında seçili sayısı).
 - `UserLink` — `id` + `nickname` (+ `status?`, `isExpert?`) ya da `user`; silinmiş üye düz metin.
 - `KvkkNotice` — aydınlatma metni (Profil sayfasında da gösterin).
-- `PlaceholderPage` — `title`, `description?`.
+- `PlaceholderPage` — `title`, `description?`, `children?`. **Şu an hiçbir yol kullanmıyor** (bütün sayfaların kendi arayüzü var); yol sayfadan önce açılırsa geçici "hazırlanıyor" içeriği olarak
+  kullanılabilir. Gerekmiyorsa silmek serbesttir (dosya ve bu satır birlikte).
 
 ## Öneri sayfası ve Ana sayfa (Faz 2)
 

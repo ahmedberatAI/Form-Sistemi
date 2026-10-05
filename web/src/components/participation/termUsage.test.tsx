@@ -317,6 +317,13 @@ describe("VerifyTallyPanel: 'Neyi denetler?' sözlük terimi", () => {
     expect(text(intro)).toContain("defterdeki son taahhüdüyle karşılaştırılır");
   });
 
+  it("vekâletle sayılan oyların taahhütle denetlenemediği açıkça söylenir (#218)", () => {
+    const intro = text(html().slice(html().indexOf("Neyi denetler?")));
+    expect(intro).toContain("Vekâletle sayılan oylar");
+    expect(intro).toContain("taahhütle denetlenemez");
+    expect(intro).toContain("bağımsızca kanıtlayamaz");
+  });
+
   it("e2e sözleşmesi: başlık ve düğme adı iki kez, çapa ve action tonu aynen; yasak alt dizeler yok", () => {
     const h = html();
     expect(h.split("Sayımı kendim doğrulayayım").length - 1).toBe(2);

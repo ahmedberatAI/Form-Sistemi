@@ -1,6 +1,8 @@
 // Kayıt formu: RegistrationInput'un tüm alanları, istemci tarafı doğrulama (TCKN algoritması dahil),
 // aydınlatma metni onayı ile AYRI açık rıza kutuları (siyasi görüş — oy için gerekli; YZ — varsayılan kapalı).
 // Hem /kayit (mode="self") hem kayıt memurunun "Üyeyi sisteme gir" ekranında (mode="registrar") kullanılır.
+// Kurallar sunucudakiyle (server/src/identity/validation.ts) aynıdır: önce NFKC normalizasyonu (tam genişlikli 'ａｌｉｃｅ' → 'alice'),
+// sonra desen ve uzunluk sınırları. Sunucunun kabul edeceği girdiyi istemci reddetmez; sapma registrationForm.test.ts'te (sunucu şemasıyla karşılaştırma) yakalanır.
 import { useId, useState, type FormEvent } from "react";
 import { ageOn, isValidTckn, type RegistrationInput } from "@forum/shared";
 import { ApiError } from "../api/client";
@@ -19,7 +21,7 @@ export interface RegistrationFormProps {
   initial?: Partial<RegistrationInput>;
 }
 
-type FieldKey =
+export type FieldKey =
   | "nickname"
   | "password"
   | "password2"
@@ -36,7 +38,7 @@ type FieldKey =
   | "postaKodu"
   | "kvkkNoticeAccepted";
 
-interface FormState {
+export interface FormState {
   nickname: string;
   password: string;
   password2: string;
@@ -78,9 +80,32 @@ function initialState(i?: Partial<RegistrationInput>): FormState {
   };
 }
 
-// Sunucudaki kurallarla (server/src/identity/validation.ts) aynı
-const NICKNAME_RE = /^[A-Za-z0-9çğıöşüÇĞİÖŞÜâîûÂÎÛ._-]{3,32}$/;
-const NAME_RE = /^[\p{L}\p{M}' .-]+$/u;
+// ───────────── Kurallar (server/src/identity/validation.ts ile aynı) ─────────────
+
+export const NICKNAME_RE = /^[A-Za-z0-9çğıöşüÇĞİÖŞÜâîûÂÎÛ._-]{3,32}$/;
+export const NAME_RE = /^[\p{L}\p{M}' .-]+$/u;
+/** Sunucudaki z.email() deseni (zod 4) */
+export const EMAIL_RE = /^(?:[A-Za-z0-9_'+\-]+\.)*[A-Za-z0-9_'+\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$/;
+/** [en az, en çok] karakter (NFKC ve boşluk sadeleştirmesinden sonra) */
+export const REGISTRATION_LIMITS = {
+  nickname: [3, 32],
+  name: [1, 64],
+  email: [1, 254],
+  il: [2, 64],
+  ilce: [2, 64],
+  mahalle: [2, 128],
+  acikAdres: [5, 500],
+} as const;
+
+/** Takma ad: NFKC + kırpma (sunucudaki nicknameSchema'nın ilk adımı). */
+export function normalizeNicknameInput(raw: string): string {
+  return raw.normalize("NFKC").trim();
+}
+
+/** Ad, soyad ve adres alanları: NFKC, kırpma ve ardışık boşlukların teke indirilmesi (sunucudaki requiredText). */
+export function normalizeTextInput(raw: string): string {
+  return raw.normalize("NFKC").trim().replace(/\s+/g, " ");
+}
 
 /** 05XX…, +90…, 0090… biçimlerini kabul eder (sunucu +90XXXXXXXXXX'e çevirir). */
 function isValidPhone(raw: string): boolean {
@@ -88,36 +113,91 @@ function isValidPhone(raw: string): boolean {
   return /^0(5\d{9})$/.test(s) || /^\+90([2-5]\d{9})$/.test(s) || /^0090([2-5]\d{9})$/.test(s);
 }
 
+/** Takvimde var olan bir YYYY-AA-GG tarihi mi (sunucudaki isValidIsoDate). */
+function isRealIsoDate(s: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return false;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d;
+}
+
+/** Boş / çok kısa / çok uzun metin için hata iletisi (normalleştirilmiş değer üzerinden); sorun yoksa undefined. */
+function boundedTextError(label: string, raw: string, [min, max]: readonly [number, number]): string | undefined {
+  const v = normalizeTextInput(raw);
+  if (!v) return `${label} zorunludur.`;
+  if (v.length < min) return `${label} en az ${min} karakter olmalıdır.`;
+  if (v.length > max) return `${label} en fazla ${max} karakter olabilir.`;
+  return undefined;
+}
+
+/** Ad / soyad: uzunluk sınırları, sonra harf deseni. */
+function personNameError(label: string, raw: string): string | undefined {
+  return boundedTextError(label, raw, REGISTRATION_LIMITS.name) ?? (NAME_RE.test(normalizeTextInput(raw)) ? undefined : `${label} yalnızca harf, boşluk, kesme işareti ve tire içerebilir.`);
+}
+
 const ORDER: FieldKey[] = ["nickname", "password", "password2", "firstName", "lastName", "tckn", "birthDate", "email", "phone", "il", "ilce", "mahalle", "acikAdres", "postaKodu", "kvkkNoticeAccepted"];
 
-function validate(s: FormState, mode: "self" | "registrar", today: string): Partial<Record<FieldKey, string>> {
+/** Alan hataları (boş nesne → geçerli). `today`: YYYY-AA-GG, sunucu saatine göre bugün. */
+export function validate(s: FormState, mode: "self" | "registrar", today: string): Partial<Record<FieldKey, string>> {
   const e: Partial<Record<FieldKey, string>> = {};
-  const nick = s.nickname.trim();
-  if (nick.length < 3 || nick.length > 32) e.nickname = "Takma ad 3–32 karakter olmalıdır.";
+  const set = (k: FieldKey, msg: string | undefined) => {
+    if (msg) e[k] = msg;
+  };
+  const nick = normalizeNicknameInput(s.nickname);
+  if (nick.length < REGISTRATION_LIMITS.nickname[0] || nick.length > REGISTRATION_LIMITS.nickname[1]) e.nickname = "Takma ad 3–32 karakter olmalıdır.";
   else if (!NICKNAME_RE.test(nick)) e.nickname = "Takma ad yalnızca harf (Türkçe harfler dahil), rakam, nokta, alt çizgi ve tire içerebilir; boşluk olamaz.";
   if (s.password.length < 8) e.password = "Şifre en az 8 karakter olmalıdır.";
   else if (s.password.length > 128) e.password = "Şifre en fazla 128 karakter olabilir.";
   else if (!/\p{L}/u.test(s.password) || !/\p{N}/u.test(s.password)) e.password = "Şifre en az bir harf ve bir rakam içermelidir.";
   if (mode === "self" && s.password2 !== s.password) e.password2 = "Şifreler eşleşmiyor.";
-  if (!s.firstName.trim()) e.firstName = "Ad zorunludur.";
-  else if (!NAME_RE.test(s.firstName.trim())) e.firstName = "Ad yalnızca harf, boşluk, kesme işareti ve tire içerebilir.";
-  if (!s.lastName.trim()) e.lastName = "Soyad zorunludur.";
-  else if (!NAME_RE.test(s.lastName.trim())) e.lastName = "Soyad yalnızca harf, boşluk, kesme işareti ve tire içerebilir.";
+  set("firstName", personNameError("Ad", s.firstName));
+  set("lastName", personNameError("Soyad", s.lastName));
   const tckn = s.tckn.replace(/\D/g, "");
   if (tckn.length !== 11) e.tckn = "T.C. kimlik numarası 11 haneli olmalıdır.";
   else if (!isValidTckn(tckn)) e.tckn = "T.C. kimlik numarası geçerli değil (algoritma denetimi başarısız).";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s.birthDate)) e.birthDate = "Doğum tarihini girin.";
+  else if (!isRealIsoDate(s.birthDate)) e.birthDate = "Doğum tarihi geçerli değil.";
   else if (s.birthDate >= today) e.birthDate = "Doğum tarihi geçmişte olmalıdır.";
   else if (s.birthDate < "1900-01-01") e.birthDate = "Doğum tarihi geçerli değil.";
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s.email.trim())) e.email = "Geçerli bir e-posta adresi girin.";
+  const email = s.email.normalize("NFKC").trim();
+  if (email.length > REGISTRATION_LIMITS.email[1]) e.email = "E-posta adresi çok uzun.";
+  else if (!EMAIL_RE.test(email)) e.email = "Geçerli bir e-posta adresi girin.";
   if (!isValidPhone(s.phone)) e.phone = "Telefon numarası 05XX XXX XX XX ya da +90 ile başlayan biçimde olmalıdır.";
-  if (s.il.trim().length < 2) e.il = s.il.trim() ? "İl en az 2 karakter olmalıdır." : "İl zorunludur.";
-  if (s.ilce.trim().length < 2) e.ilce = s.ilce.trim() ? "İlçe en az 2 karakter olmalıdır." : "İlçe zorunludur.";
-  if (s.mahalle.trim().length < 2) e.mahalle = s.mahalle.trim() ? "Mahalle en az 2 karakter olmalıdır." : "Mahalle zorunludur.";
-  if (s.acikAdres.trim().length < 5) e.acikAdres = s.acikAdres.trim() ? "Açık adres en az 5 karakter olmalıdır." : "Açık adres zorunludur.";
+  set("il", boundedTextError("İl", s.il, REGISTRATION_LIMITS.il));
+  set("ilce", boundedTextError("İlçe", s.ilce, REGISTRATION_LIMITS.ilce));
+  set("mahalle", boundedTextError("Mahalle", s.mahalle, REGISTRATION_LIMITS.mahalle));
+  set("acikAdres", boundedTextError("Açık adres", s.acikAdres, REGISTRATION_LIMITS.acikAdres));
   if (s.postaKodu.trim() && !/^\d{5}$/.test(s.postaKodu.trim())) e.postaKodu = "Posta kodu 5 haneli olmalıdır.";
   if (!s.kvkkNoticeAccepted) e.kvkkNoticeAccepted = mode === "self" ? "Devam etmek için aydınlatma metnini okuduğunuzu onaylayın." : "Üyenin aydınlatma metnini okuduğunu onaylayın.";
   return e;
+}
+
+/** Sunucuya giden girdi: alanlar sunucudaki normalleştirmeyle aynı biçimde (NFKC, kırpma, boşluk sadeleştirme) gönderilir. */
+export function buildRegistrationInput(s: FormState): RegistrationInput {
+  const postaKodu = s.postaKodu.trim();
+  return {
+    nickname: normalizeNicknameInput(s.nickname),
+    password: s.password,
+    firstName: normalizeTextInput(s.firstName),
+    lastName: normalizeTextInput(s.lastName),
+    tckn: s.tckn.replace(/\D/g, ""),
+    birthDate: s.birthDate,
+    email: s.email.normalize("NFKC").trim(),
+    phone: s.phone.trim(),
+    address: {
+      il: normalizeTextInput(s.il),
+      ilce: normalizeTextInput(s.ilce),
+      mahalle: normalizeTextInput(s.mahalle),
+      acikAdres: normalizeTextInput(s.acikAdres),
+      ...(postaKodu ? { postaKodu } : {}),
+    },
+    kvkkNoticeAccepted: s.kvkkNoticeAccepted,
+    politicalConsent: s.politicalConsent,
+    aiConsent: s.aiConsent,
+  };
 }
 
 /**
@@ -180,26 +260,7 @@ export function RegistrationForm({ onSubmit, mode = "self", submitLabel, resetOn
       focusFirst(errs);
       return;
     }
-    const input: RegistrationInput = {
-      nickname: s.nickname.trim(),
-      password: s.password,
-      firstName: s.firstName.trim(),
-      lastName: s.lastName.trim(),
-      tckn: s.tckn.replace(/\D/g, ""),
-      birthDate: s.birthDate,
-      email: s.email.trim(),
-      phone: s.phone.trim(),
-      address: {
-        il: s.il.trim(),
-        ilce: s.ilce.trim(),
-        mahalle: s.mahalle.trim(),
-        acikAdres: s.acikAdres.trim(),
-        ...(s.postaKodu.trim() ? { postaKodu: s.postaKodu.trim() } : {}),
-      },
-      kvkkNoticeAccepted: s.kvkkNoticeAccepted,
-      politicalConsent: s.politicalConsent,
-      aiConsent: s.aiConsent,
-    };
+    const input = buildRegistrationInput(s);
     setSubmitting(true);
     try {
       await onSubmit(input);

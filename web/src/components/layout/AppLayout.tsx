@@ -11,7 +11,7 @@ import { useNow } from "../../lib/hooks";
 import { routes } from "../../lib/routes";
 import { countBadgeText, taskCountText, useTaskCount } from "../../lib/taskStore";
 import { Alert, Button, cx, DropdownMenu, Icon, Modal } from "../../ui";
-import { GROUP_LABELS, systemRows, topNavSections, visibleItems, type NavItem } from "./nav";
+import { canOpenAdmin, canOpenRegistrar, GROUP_LABELS, systemRows, topNavSections, visibleItems, type NavItem } from "./nav";
 
 /** Sayfa değişince bekleyen işler bu kadar eskiyse yenilenir (oy verip listeye dönen üyenin rozeti ve kartları güncel kalsın). */
 const TASKS_STALE_MS = 10_000;
@@ -243,8 +243,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
                   items={[
                     { label: "Profil", to: "/profil", icon: "user" },
                     { label: "Bildirimler", to: "/bildirimler", icon: "bell", badge: <CountBadge n={auth.unread} /> },
-                    auth.can("R") || auth.can("D") ? { label: "Kayıt memuru", to: "/kayit-memuru", icon: "registrar" } : null,
-                    auth.can("A") || auth.can("D") ? { label: "Yönetim", to: "/yonetim", icon: "admin" } : null,
+                    canOpenRegistrar(auth) ? { label: "Kayıt memuru", to: "/kayit-memuru", icon: "registrar" } : null,
+                    canOpenAdmin(auth) ? { label: "Yönetim", to: "/yonetim", icon: "admin" } : null,
                     { label: "Ayarlar", to: "/ayarlar", icon: "settings" },
                     "divider",
                     {

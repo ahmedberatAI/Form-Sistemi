@@ -176,8 +176,10 @@ export function VerifyTallyPanel({ proposalId, results }: { proposalId: string; 
         <Details className="verify-intro" summary="Neyi denetler?">
           <p className="small">
             <Term id="dagitik-defter">Defterdeki</Term> oy açıklamaları (BALLOT_REVEAL) ve sayım kaydı (TALLY) indirilir; karar fonksiyonu tarayıcınızda aynı
-            girdilerle yeniden çalıştırılır. Her açıklanan doğrudan oy, defterdeki son <Term id="taahhut">taahhüdüyle</Term> karşılaştırılır. Kimin hangi oyu
-            verdiği açıklanmaz: oy pusulaları öneriye özel rastgele kimliklerle tutulur.
+            girdilerle yeniden çalıştırılır. Her açıklanan doğrudan oy, defterdeki son <Term id="taahhut">taahhüdüyle</Term> karşılaştırılır. Vekâletle
+            sayılan oylar (kendisi oy vermeyenin vekâlet zinciriyle sayılan oyu) taahhütle denetlenemez: bunlar için yalnızca açıklanan oyların özetinin sayım
+            kaydıyla eşleştiği ve sonucun yeniden hesaplandığı doğrulanır; vekâletle sayılan oyun hangi seçime gittiğini tarayıcınız bağımsızca kanıtlayamaz. Kimin
+            hangi oyu verdiği açıklanmaz: oy pusulaları öneriye özel rastgele kimliklerle tutulur.
           </p>
         </Details>
         {running ? <Spinner showLabel label="Bülten indiriliyor ve sayım yeniden yapılıyor…" /> : null}

@@ -77,7 +77,7 @@ export function ClockPanel() {
 
   return (
     <div className="stack-lg">
-      <Card title="Simüle saat" subtitle="Demo için zaman ileri alınır; evre geçişlerinin tek otoritesi sunucudaki zamanlayıcıdır.">
+      <Card title="Simüle saat" subtitle="Demo için zaman ileri alınır. Süreye ve eşiklere bağlı evre geçişlerini sunucudaki zamanlayıcı yürütür; yalnızca yazarın öneriyi göndermesi ya da geri çekmesi bunun dışındadır.">
         <div className="stack">
           {sys ? (
             <KeyValue
@@ -148,6 +148,20 @@ export function ClockPanel() {
 
 const ALL_ROLES: Role[] = ["member", "registrar", "auditor", "admin"];
 
+/**
+ * Rol onay kutusunun durumu. 'Üye' sabittir; silinmiş/reddedilmiş hesapta hiçbir rol değişmez. Görev rolleri (kayıt memuru, denetçi,
+ * yönetici) yalnız kimliği doğrulanmış hesaba VERİLEBİLİR (sunucu 409 not_verified döner); zaten verilmiş bir rolü kaldırmak her
+ * durumda serbesttir. reason: kutu kapalıysa nedeni (ipucu metni).
+ */
+export function roleCheckbox(u: Pick<AdminUserRow, "status" | "roles">, role: Role, busy: boolean): { checked: boolean; disabled: boolean; reason?: string } {
+  const checked = role === "member" || u.roles.includes(role);
+  if (role === "member") return { checked, disabled: true };
+  if (busy) return { checked, disabled: true };
+  if (u.status === "erased" || u.status === "rejected") return { checked, disabled: true };
+  if (!checked && u.status !== "verified") return { checked, disabled: true, reason: "Görev rolü yalnızca kimliği doğrulanmış üyeye verilebilir; önce başvurunun kayıt memurunca onaylanması gerekir." };
+  return { checked, disabled: false };
+}
+
 export function RoleManager() {
   const auth = useAuth();
   const toast = useToast();
@@ -205,15 +219,10 @@ export function RoleManager() {
                 header: "Roller",
                 render: (u) => (
                   <div className="sy-roles" role="group" aria-label={`@${u.nickname} rolleri`}>
-                    {ALL_ROLES.map((r) => (
-                      <Checkbox
-                        key={r}
-                        label={ROLE_LABELS[r]}
-                        checked={r === "member" || u.roles.includes(r)}
-                        disabled={r === "member" || busyId === u.id || u.status === "erased" || u.status === "rejected"}
-                        onChange={(e) => void toggle(u, r, e.target.checked)}
-                      />
-                    ))}
+                    {ALL_ROLES.map((r) => {
+                      const st = roleCheckbox(u, r, busyId === u.id);
+                      return <Checkbox key={r} label={ROLE_LABELS[r]} checked={st.checked} disabled={st.disabled} title={st.reason} onChange={(e) => void toggle(u, r, e.target.checked)} />;
+                    })}
                   </div>
                 ),
               },
@@ -236,6 +245,8 @@ const AUDIT_ACTIONS: [string, string][] = [
   ["identity.erase", "Kripto-imha (hesap silme)"],
   ["identity.password_change", "Şifre değişikliği"],
   ["identity.login_failed", "Başarısız giriş"],
+  ["identity.login_locked", "Giriş kilidi"],
+  ["identity.ledger_error", "Defter gönderim hatası"],
   ["identity.duplicate_attempt", "Mükerrer kayıt denemesi"],
   ["message.read_hidden", "Gizlenmiş mesajı okuma"],
   ["admin.clock_advance", "Saat ileri alma"],

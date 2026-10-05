@@ -1,6 +1,6 @@
 // Rota korumaları: oturum / yetki / rol gerektiren sayfalar.
 import type { ReactNode } from "react";
-import type { Role } from "@forum/shared";
+import { USER_STATUS_LABELS, type Role } from "@forum/shared";
 import { Navigate, useLocation } from "react-router-dom";
 import { Alert, EmptyState, ErrorView, LinkButton, Spinner } from "../ui";
 import { useAuth, type Permission } from "./AuthContext";
@@ -64,9 +64,31 @@ export function RequireRole({ children, roles }: { children: ReactNode; roles: R
   const auth = useAuth();
   return (
     <RequireAuth>
-      {auth.isAdmin || roles.some((r) => auth.hasRole(r)) ? children : <Forbidden message={`Bu sayfa yalnızca şu rollere açıktır: ${roles.map(roleName).join(", ")}.`} />}
+      {auth.isAdmin || roles.some((r) => auth.hasRole(r)) ? children : <RoleDenied roles={roles} />}
     </RequireAuth>
   );
+}
+
+/**
+ * Rol yetmedi: kullanıcıda gereken rol atanmışsa ama hesap doğrulanmamışsa (görev rolleri yalnız doğrulanmış hesapta geçerlidir,
+ * sunucudaki requireRole gibi) asıl neden söylenir; yoksa rol listesi gösterilir.
+ */
+function RoleDenied({ roles }: { roles: Role[] }) {
+  const { user } = useAuth();
+  const heldButInactive = !!user && user.status !== "verified" && [...roles, "admin" as Role].some((r) => user.roles.includes(r));
+  if (heldButInactive) {
+    return (
+      <div className="page">
+        <Alert tone="warning" title="Görev rolünüz henüz etkin değil">
+          Bu sayfa için gereken rol hesabınıza verilmiş, ancak görev rolleri yalnızca kimliği doğrulanmış hesapta geçerlidir.{" "}
+          {user.status === "pending"
+            ? "Hesabınız kayıt memuru onayını bekliyor."
+            : `Hesabınızın durumu: ${USER_STATUS_LABELS[user.status] ?? user.status}.`}
+        </Alert>
+      </div>
+    );
+  }
+  return <Forbidden message={`Bu sayfa yalnızca şu rollere açıktır: ${roles.map(roleName).join(", ")}.`} />;
 }
 
 function roleName(r: Role): string {

@@ -103,13 +103,84 @@ export async function apiUrl(path: string): Promise<string> {
   return (await getServerUrl()) + path;
 }
 
+// ───────────── Yeniden gönderim anahtarı (Idempotency-Key) ─────────────
+// Yanıtı belirsiz kalan bir gönderim (zaman aşımı, bağlantı kopması, vekilden 502/503/504) sunucuda işlenmiş olabilir.
+// Her gönderim denemesine bir anahtar verilir; aynı istek (yöntem + adres + gövde) yeniden gönderilirse AYNI anahtar kullanılır
+// ve sunucu işlemi tekrarlamadan ilk yanıtı döndürür (server/src/http/idempotency.ts). Kesin bir yanıt (başarı ya da sunucunun
+// verdiği hata) gelince anahtar unutulur: sonraki gönderim yeni bir işlemdir. Bkz. bulgu #275.
+// Anahtar yalnız o kaynağa yapılan EN SON istek bu belirsiz denemeyse yeniden kullanılır: aynı kaynağa (ya da doğrudan üst/alt
+// kaynağına) başka bir değiştiren istek gönderilince eski belirsiz deneme unutulur. Yoksa "Evet (belirsiz) → Hayır (başarılı) →
+// Evet" dizisinde üçüncü istek ilk anahtarı taşır, sunucu eski "Evet" makbuzunu yeniden döndürür ve oy sessizce "Hayır" kalırdı
+// (takip/bırak, destek, taslak A→B→A ve vekâlet ver/geri al için de aynı).
+
+export const IDEMPOTENCY_HEADER = "Idempotency-Key";
+/** Sunucu başarılı yanıtı ilk isteğin gelişinden itibaren 10 dk saklar; daha eski belirsiz denemenin anahtarı kullanılmaz. */
+const RETRY_KEY_TTL_MS = 10 * 60_000;
+const MAX_PENDING_ATTEMPTS = 50;
+/** Yanıtı belirsiz kalmış denemeler: istek parmak izi → anahtar, kaynak (sorgusuz adres) ve zaman */
+const pendingAttempts = new Map<string, { key: string; at: number; resource: string }>();
+const RESEND_IS_SAFE = " Aynı içeriği yeniden gönderirseniz çift kayıt oluşmaz.";
+
+/** Rastgele UUID v4. Güvenli olmayan bağlamda (ör. yerel ağdan http://) randomUUID yoktur; getRandomValues her yerde vardır. */
+export function newIdempotencyKey(): string {
+  const c = globalThis.crypto;
+  if (typeof c.randomUUID === "function") return c.randomUUID();
+  const b = c.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const h = Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
+/** İsteğin hedef kaynağı: sorgu dizesi ve sondaki "/" olmadan adres (ör. POST …/relate ile DELETE …/relate?kind=x aynı kaynak). */
+function resourceOf(url: string): string {
+  return url.split("?")[0].replace(/\/+$/, "");
+}
+
+/** Aynı kaynak ya da doğrudan üst/alt kaynak mı? (ör. POST /api/me/delegations ile DELETE /api/me/delegations/:id) */
+function relatedResources(a: string, b: string): boolean {
+  if (a === b) return true;
+  const [short, long] = a.length < b.length ? [a, b] : [b, a];
+  return long.startsWith(short + "/") && !long.slice(short.length + 1).includes("/");
+}
+
+/** Bu kaynağa (ya da doğrudan üst/alt kaynağına) ait, parmak izi farklı belirsiz denemeleri unutur: yeni istek onları geçersiz kılar. */
+function supersedeAttempts(resource: string, keep: string | null): void {
+  for (const [k, a] of pendingAttempts) if (k !== keep && relatedResources(a.resource, resource)) pendingAttempts.delete(k);
+}
+
+/**
+ * Aynı istek için yanıtı belirsiz kalmış bir deneme varsa (ve o kaynağa ondan sonra başka bir istek gönderilmediyse) onun anahtarı,
+ * yoksa yeni anahtar (belirsiz kalırsa diye kaydedilir).
+ */
+function attemptKey(fingerprint: string, resource: string): string {
+  const now = Date.now();
+  for (const [k, a] of pendingAttempts) if (now - a.at > RETRY_KEY_TTL_MS) pendingAttempts.delete(k);
+  supersedeAttempts(resource, fingerprint);
+  const prev = pendingAttempts.get(fingerprint);
+  if (prev) return prev.key;
+  const key = newIdempotencyKey();
+  pendingAttempts.set(fingerprint, { key, at: now, resource });
+  for (const k of pendingAttempts.keys()) {
+    if (pendingAttempts.size <= MAX_PENDING_ATTEMPTS) break;
+    pendingAttempts.delete(k);
+  }
+  return key;
+}
+
+/** Sunucunun işlemi yapıp yapmadığı bilinmeyen yanıtlar: vekil hataları ve "ilk istek hâlâ işleniyor". */
+function outcomeUncertain(err: ApiError): boolean {
+  return err.status === 0 || err.status === 502 || err.status === 503 || err.status === 504 || err.code === "idempotency_in_progress";
+}
+
 // ───────────── Oturum belirteci ve 401 olayı ─────────────
 
 let authToken: string | null = null;
 const unauthorizedTarget = new EventTarget();
 
-/** AuthContext belirteci buraya verir; sonraki isteklere Bearer olarak eklenir. */
+/** AuthContext belirteci buraya verir; sonraki isteklere Bearer olarak eklenir. Oturum değişince belirsiz denemeler unutulur. */
 export function setAuthToken(token: string | null): void {
+  if (token !== authToken) pendingAttempts.clear();
   authToken = token;
 }
 
@@ -160,6 +231,11 @@ export interface RequestOptions {
   /** false → Authorization başlığı eklenmez */
   auth?: boolean;
   headers?: Record<string, string>;
+  /**
+   * Idempotency-Key: varsayılan olarak oturumlu her POST/PUT/PATCH/DELETE isteğine (/api/auth/* hariç) otomatik verilir;
+   * yanıtı belirsiz kalan aynı istek yeniden gönderilince aynısı kullanılır. Metin → bu anahtar; false → başlık eklenmez.
+   */
+  idempotencyKey?: string | false;
 }
 
 function parseErrorBody(status: number, text: string): ApiError {
@@ -210,14 +286,29 @@ function defaultMessage(status: number): string {
 export async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   const base = await getServerUrl();
   const url = base + path + qs(opts.query);
+  const method = opts.method ?? "GET";
   const headers: Record<string, string> = { Accept: opts.responseType === "text" ? "text/plain, text/turtle, */*" : "application/json", ...opts.headers };
-  let body: BodyInit | undefined;
+  let body: string | undefined;
   if (opts.body !== undefined) {
     headers["Content-Type"] = "application/json";
     body = JSON.stringify(opts.body);
   }
   const sentToken = opts.auth === false ? null : authToken;
   if (sentToken) headers.Authorization = `Bearer ${sentToken}`;
+
+  // Değiştiren istekte anahtar (sunucu yalnız oturumlu istekte kullanır). attempt: yanıt belirsiz kalırsa anahtarın saklandığı iz.
+  let attempt: string | null = null;
+  const keyGiven = Object.keys(headers).some((h) => h.toLowerCase() === IDEMPOTENCY_HEADER.toLowerCase());
+  if (method !== "GET" && sentToken && opts.idempotencyKey !== false && !keyGiven && !path.startsWith("/api/auth/")) {
+    if (typeof opts.idempotencyKey === "string") headers[IDEMPOTENCY_HEADER] = opts.idempotencyKey;
+    else {
+      attempt = `${method} ${url}\n${body ?? ""}`;
+      headers[IDEMPOTENCY_HEADER] = attemptKey(attempt, resourceOf(url));
+    }
+  }
+  // Anahtarı elle verilmiş ya da anahtarsız değiştiren istek de aynı kaynaktaki eski belirsiz denemeleri geçersiz kılar.
+  if (method !== "GET" && attempt === null) supersedeAttempts(resourceOf(url), null);
+  const resendNote = headers[IDEMPOTENCY_HEADER] ? RESEND_IS_SAFE : "";
 
   const ctrl = new AbortController();
   let timedOut = false;
@@ -236,18 +327,18 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
   let text: string;
   try {
     try {
-      res = await fetch(url, { method: opts.method ?? "GET", headers, body, signal: ctrl.signal });
+      res = await fetch(url, { method, headers, body, signal: ctrl.signal });
     } catch (e) {
       if (opts.signal?.aborted) throw e;
-      if (timedOut) throw new ApiError(0, "timeout", "Sunucu zamanında yanıt vermedi. Lütfen tekrar deneyin.");
+      if (timedOut) throw new ApiError(0, "timeout", "Sunucu zamanında yanıt vermedi. Lütfen tekrar deneyin." + resendNote);
       throw new ApiError(0, "network", "Sunucuya ulaşılamıyor. İnternet bağlantınızı ve Ayarlar'daki sunucu adresini kontrol edin.");
     }
     try {
       text = await res.text();
     } catch (e) {
       if (opts.signal?.aborted) throw e;
-      if (timedOut) throw new ApiError(0, "timeout", "Sunucu zamanında yanıt vermedi. Lütfen tekrar deneyin.");
-      throw new ApiError(0, "network", "Sunucu yanıtı okunamadı (bağlantı kesildi).");
+      if (timedOut) throw new ApiError(0, "timeout", "Sunucu zamanında yanıt vermedi. Lütfen tekrar deneyin." + resendNote);
+      throw new ApiError(0, "network", "Sunucu yanıtı okunamadı (bağlantı kesildi)." + resendNote);
     }
   } finally {
     clearTimeout(timer);
@@ -256,11 +347,13 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
 
   if (!res.ok) {
     const err = parseErrorBody(res.status, text);
+    if (attempt && !outcomeUncertain(err)) pendingAttempts.delete(attempt);
     if (res.status === 401 && sentToken && !path.startsWith("/api/auth/")) {
       unauthorizedTarget.dispatchEvent(new CustomEvent("unauthorized", { detail: err }));
     }
     throw err;
   }
+  if (attempt) pendingAttempts.delete(attempt);
   if (opts.responseType === "text") return text as T;
   if (!text) return undefined as T;
   try {

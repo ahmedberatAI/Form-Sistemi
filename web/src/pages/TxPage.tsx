@@ -1,13 +1,16 @@
 // İşlem ayrıntısı: alanlar, yük (JSON), dahil olma kanıtının tarayıcıda doğrulanması (Merkle yolu + blok özeti + ≥ 2f+1 imza,
-// cihazda sabitlenmiş doğrulayıcı anahtarlarıyla) ve işlem özetinin yeniden hesaplanması.
+// cihazda sabitlenmiş doğrulayıcı anahtarlarıyla) ve işlem özetinin yeniden hesaplanması. Bütün denetimler sunucunun söylediği
+// özete değil ADRESTEKİ özete bağlanır (lib/ledgerVerify.checkTxPage): sunucu başka bir işlemin içeriğini, kanıtını ve imzasını
+// döndürürse sayfa "Tutuyor / Geçerli" göstermez.
 import { useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ed25519Verify, hashCanonical, hexToBytes, merkleLeaf, verifyInclusionProof } from "@forum/shared";
+import { merkleLeaf } from "@forum/shared";
 import { getProof, getTx } from "../api/endpoints";
 import { txTypeLabel, TxTypeBadge, VerifyMark } from "../components/system/marks";
 import { PinNotice, usePinnedValidators } from "../components/system/pinned";
 import "../components/system/system.css";
 import { formatDateTime } from "../lib/format";
+import { checkTxPage, normalizeTxHash } from "../lib/ledgerVerify";
 import { routes } from "../lib/routes";
 import { useAsync } from "../lib/useAsync";
 import { Alert, Card, CopyButton, ErrorView, HashText, KeyValue, PageHeader, Spinner } from "../ui";
@@ -25,21 +28,20 @@ export default function TxPage() {
   const tx = useAsync(() => getTx(hash), [hash]);
   const proof = useAsync(() => getProof(hash), [hash]);
   const pin = usePinnedValidators();
-  const t = tx.data;
+  // Adres değişince önceki işlemin içeriği ve kanıtı, yenisi yüklenirken ekranda (ve karşılaştırmada) kalmaz.
+  const expected = normalizeTxHash(hash);
+  const t = tx.loading && tx.data && tx.data.hash !== expected ? undefined : tx.data;
+  const p = proof.loading && proof.data && proof.data.txHash !== expected ? undefined : proof.data;
 
-  const recomputed = useMemo(() => (t ? safe(() => hashCanonical({ type: t.type, payload: t.payload, nonce: t.nonce }), "") : null), [t]);
-  const proofCheck = useMemo(() => {
-    if (!proof.data || !pin.data) return null;
-    return safe(() => verifyInclusionProof(proof.data!, pin.data!.pinned.validators), { ok: false, reasons: ["Kanıt doğrulanırken hata oluştu"] });
-  }, [proof.data, pin.data]);
-
-  // Uygulama imzası: tx.sig = Ed25519(hexToBytes(tx.hash)), cihazda sabitlenmiş uygulama anahtarıyla
+  // Adresteki özete bağlı doğrulama: içerik–özet bağı, kanıtın işlem özeti ve uygulama imzası (adresteki özet üzerinde).
+  const check = useMemo(() => checkTxPage(hash, t, p, pin.data?.pinned), [hash, t, p, pin.data]);
+  const { recomputed, contentOk } = check;
+  const proofCheck = check.proof;
   const appKey = pin.data?.pinned.appPublicKey ?? null;
-  const sigOk = useMemo(() => (t && appKey ? safe(() => ed25519Verify(t.sig, hexToBytes(t.hash), appKey), false) : false), [t, appKey]);
+  const sigOk = check.sigOk === true;
 
   const payloadJson = t ? JSON.stringify(t.payload, null, 2) : "";
   const proposalId = t && typeof t.payload.proposalId === "string" ? t.payload.proposalId : null;
-  const p = proof.data;
 
   return (
     <div className="page">
@@ -57,11 +59,11 @@ export default function TxPage() {
         <ErrorView error={tx.error} onRetry={tx.reload} />
       ) : t ? (
         <>
-          <Card title="Tarayıcıda doğrulama" tone={recomputed === t.hash && proofCheck?.ok ? "success" : proofCheck && !proofCheck.ok ? "danger" : "default"}>
+          <Card title="Tarayıcıda doğrulama" tone={contentOk && proofCheck?.ok ? "success" : !contentOk || (proofCheck && !proofCheck.ok) ? "danger" : "default"}>
             <ul className="list">
               <li className="list-item row-between">
-                <span>İşlem özeti yeniden hesaplandı: SHA-256(kanonik {"{type, payload, nonce}"})</span>
-                <VerifyMark ok={recomputed === t.hash} okText="Tutuyor" failText="Tutmuyor" />
+                <span>İşlem özeti yeniden hesaplandı ve adresteki özetle karşılaştırıldı: SHA-256(kanonik {"{type, payload, nonce}"})</span>
+                <VerifyMark ok={contentOk} okText="Tutuyor" failText="Tutmuyor" />
               </li>
               <li className="list-item row-between">
                 <span>Dahil olma kanıtı (Merkle yolu, blok özeti, ≥ 2f+1 doğrulayıcı imzası)</span>
@@ -86,10 +88,17 @@ export default function TxPage() {
               </Alert>
             ) : null}
             {proof.error ? <ErrorView error={proof.error} compact onRetry={proof.reload} /> : null}
-            {recomputed && recomputed !== t.hash ? (
-              <p className="small">
-                Hesaplanan özet: <HashText hash={recomputed} />
-              </p>
+            {!contentOk ? (
+              <Alert tone="error" title="İşlem içeriği adresteki özete ait değil" className="mt">
+                Sunucunun verdiği içerikten hesaplanan özet, adresteki işlem özetiyle (ya da sunucunun bildirdiği özetle) aynı değil; sunucu başka bir işlemin ya da
+                değiştirilmiş bir içeriğin verisini döndürmüş olabilir.
+                {recomputed ? (
+                  <>
+                    {" "}
+                    Hesaplanan özet: <HashText hash={recomputed} />
+                  </>
+                ) : null}
+              </Alert>
             ) : null}
           </Card>
 

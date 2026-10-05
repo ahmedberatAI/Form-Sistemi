@@ -1,4 +1,5 @@
-// Henüz yazılmamış sayfalar için geçici içerik.
+// Yer tutucu sayfa: henüz arayüzü olmayan bir bölüm için "hazırlanıyor" içeriği. Şu an hiçbir yol bunu kullanmıyor (bütün sayfaların
+// kendi arayüzü var); yeni bir bölüm sayfadan önce yolu açılırsa geçici içerik olarak kullanılabilir.
 import type { ReactNode } from "react";
 import { EmptyState, LinkButton, PageHeader } from "../ui";
 

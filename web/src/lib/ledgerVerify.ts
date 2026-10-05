@@ -2,7 +2,18 @@
 // Sunucudan gelen her işlem içeriği (1) istenen özete gerçekten ait mi (ledgerTxHash), (2) o özetin dahil olma kanıtı
 // cihazda sabitlenmiş doğrulayıcı anahtarlarıyla geçerli mi — ikisi de denetlenir. Böylece sunucu bülteni (hazır
 // "commitments" haritası, açıklama listesi, sayım yükü) değiştirse bile doğrulama bunu yakalar.
-import { txMatchesHash, verifyInclusionProof, type BulletinRound, type InclusionProof, type RevealEntry, type TallyPayload } from "@forum/shared";
+import {
+  ed25519Verify,
+  hexToBytes,
+  ledgerTxHash,
+  txMatchesHash,
+  verifyInclusionProof,
+  type BulletinRound,
+  type CommittedTxView,
+  type InclusionProof,
+  type RevealEntry,
+  type TallyPayload,
+} from "@forum/shared";
 import { isApiError } from "../api/client";
 import { getProof, getTx } from "../api/endpoints";
 import type { PinnedValidators } from "./validators";
@@ -11,6 +22,65 @@ export type BoundResult<T> =
   | { state: "ok"; payload: T; proof: InclusionProof; height: number; index: number }
   | { state: "pending" } // henüz bloğa girmedi (404)
   | { state: "fail"; reason: string };
+
+/** İşlem özetinin adres çubuğundaki hâli: sunucu da özeti küçük harfe çevirerek arar (hashParams), karşılaştırma buna göre yapılır. */
+export function normalizeTxHash(raw: string): string {
+  return String(raw ?? "").trim().toLowerCase();
+}
+
+export interface TxPageCheck {
+  /** Adresteki (istenen) özet, normalleştirilmiş */
+  expected: string;
+  /** Sunucunun verdiği içerikten yeniden hesaplanan özet ("" → hesaplanamadı) */
+  recomputed: string;
+  /** İçerik adresteki özete ait mi: yeniden hesaplanan özet VE sunucunun `hash` iddiası adrestekiyle aynı */
+  contentOk: boolean;
+  /** Dahil olma kanıtı, sabitlenmiş anahtarlarla ve ADRESTEKİ işlem için geçerli mi (null: kanıt ya da anahtarlar henüz yok) */
+  proof: { ok: boolean; reasons: string[] } | null;
+  /** Uygulama imzası adresteki özet üzerinde geçerli mi (null: sabitlenmiş uygulama anahtarı yok) */
+  sigOk: boolean | null;
+}
+
+/**
+ * İşlem sayfasının (/islem/<özet>) tarayıcıda doğrulaması. Her denetim sunucunun söylediği özete değil ADRESTEKİ özete bağlanır
+ * (loadBoundTx ile aynı desen): sunucu başka bir işlemin kendi içinde tutarlı içeriğini, kanıtını ve imzasını döndürse bile
+ * içerik–özet bağı, kanıtın işlem özeti ve imza (adresteki özet üzerinde) tutmaz.
+ */
+export function checkTxPage(
+  urlHash: string,
+  tx: CommittedTxView | null | undefined,
+  proof: InclusionProof | null | undefined,
+  pinned: Pick<PinnedValidators, "validators" | "appPublicKey"> | null | undefined,
+): TxPageCheck {
+  const expected = normalizeTxHash(urlHash);
+  let recomputed = "";
+  let contentOk = false;
+  if (tx) {
+    try {
+      recomputed = ledgerTxHash(tx);
+    } catch {
+      recomputed = "";
+    }
+    contentOk = recomputed !== "" && txMatchesHash(tx, expected);
+  }
+  let proofCheck: TxPageCheck["proof"] = null;
+  if (proof && pinned) {
+    try {
+      proofCheck = verifyInclusionProof(proof, pinned.validators, expected);
+    } catch {
+      proofCheck = { ok: false, reasons: ["Kanıt doğrulanırken hata oluştu"] };
+    }
+  }
+  let sigOk: boolean | null = null;
+  if (tx && pinned?.appPublicKey) {
+    try {
+      sigOk = ed25519Verify(tx.sig, hexToBytes(expected), pinned.appPublicKey);
+    } catch {
+      sigOk = false;
+    }
+  }
+  return { expected, recomputed, contentOk, proof: proofCheck, sigOk };
+}
 
 /** Tek bir işlemi defterden alır; içerik-özet bağını ve dahil olma kanıtını denetler. */
 export async function loadBoundTx<T = Record<string, unknown>>(txHash: string, pinned: PinnedValidators, expectedType?: string): Promise<BoundResult<T>> {

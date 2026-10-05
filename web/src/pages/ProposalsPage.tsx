@@ -39,7 +39,8 @@ const SORTS: { value: SortId; label: string }[] = [
   { value: "eski", label: "En eski" },
 ];
 
-const LIMIT = 500; // sunucunun izin verdiği en büyük sayfa (http şeması)
+// Tek istekte istenen öneri sayısı. Sunucu en çok 1000 kabul eder (http şeması); arayüz 500 ile yetinir. Liste dolarsa 'İlk 500 öneri gösteriliyor' uyarısı çıkar.
+const LIMIT = 500;
 
 /** Bu genişliğin altında (list-filters'ın üç sütuna geçtiği 640 px'in altı) Tür ve Sırala 'Süz ve sırala' açılırına girer. */
 const NARROW_QUERY = "(max-width: 639px)";

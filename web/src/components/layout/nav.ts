@@ -24,6 +24,15 @@ export interface NavItem {
   visible?: (a: AuthContextValue) => boolean;
 }
 
+/**
+ * Görev sayfalarının menüde görünme kuralları; sayfa korumalarıyla (App.tsx: RequireRole) aynıdır. can('R'/'D'/'A') yalnızca doğrulanmış
+ * hesapta doğrudur (AuthContext.derivePermissions), bu yüzden kayıt memuru onayını bekleyen bir üyeye rol verilmiş olsa bile menüde
+ * görünmeyen sayfa 'Hesabınız etkin değil' hatasıyla açılmaz. Kayıt memuru sayfası: kayıt memuru (yazma) ya da denetçi (yalnız okuma);
+ * Yönetim sayfası: yönetici (tam) ya da denetçi (yalnız denetim günlüğü ve bütünlük uyarıları). Yönetici R ve D'yi kapsar.
+ */
+export const canOpenRegistrar = (a: Pick<AuthContextValue, "can">): boolean => a.can("R") || a.can("D");
+export const canOpenAdmin = (a: Pick<AuthContextValue, "can">): boolean => a.can("A") || a.can("D");
+
 export const NAV_ITEMS: NavItem[] = [
   { to: "/", label: "Ana sayfa", short: "Ana sayfa", icon: "home", end: true, group: "main", bottom: true },
   { to: "/konular", label: "Konular", icon: "topics", group: "main", bottom: true },
@@ -35,8 +44,8 @@ export const NAV_ITEMS: NavItem[] = [
   { to: "/yonetmelik", label: "Yönetmelik", icon: "book", group: "explore" },
   // Gösterim rehberi ve sözlük: grubun SONUNDA durur (üst gezinmedeki 4+4 öğe ve sıraları değişmez).
   { to: routes.kesfet(), label: "Gösterim rehberi ve sözlük", icon: "info", group: "explore", topNav: false },
-  { to: "/kayit-memuru", label: "Kayıt memuru", icon: "registrar", group: "duty", visible: (a) => a.can("R") || a.can("D") },
-  { to: "/yonetim", label: "Yönetim", icon: "admin", group: "duty", visible: (a) => a.can("A") || a.can("D") },
+  { to: "/kayit-memuru", label: "Kayıt memuru", icon: "registrar", group: "duty", visible: canOpenRegistrar },
+  { to: "/yonetim", label: "Yönetim", icon: "admin", group: "duty", visible: canOpenAdmin },
   { to: "/profil", label: "Profil", icon: "user", group: "account", visible: (a) => !!a.user },
   { to: "/bildirimler", label: "Bildirimler", icon: "bell", group: "account", visible: (a) => !!a.user },
   { to: "/ayarlar", label: "Ayarlar", icon: "settings", group: "account" },
