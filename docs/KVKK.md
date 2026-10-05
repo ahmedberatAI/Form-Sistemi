@@ -25,11 +25,11 @@
 
 | # | Veri kategorisi | Alanlar | Amaç | Hukuki sebep | Saklama süresi | Nerede / nasıl |
 |---|---|---|---|---|---|---|
-| 1 | Kimlik | Ad, soyad, T.C. kimlik no, doğum tarihi | Kimlik doğrulama; "bir kişi – bir hesap – bir oy"; reşitlik denetimi | md. 5/2-c (üyelik sözleşmesinin kurulması ve ifası); veri sorumlusu dernekse üye kayıt yükümlülüğü için md. 5/2-ç | Üyelik süresince; silme talebinde, başvuru reddinde ya da 180 gün doğrulanmayan başvuruda derhâl kripto-imha | `identity_vault.enc_*` — alan bazında AES-256-GCM. TCKN ayrıca `tckn_bidx` kör indeksi (HMAC) olarak |
+| 1 | Kimlik | Ad, soyad, T.C. kimlik no, doğum tarihi | Kimlik doğrulama; "bir kişi – bir hesap – bir oy"; reşitlik denetimi | md. 5/2-c (üyelik sözleşmesinin kurulması ve ifası); veri sorumlusu dernekse üye kayıt yükümlülüğü için md. 5/2-ç | Üyelik süresince; silme talebinde, başvuru reddinde ya da **180 gerçek takvim günü** (duvar saati; demo hızlandırmasından etkilenmez, bkz. §6) doğrulanmayan başvuruda derhâl kripto-imha | `identity_vault.enc_*` — alan bazında AES-256-GCM. TCKN ayrıca `tckn_bidx` kör indeksi (HMAC) olarak |
 | 2 | İletişim | E-posta, telefon | Giriş (e-posta ile), hesap güvenliği bildirimleri | md. 5/2-c | Kimlik verisiyle aynı | Kasa (şifreli). E-posta ayrıca `email_bidx` kör indeksi. Telefon `+90…` biçimine normalleştirilir |
 | 3 | Adres | İl, ilçe, mahalle, açık adres, posta kodu | Kimlik doğrulama; bilirkişi kurasında hane/çıkar çatışması tespiti | md. 5/2-c, md. 5/2-f (karar sürecinin tarafsızlığında meşru menfaat) | Kimlik verisiyle aynı | Kasa (şifreli). `household_bidx` = normalize adresin HMAC'i (adresin kendisi değil) |
 | 4 | Kaba bölge | İl, ilçe | Yalnızca üyenin kendi profilinde (`Me`) ve KVKK dökümünde gösterim; kasayı her istekte çözmemek için ayrı tutulur. **İstatistikte ya da başka bir amaçla kullanılmaz**, herkese açık hiçbir yanıtta yer almaz (bkz. §8 madde 11) | md. 5/2-c | Üyelik süresince; silmede NULL | `users.region_il`, `users.region_ilce` (şifresiz — yalnız il/ilçe; aynı bilgi kasada şifreli de durur) |
-| 5 | Hesap | Takma ad, roller, durum, kayıt/doğrulama zamanı, itibar | Forumun işletilmesi | md. 5/2-c | Kalıcı (takma adlı); takma ad kişi tarafından 30 günde bir değiştirilebilir; silmede takma ad "Silinmiş üye #…" olur | `users` (herkese açık katılım tarihi güne yuvarlanır; tam an yalnız sahibine) |
+| 5 | Hesap | Takma ad, roller, durum, kayıt/doğrulama zamanı, itibar | Forumun işletilmesi | md. 5/2-c; rollerin herkese açık gösterimi md. 5/2-f (yönetişim şeffaflığı, §4.2) | Kalıcı (takma adlı); takma ad kişi tarafından 30 günde bir değiştirilebilir; silmede takma ad "Silinmiş üye #…" olur | `users` (herkese açık katılım tarihi güne yuvarlanır; tam an yalnız sahibine). Roller ve hesap durumu herkese açıktır (§4.2) |
 | 6 | Kimlik doğrulama sırrı | Şifre özeti | Giriş | md. 5/2-c | Hesap süresince; silmede geçersiz kılınır | `users.password_hash` — scrypt (N=16384, r=8, p=1, 16 bayt tuz) |
 | 7 | Oturum | Oturum kimliği, açılış/bitiş/iptal zamanı | Hesap güvenliği | md. 5/2-c, md. 5/2-f | 180 gün (simüle saat) | `sessions`; belirtecin imzası veritabanında yoktur |
 | 8 | Rıza kayıtları | Aydınlatma okuma zamanı, siyasi görüş rızası, YZ rızası, değişiklik geçmişi | Rızanın ispatı | md. 5/2-ç (ispat yükü) | Hesap süresince; geçmiş denetim günlüğünde | `users.kvkk_notice_at`, `users.political_consent`, `users.ai_consent`, `audit_log` (`identity.consents`) |
@@ -39,6 +39,8 @@
 | 12 | Bildirimler | Uygulama içi bildirim metinleri | Üyeyi bilgilendirme | md. 5/2-c | Alıcının hesabı süresince. Metinde geçen başka bir üyenin takma adı, o üye takma adını değiştirince güncellenir; hesabı silinince ya da başvurusu reddedilince "Silinmiş üye #…" / "Reddedilen başvuru #…" olur | `notifications` |
 | 13 | Defter kayıtları | `memberRef` (HMAC), özetler (zaman yalnız blok zamanı) | Değiştirilemez denetim izi | Kişisel veri içermez; `memberRef` anahtar olmadan hesaplanamaz (zaman eşleştirmesine karşı önlemler: §4.3) | Kalıcı | Dağıtık defter (`MEMBER_REGISTERED {memberRef}`, `MEMBER_VERIFIED {memberRef}`, `MEMBER_ERASED {memberRef}`) |
 | 14 | Düzeltme talepleri | Düzeltilecek alan adları, önerilen değerler, gerekçe, durum, karar notu | KVKK md. 11/1-d düzeltme hakkının yerine getirilmesi | md. 5/2-ç (hukuki yükümlülük) | Öneri karar/geri çekme anında imha; gerekçe ve kayıt hesap süresince, silmede NULL | `identity_corrections` — öneri ve gerekçe kişinin DEK'iyle şifreli; alan adları ve durum şifresiz (değer yok) |
+| 15 | Defter giden kutusu | Henüz blokta onaylanmamış defter işlemlerinin yükü (özet, tür, nonce; **kişisel veri değil**) | Sert kapanışta (çökme, `taskkill /F`) ve elektrik kesintisinde işlem kaybını önleme | Kişisel veri işlenmez; deftere yazılacak yükün aynısıdır (§4.3) | Blokta onaylanıp doğrulayıcı depoları diske indirilene dek (genellikle bir tick, ~1,6 sn) | `ledger_outbox` (ana veritabanı, şema sürümü 2) |
+| 16 | Geçici bellek kayıtları | Giriş sayaçları (tanımlayıcı özeti); `Idempotency-Key` yanıt deposu (oturumlu kullanıcının başarılı yanıtları) | Hesap başına kaba kuvvet sınırı; yeniden gönderimde çift kaydı önleme | md. 5/2-f (güvenliğin sağlanması) | En çok 15 dk (giriş kilidi) ve 10 dk (yanıt deposu); yalnız süreç belleği, yeniden başlatmada silinir | Süreç belleği; diske yazılmaz (§4.5) |
 
 **Veri aktarımı (md. 8–9):** Kimlik verileri hiçbir üçüncü kişiye aktarılmaz. Yalnızca YZ rızası veren üyelerin içerik
 metni, kişisel verisi maskelenmiş ve takma adları K1, K2… ile değiştirilmiş olarak YZ sağlayıcısına (Anthropic, Claude API —
@@ -145,9 +147,9 @@ VOTE_KEY  → ballotId = HMAC(VOTE_KEY, userId‖proposalId‖round)   (oylama m
 
 | İşlem | Kim | Kayıt |
 |---|---|---|
-| Kişisel veriyi görüntüleme (`getPii`) | Doğrulanmış kayıt memuru, denetçi, yönetici; **amaç zorunlu (≥ 5 karakter)** | Her erişim `pii_access_log` (aktör, üye, amaç, zaman) + `audit_log` (`identity.pii_access`). TCKN yalnızca maskeli (`123******90`) döner |
+| Kişisel veriyi görüntüleme (`getPii`) | Doğrulanmış kayıt memuru, denetçi, yönetici; **amaç zorunlu (≥ 5 karakter)** | Her erişim `pii_access_log` (aktör, üye, amaç, zaman) + `audit_log` (`identity.pii_access`); ikisi tek işlemde ve veri çözülmeden ÖNCE yazılır (kayıt yazılamazsa kişisel veri döndürülmez). TCKN yalnızca maskeli (`123******90`) döner |
 | Üye doğrulama / reddetme, üyeyi sisteme girme | Kayıt memuru, yönetici (kendi hesabını doğrulayamaz) | `audit_log` (`identity.verify`, `identity.create_by_registrar`); serbest metin notu günlüğe yazılmaz, yalnızca `hasNote` |
-| Rol atama | Yalnızca yönetici; son yönetici kendini düşüremez | `audit_log` (`identity.roles`, eski/yeni roller) |
+| Rol atama | Yalnızca yönetici; son yönetici kendini düşüremez; personel rolü (kayıt memuru, denetçi, yönetici) yalnız **doğrulanmış (etkin)** üyeye verilebilir (409 `not_verified`), geri almak her durumda serbesttir | `audit_log` (`identity.roles`, eski/yeni roller; değişiklik ve kayıt tek işlemde) |
 | Takma ad değişikliği (`PATCH /api/me/nickname`) | Yalnızca kişinin kendisi; **mevcut şifreyle teyit**; 30 günde en çok bir kez; kayıt kuralı, tekillik ve benzerlik (taklit) denetimi | `audit_log` (`identity.nickname_change`; eski ve yeni takma ad **yazılmaz** — hesap sonradan silinirse eski takma ad kimliğe geri bağlanamasın; yalnız `caseOnly`). Kişiye bildirim |
 | Takma ad anahtarı göçü (I/ı katlaması, bir kez) | Sunucu başlarken | Çakışan sonraki hesap için `audit_log` `identity.nickname_conflict` (kişisel veri yok) ve kişiye bildirim |
 | Düzeltme talebini inceleme (`reviewCorrection`) | Kayıt memuru, denetçi, yönetici; **amaç zorunlu** | `pii_access_log` + `audit_log` (`identity.pii_access`, `correctionId`, alan adları) — değerler çözülmeden önce |
@@ -157,8 +159,17 @@ VOTE_KEY  → ballotId = HMAC(VOTE_KEY, userId‖proposalId‖round)   (oylama m
 
 Denetim günlüğünün `meta` alanına kişisel veri yazılmaz (yalnızca karar, rol listesi, erişim amacı gibi bilgiler).
 Herkese açık hiçbir API yanıtında ad, soyad, TCKN, adres, doğum tarihi, e-posta ya da telefon yoktur; `Me` ve
-`PublicUser` yalnızca takma ad ve kaba bölge (yalnız sahibine) içerir. `PublicUser.joinedAt` (katılım tarihi) herkese açık
-yanıtlarda Türkiye saatine göre günün başına yuvarlanır; tam kayıt anı yalnız `Me`'de (sahibine) ve yönetici listesinde döner.
+`PublicUser` takma ad, hesap durumu, roller, itibar ve uzmanlık alanı etiketlerini içerir; kaba bölge yalnız `Me`'de (sahibine)
+döner. `PublicUser.joinedAt` (katılım tarihi) herkese açık yanıtlarda Türkiye saatine göre günün başına yuvarlanır; tam kayıt anı
+yalnız `Me`'de (sahibine) ve yönetici listesinde döner.
+
+**Roller herkese açıktır.** Kimin yönetici, kayıt memuru ya da denetçi olduğu (`PublicUser.roles`: üye listesi ve profil) bilinçli
+olarak herkese açıktır; bu bir yönetişim şeffaflığı kararıdır: kişisel veriye erişebilen kişilerin kimler olduğu bilinmeden erişim
+denetimi (`pii_access_log`, denetçi incelemesi) anlamlı olmaz. Roller takma adlı hesap verisidir (envanter #5): kayıt memuru takma
+adı gerçek kimliğe bağlayabildiği için kişisel veridir, ancak özel nitelikli değildir. Açıklanmaları yönetişim şeffaflığı ve erişim
+denetimi amacıyla veri sorumlusunun meşru menfaatine (md. 5/2-f) dayanır; hesap listesi zaten herkese açıktır. Bu karar
+değişirse `PublicUser.roles` API sözleşmesinden çıkarılmalı, görevli bilgisi yalnız ilgili kişiye ve yöneticiye gösterilmelidir.
+Hesap durumu (`status`) de herkese açıktır.
 
 **Takma ad tekilliği ve taklit.** Tekillik, giriş ve arama anahtarı (`nickname_norm`) NFKC + tr-TR küçük harf + I/ı/İ/i
 katlamasıdır (`shared/src/privacy.ts` `nicknameKey`): yalnız tr-TR küçültmesi ASCII "I"yı "ı" yaptığından "YONETICI" ile
@@ -210,17 +221,47 @@ bakar.
   söyler (yukarıdaki istisna).
 - **Defterde vekâlet ilişkisi yoktur.** Vekâlet kayıtları defterde sunucu sırrıyla anahtarlanmış bir taahhüttür
   (`HMAC(voteKey, from|to|kapsam|sıra|kenarId)`); az sayıda üyede kaba kuvvetle çözülemez.
+- **Giden kutusunda kişisel veri yoktur.** Henüz blokta onaylanmamış defter işlemleri, sert kapanışta (çökme, `taskkill /F`)
+  kaybolmasın diye ana veritabanındaki `ledger_outbox` tablosunda tutulur. Satır, deftere yazılacak yükün aynısıdır (`prepareTx`
+  kişisel veri anahtarlarını ve üye kimliğini reddeder), imza içermez ve işlem bloğa girip doğrulayıcı depoları diske indirilince
+  silinir; tabloda defterde zaten herkese açık olacak bilgiden fazlası yoktur ([MIMARI §4](MIMARI.md)).
 
 ### 4.4 Kimlik doğrulama güvenliği
 
 - Şifre: en az 8 karakter, harf + rakam; scrypt (`scrypt$N$r$p$tuz$özet`), `timingSafeEqual` ile karşılaştırma.
 - Hatalı girişte hesabın var olup olmadığı açığa çıkmaz: tek mesaj ("Takma ad/e-posta veya şifre hatalı.") ve hesap
-  bulunmasa da sahte scrypt hesabı (zamanlama eşitleme). Başarısız denemeler `identity.login_failed` olarak günlüğe yazılır.
+  bulunmasa da sahte scrypt hesabı (zamanlama eşitleme). Var olan bir hesaba yönelik başarısız denemeler `identity.login_failed`
+  olarak günlüğe yazılır.
+- **Hesap başına giriş kilidi.** Aynı tanımlayıcıya (normalleştirilmiş takma ad ya da e-posta) karşı 15 dakikada 5 başarısız
+  denemeden sonra tanımlayıcı 15 dakika kilitlenir (429 `login_locked`, `Retry-After`; IP hız sınırından ayrıdır). Sayaç anahtarı
+  hesap değil **tanımlayıcıdır**: var olmayan bir ad için de aynı sayaç ve aynı ileti işler, böylece kilit hesabın var olup
+  olmadığını ele vermez. Takma ad ve e-posta ayrı sayılır (tek sayaç, hangi e-postanın hangi takma ada ait olduğunu sızdırırdı).
+  Kilitliyken şifre denetlenmez; başarılı giriş sayacı sıfırlar. Kilit başına bir kez `identity.login_locked` yazılır (hesap varsa
+  hedef kimliği, yoksa boş; **tanımlayıcı yazılmaz**). Süreler gerçek duvar saatiyledir; sayaçlar bellektedir (§4.5).
+- **Değişiklik ve denetim kaydı atomiktir.** Rol atama, rıza değişikliği, doğrulama/red, kişisel veri erişimi, bekleyen başvuru
+  imhası ve hesap silme, satır değişikliğini ve denetim kaydını tek işlemde yazar: denetim satırı yazılamazsa değişiklik geri
+  alınır. Bildirim ve defter kaydı işlemden sonra yapılır. Kimlik modülünün gönderdiği bir defter kaydı reddedilirse bu artık
+  yutulmaz: `identity.ledger_error` (yalnız işlem türü ve hata kodu; üye bilgisi ve hata iletisi yok) olarak günlüğe yazılır.
 - Oturum belirteci HMAC imzalıdır; veritabanında yalnızca oturum kimliği durur. `authenticate` imza, süre (180 gün,
   simüle saat), iptal ve hesap durumunu (silinmiş/reddedilmiş → geçersiz) denetler. Şifre değişince diğer tüm oturumlar
   iptal edilir.
 - SQLite `PRAGMA secure_delete = ON`: üzerine yazılan/silinen satır baytları sayfalarda sıfırlanır; imhadan sonra WAL
   dosyası denetim noktasıyla (checkpoint) kesilir.
+
+### 4.5 Bellekte tutulan geçici kayıtlar
+
+Aşağıdakiler yalnız süreç belleğindedir; diske, yedeklere ya da deftere yazılmaz ve sunucu yeniden başlayınca silinir.
+
+| Kayıt | İçerik | Süre ve sınır | Kişisel veri |
+|---|---|---|---|
+| Giriş sayaçları | Tanımlayıcı özeti → başarısız deneme sayısı, pencere ve kilit zamanı | 15 dk pencere, 15 dk kilit (gerçek saat); en çok 10 000 tanımlayıcı; dolunca önce süresi dolmuşlar, sonra kilitsiz kayıtlardan en az denemesi olan atılır (kilitli kayıt ancak hepsi kilitliyse) | Tanımlayıcı düz metin değil özet olarak tutulur (e-posta için kör indeksten türetilir) |
+| `Idempotency-Key` yanıt deposu | Oturumlu kullanıcı + yöntem + yol + anahtar → ilk başarılı (2xx) yanıt | İlk istekten itibaren 10 dk (gerçek saat); 5000 kayıt, toplam 32 MB, yanıt başına 1 MB | **Yanıt gövdeleri** (ör. yazılan mesajın metni, `MessageView`) süreç belleğinde en çok 10 dakika durur. **İstek gövdeleri saklanmaz**; yalnız süreç başına rastgele anahtarlı bir HMAC özeti tutulur |
+
+`Idempotency-Key` kapsamı dışında kalanlar: anonim istekler, `/api/auth/*`, şifre içeren `/api/me/password`, çözülmüş kişisel veri
+döndüren `/api/registrar/users/:id/pii` ile `/api/registrar/corrections/:id/review` ve yalnız okuma/ön denetim yapan
+`/api/proposals/precheck`, `/api/messages/precheck`, `/api/experts/lint`, `/api/ontology/validate-patch` (tam liste:
+[API.md › Idempotency-Key](API.md#yeniden-gönderim-idempotency-key)). Böylece çözülmüş kimlik verisi bellekte tutulmaz ve her okuma
+erişim kaydına (`pii_access_log`) yeniden yazılır.
 
 ## 5. İlgili kişinin hakları (md. 11) ve uygulamadaki karşılıkları
 
@@ -231,7 +272,7 @@ bakar.
 | c | Amacını ve amaca uygun kullanılıp kullanılmadığını öğrenme | Aydınlatma metni; dökümdeki `processing` bölümü; `piiAccessLog`'daki erişim amaçları |
 | ç | Aktarıldığı üçüncü kişileri bilme | Aydınlatma metni (yalnız YZ sağlayıcısı, yalnız rızayla); `aiConsent` durumu dökümde |
 | d | Eksik/yanlış verinin düzeltilmesi | **Düzeltme talebi akışı** (§5.1): `POST /api/me/corrections` (Profil → "Kimlik bilgilerimi düzelt") → kayıt memuru amaç belirterek inceler (`POST /api/registrar/corrections/:id/review`) ve belgeyle doğruladıktan sonra karar verir (`…/decide`). Takma ad ve şifre bu akışın konusu değildir; kişi bunları Profil sayfasından kendisi değiştirir: takma ad `PATCH /api/me/nickname` (mevcut şifreyle teyit, 30 günde bir, tekillik ve benzerlik denetimi), şifre `POST /api/me/password`. |
-| e | Silinmesi / yok edilmesi | `POST /api/me/erase` (`"SİL"` onayı + şifre) → `eraseSelf`: **kripto-imha**, oylamaya konmaz, anında |
+| e | Silinmesi / yok edilmesi | `POST /api/me/erase` (`"SİL"` onayı + şifre) → `eraseSelf`: **kripto-imha**, oylamaya konmaz, anında. Ön koşullar (hesap açık, son yönetici değil, şifre, onay) her yan etkiden önce denetlenir; imha, denetim kaydı ve vekâletlerin geri alınması veritabanında tek işlemdedir (biri başarısız olursa hiçbiri uygulanmaz). Defter kayıtları da işlemin sonucuna bağlıdır: geri alınan vekâletlerin `DELEGATION` kayıtları işlem COMMIT olunca iletilir (işlem geri alınırsa hiç iletilmez), `MEMBER_ERASED` yalnız hesap gerçekten silindiyse ve işlemden sonra yazılır |
 | f | (d) ve (e)'nin aktarılan üçüncü kişilere bildirilmesi | Kimlik verisi aktarılmadığından gerekmez; YZ sağlayıcısına giden metin takma adsız ve maskelidir |
 | g | Yalnızca otomatik sistemlerle analiz sonucu aleyhine bir sonuca itiraz | YZ yalnızca danışmandır: durum değiştirmez, içerik gizlemez, oy vermez; her YZ çıktısı etiketlidir; moderasyon önerileri insana gider. YZ'nin içerik etiketi (yüksek güvenli olsa bile) bir öneriyi otomatik olarak kabul edilemez kılmaz: yalnızca uyarı ve bilirkişi incelemesi doğurur, karar insanındır (Madde 12 (2), 14 (1)) |
 | ğ | Zararın giderilmesini talep | Veri sorumlusunun başvuru kanalı (aydınlatma metninde) |
@@ -270,8 +311,16 @@ veri ihlali gibi hukuki durumlarda oylama yapılmadan "hukuki hızlı yol" ile k
 öncesi kişisel veri taraması (`pii_detected`) bu riski baştan azaltır.
 
 Başvurusu **reddedilen** üyenin kasası da aynı yöntemle imha edilir (işleme amacı ortadan kalkmıştır; hesap
-`Reddedilen başvuru #…` olur). **180 gün** içinde doğrulanmayan başvurular `purgeStalePending()` ile periyodik olarak imha
-edilir (KVKK silme yönetmeliği: periyodik imha en fazla 6 ayda bir).
+`Reddedilen başvuru #…` olur). **180 gün** içinde doğrulanmayan başvurular `purgeStalePending()` ile imha edilir (KVKK silme
+yönetmeliği: periyodik imha en fazla 6 ayda bir). Bu bakım sunucu açılışında ve her 10 dakikada kendiliğinden çalışır
+(`app.ts › startIdentityMaintenance`); işletmenin ayrıca bir iş kurması gerekmez.
+
+**180 gün gerçek takvim günüdür.** Süre **duvar saatiyle** ölçülür, simüle saatle değil: `TIME_SCALE` (demo hızlandırması) ve
+yöneticinin "ileri al" düğmesi bu süreyi etkilemez. Aksi halde `TIME_SCALE=60`'ta 180 simüle gün yaklaşık 3 gerçek gün eder ve
+gerçek kişilerin kimlik verisi demo hızlandırmasıyla geri dönüşsüz imha edilirdi. Başvurunun gerçek açılış anı (ms) `meta`
+tablosunda `identity.pending_since:<üye kimliği>` anahtarında tutulur (şema değişikliği yok); onay, red, hesap silme ya da imhada
+silinir. Bu kuraldan önce açılmış başvurularda süre, bakımın onları ilk gördüğü andan başlar (erken imha olmaz); bozuk bir kayıt da
+süreyi yeniden başlatır.
 
 ## 7. Uygulama haritası
 
@@ -283,6 +332,9 @@ edilir (KVKK silme yönetmeliği: periyodik imha en fazla 6 ayda bir).
 | Kayıt doğrulaması (zod 4, Türkçe hata iletileri) | `server/src/identity/validation.ts` |
 | `users` ↔ `PublicUser`/`Me`, `isVoter` | `server/src/identity/users.ts` |
 | `IdentityService` uygulaması | `server/src/identity/index.ts` |
+| Hesap başına giriş kilidi | `server/src/identity/login-throttle.ts` |
+| Yeniden gönderimde çift kayıt önleme (`Idempotency-Key`) | `server/src/http/idempotency.ts` |
+| Defter giden kutusu (sert kapanışta kayıpsızlık) | `server/src/ledger/outbox.ts`, `server/src/db/migrations.ts` (sürüm 2) |
 | Takma ad: anahtar/iskelet (`nicknameKey`, `nicknameSkeleton`), herkese açık katılım günü (`publicJoinDay`) | `shared/src/privacy.ts` |
 | Takma ad: benzerlik denetimi, anahtar göçü, bildirimlerde takma adın güncellenmesi/anonimleştirilmesi | `server/src/identity/nickname.ts`; arayüz: Profil → "Takma ad değiştir" |
 | Düzeltme talebi akışı (md. 11/1-d) | `server/src/identity/corrections.ts`; arayüz: Profil → "Kimlik bilgilerimi düzelt", Kayıt memuru → "Düzeltme talepleri" |
@@ -318,12 +370,16 @@ edilir (KVKK silme yönetmeliği: periyodik imha en fazla 6 ayda bir).
      bağlanmalıdır.
    - **Telafi edici tedbirler (mevcut):** kişisel veriye her erişim amaç zorunlu ve kayıtlı (`pii_access_log`, denetçi
      incelemesi); düzeltme kararında "önce kendin incele" ve "kendi talebine karar verme" kuralları; rol ayrılığı (denetçi
-     yalnız okur, rolleri yalnız yönetici verir, son yönetici düşürülemez); `auth/*` için hız sınırı (20/dk); şifre
+     yalnız okur, rolleri yalnız yönetici verir ve yalnız doğrulanmış üyeye verir, son yönetici düşürülemez); `auth/*` için hız
+     sınırı (20/dk) ve hesap başına giriş kilidi (§4.4); şifre
      değişince diğer oturumların kapanması; başarısız girişlerin günlüğe yazılması; ana anahtar dönüşümü.
    - **Üretim için yapılacak:** personel rollerine (registrar/auditor/admin) TOTP zorunluluğu (`users.totp_secret`
      kasada şifreli), kişisel veri uçlarında oturumun 2FA ile yükseltilmiş olması (`step-up`) ve WebAuthn/FIDO2 desteği.
-7. **Reşitlik** kayıt ve doğrulama anında hesaplanır; sonradan 18 yaşını dolduranlar için `refreshAdulthood()`
-   periyodik olarak (ör. günlük) çağrılmalıdır.
+7. **Reşitlik** kayıt ve doğrulama anında hesaplanır; sonradan 18 yaşını dolduranların bayrağı sunucuda **kendiliğinden**
+   güncellenir: `refreshAdulthood()` sunucu açılışında ve her 10 dakikada bir çalışır (`app.ts › startIdentityMaintenance`,
+   bekleyen başvuru imhasıyla aynı zamanlayıcı); işletmenin ayrıca bir iş kurması gerekmez. Bir turun hatası `audit_log`'a
+   (`system.maintenance_error`) yazılır ve sonraki turda yeniden denenir. Yaş hesabı **simüle saatle** yapılır: demo hızlandırması
+   (`TIME_SCALE > 1`) açıkken reşit olma anı gerçek takvimden önce gelir; gerçek kullanımda `TIME_SCALE=1` olmalıdır.
 8. **Kimlik doğrulaması** TCKN'nin yalnızca algoritmik geçerliliğini denetler; kişiye ait olduğunu kayıt memuru yüz yüze
    doğrular (NVİ/e-Devlet entegrasyonu yok).
 9. **Düzeltme hakkı** kayıt memuru onayına bağlıdır (§5.1): kimlik verisi tek kişi–tek oy güvencesinin temeli olduğundan

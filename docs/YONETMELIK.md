@@ -715,7 +715,7 @@ await ontology.init();                      // dosyaları ayrıştırır, sürü
 | `categoryLabel(iri)`, `ancestors(iri)`, `isSubCategoryOf(a, b)`, `depth(iri)` | Kısa (`fy:`) ya da tam IRI kabul eder; `ancestors` kendisi + üstler (en özelden genele); `"*"` genel kapsamdır (`isSubCategoryOf(x, "*") = true`) |
 | `rights()`, `articles()`, `deletionGrounds()`, `objectionGrounds()`, `contentLabels()` | Liste uçları. Gerekçelerde ek alanlar: `sealed`, `invalid`, `article` |
 | `adjustableParams()`, `tiers()` | Yama oluşturucu parametreleri; katman tablosu (T3 satırında sayılar 0'dır: oylanamaz) |
-| `keywordIndex()` | Kategori anahtar kelimeleri (ağaç sırasıyla) |
+| `keywordIndex()` | Kategori anahtar kelimeleri (ağaç sırasıyla). Sözleşmede bulunur ama uygulamada şu an yalnız testler çağırır; YZ sınıflandırması anahtar kelimeleri `categories()` düğümlerinden alır |
 | `audit(input)` | Tam denetim → `AuditReport` (< 300 ms) |
 | `validatePatch(patch)` | Yama denetimi → `AuditReport` (T2 ya da T3) |
 | `applyPatch(patch, proposalId)` | Yeni sürüm → `BylawVersionInfo` |

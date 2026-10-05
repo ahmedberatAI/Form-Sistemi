@@ -1,6 +1,6 @@
 # Test Raporu
 
-> Tarih: 1 Ekim 2026 · Son doğrulama ortamı: **Windows 11, Node 24.15**, TypeScript 7, vitest 5, Playwright 1.63 (Chromium), Android Emulator (Pixel 7, API 34) · İlk doğrulama: Linux, Node 22.22 · YZ: çevrimdışı sezgisel mod (`ANTHROPIC_API_KEY` yok).
+> Tarih: 1 Ekim 2026 (ilk rapor) · Birim, entegrasyon ve e2e sonuçları 5 Ekim 2026 itibarıyla (sorun giderme turu); Android sonuçları 3 Ekim 2026 koşusundandır · Son doğrulama ortamı: **Windows 11, Node 24.15**, TypeScript 7, vitest 5, Playwright 1.63 (Chromium), Android Emulator (Pixel 7, API 34) · İlk doğrulama: Linux, Node 22.22 · YZ: çevrimdışı sezgisel mod (`ANTHROPIC_API_KEY` yok).
 > Yeniden üretmek için: `npm run typecheck && npm test && npm run build` (kökte), simülasyon için `npm run sim -w server`.
 
 ## 1. Özet
@@ -8,11 +8,11 @@
 | Kontrol | Sonuç |
 |---|---|
 | `npm run typecheck` (shared + server + web) | ✔ 0 hata |
-| `npm test` (sunucu 86 dosya + web 40 dosya) | ✔ **907 / 907** sunucu ve **668 / 668** web testi geçti (Windows/Node 24; 3 Ekim 2026, arayüz hafifletme Faz 3 ve inceleme düzeltmeleri sonrası) |
+| `npm test` (sunucu 100 dosya + web 45 dosya) | ✔ **1038 / 1038** sunucu ve **804 / 804** web testi geçti (Windows/Node 24; 5 Ekim 2026, sorun giderme turu ve bağımsız inceleme düzeltmeleri sonrası; önceki ölçümler: 1020 + 795, 907 + 668) |
 | `npm run build` (web, Vite) | ✔ |
-| `npm run seed -- --reset` (tohum doğrulamaları, 18 kontrol) | ✔ (~30 sn, Windows) |
+| `npm run seed -- --reset` (tohum doğrulamaları, 19 denetim) | ✔ (~30 sn, Windows) |
 | `npm run sim -w server` (Monte Carlo, belirlenimci) | ✔ (~30 sn) → [SIMULASYON.md](SIMULASYON.md) |
-| `npm run e2e` — tarayıcı uçtan uca test paketi (Playwright/Chromium, 6 dosya; Windows 11, Node 24) | ✔ **61 / 61** test (~9,2 dk; bkz. §3.1) |
+| `npm run e2e` — tarayıcı uçtan uca test paketi (Playwright/Chromium, 7 dosya; Windows 11, Node 24) | ✔ **68 / 68** test (~10 dk; bkz. §3.1; biri — `06 › bütünlük uyarısı` — tohumun o günkü oy geçmişi örüntü üretmediği için kendi atlama dalına girer) |
 | 360 px'de 219 sayfa/sekme görünümü (7 rol; 79'u 'Tam' görünümde, bütün açılırlar açık; 'Bu sayfada' tıklamaları, açık Term penceresi ve 'Süz' açılırı dahil): yatay taşma / sayfa-konsol hatası | ✔ 0 / 0 |
 | Android: `npx cap sync android` + `gradlew assembleDebug` (JDK 21) | ✔ APK (~4,6 MB) derlendi, `Pixel_7_API_34` emülatöründe kuruldu ve `http://10.0.2.2:4000` sunucusuna bağlandı (bkz. §3.3) |
 
@@ -21,17 +21,38 @@
 | Modül | Dosya | Test | Kapsam |
 |---|---|---|---|
 | `shared` (kripto, TCKN, RNG, rasyonel) + duman testi | 2 | 8 | RFC 6962 Merkle kanıtı (1–17 yaprak, her indeks), kanonik JSON, TCKN, tohumlu RNG, ağırlıklı örnekleme, rasyonel karşılaştırmalar |
-| `governance` (karar + matematik) | 3 | 104 | `decide`: tüm katmanlar, kesin/≥ eşik sınırları, soğuk başlangıç (`max(τ, min(τ+δ, 2/3))`), anlamlı küme sınırları, μ_votes uzatma, uzatma sonrası nötr küme, boykotun engel olamaması, aktif azınlık → contested, DEL yazar kümesi, yeniden oylama (ω, ρ, güçlü itiraz); `evaluateObjection` (a)/(b); `verifyTally` (kurcalanmış bülten, taahhüt uyuşmazlığı, eksik açıklama); PCA+k-means+siluet+sıfır modeli (homojen veride K=1, bloklu veride K=3, belirlenimcilik, 300×60 < 2 sn); vekâlet (öncelik, kapsam/rank sırası, H=3, döngü, cap → unrouted) |
-| `ledger` (BFT defter) | 4 | 18 | 4 düğümlü commit, tekilleştirme, bir düğüm çökünce canlılık + senkron, öneren çökünce tur değişimi, bizans düğümde güvenlik + EVIDENCE, kurcalama tespiti + onarım, `verifyInclusionProof` (doğru/sahte/yanlış anahtar), yeniden başlatma (kalıcılık), kişisel veri anahtarı reddi, zamanlayıcı sızıntısı yok — 10+ ardışık çalıştırmada kararlı |
-| `ontology` (yönetmelik) | 5 | 71 | vocab ↔ TTL tutarlılığı, katman belirleme, hak kısıtlaması (yazar/bilirkişi → T3; YZ/üye → yalnız T1), içerik etiketi eşikleri, "Görüş ayrılığı" ihlali, alt konu/üst konu, en koruyucu parametre birleştirme, K_s, `validatePatch` meta-kuralları (değiştirilemez hedef, iki adımlı atlatma, yeni değiştirilemez madde yasağı, üst/alt koruma sınırları, overrides döngüsü), `applyPatch` sürümleme, belge ↔ TTL madde metni eşitliği |
-| `graph` | 2 | 45 | takip/kefalet/yakınlık, vekâlet döngü reddi, doğrulanmamış hedef, mesafe, çıkar çatışması (aile ≤3 adım, hane, yumuşak 1/0,5), DELEGATION yükünde ham kimlik yok (HMAC), Louvain belirlenimciliği, SybilRank, kilit adım, kalıcı kaybeden, özel kenarların gizlenmesi |
-| `identity` (KVKK) | 4 | 60 | doğrulama hataları, veritabanında düz metin kişisel veri yokluğu, AAD bağlama, kör indeks tekilliği, oturum belirteci kurcalama/süre, onay/red akışı, PII erişim günlüğü, kripto-imha (sonrasında giriş/PII yok, aynı TCKN ile yeniden kayıt), KVKK döküm, şifre değiştirme |
-| `ai` | 5 | 85 | Claude çağrı biçimi (model, `server-side-fallback`, `fallbacks:"default"`, adaptive thinking, `output_config.format`, temperature yok), `refusal`/geçersiz JSON/şema dışı/hata → çevrimdışı yedek, maskeleme (istekte TCKN/e-posta/telefon/IBAN/takma ad yok), `forceOffline`, çevrimdışı sınıflandırma kalibrasyonu (zararsız "sadece/yalnızca" < 0,5; grup hedefli dışlama ≥ 0,8), moderasyon, özet (azınlık bölümü), benzerlik, köprü taslakları, bilirkişi raporu denetimi (hukuki nitelendirme, alan dışı), kişisel veri tespiti |
-| `experts` (bilirkişi) | 4 | 43 | başvuru/onay/yaptırım, aday havuzu (alt/üst kategori), kesin dışlamalar, yumuşak çatışma ağırlığı, tohum formülü ve belirlenimcilik, önceden taahhüt edilen blokla tohum doğrulaması, EXPERT_DRAW yükünde ham kimlik yok, genişleme, çekinme → yedek davet, rapor puanı S ve R′, askı kuralı sınırları, gecikme cezası, kapanan öneride itiraz cezasız iptal |
-| `forum` (çekirdek) | 11 | 66 | §8'in 10 senaryosu: tam akış (öneri → yürürlük, gerçek BFT defterle), tartışmalı → uzlaşma → yeniden oylama (ω), itiraz yolu (bütçe, "no" şartı, kural a, ρ), silme yolu (acil daraltma, DEL, mezar taşı, tek cevap, denetçi okuma kaydı, "Görüş ayrılığı" → inadmissible, talep sınırı), yönetmelik yaması (T2, yeni sürüm, BYLAW_VERSION; değiştirilemez hedef → inadmissible), sürüm çakışması, uzatma ve oylama sürerken sonuç gizliliği, vekâlet + cap, kişisel veri 422, **defter taraması (hiçbir kayıtta kullanıcı kimliği/takma ad/yasak anahtar yok)**, itiraz imzacılarının anonimliği; her kesin turda `verifyTally(bülten)` ✔ |
-| `http` | 6 | 169 | API.md'deki 95 uç noktanın her birinin kayıtlı olduğu (ve belgelenmemiş uç olmadığı), hata biçimi (400/401/403/404/409/413/415/422/429/500 — yığın izi yok), yetki matrisi, CORS (`http://localhost`, `capacitor://localhost`), SPA geri dönüşü, HTTP üzerinden tam öneri akışı + istemci tarafı `verifyTally` + makbuz kanıtı, saat kalıcılığı, görüş/oy gizliliği (küme haritası ve graf düğümleri yalnız kişinin kendisine) |
-| `seed` | 2 | 5 | küçültülmüş tohumun bellek içinde zincir ve sayım doğrulaması |
-| **Toplam (1 Ekim)** | **48** | **674** | 2 Ekim itibarıyla ilke incelemesi düzeltmeleriyle 76 dosya / 863 test; ayrıntı [MUHENDISLIK.md](MUHENDISLIK.md) |
+| `governance` (karar + matematik) | 4 | 114 | `decide`: tüm katmanlar, kesin/≥ eşik sınırları, soğuk başlangıç (`max(τ, min(τ+δ, 2/3))`), anlamlı küme sınırları, μ_votes uzatma, uzatma sonrası nötr küme, boykotun engel olamaması, aktif azınlık → contested, DEL yazar kümesi, yeniden oylama (ω, ρ, güçlü itiraz); `evaluateObjection` (a)/(b); `verifyTally` (kurcalanmış bülten, taahhüt uyuşmazlığı, eksik açıklama); **anlamlı küme kuralı tek işlevde (`isSignificant`): σ_share ve σ_min yönetmelik yamasıyla değişince sonuç değişir**; PCA+k-means+siluet+sıfır modeli (homojen veride K=1, bloklu veride K=3, belirlenimcilik, 300×60 < 2 sn); vekâlet (öncelik, kapsam/rank sırası, H=3, döngü, cap → unrouted) |
+| `ledger` (BFT defter) | 10 | 42 | 4 düğümlü commit, tekilleştirme, bir düğüm çökünce canlılık + senkron, öneren çökünce tur değişimi, bizans düğümde güvenlik + EVIDENCE, kurcalama tespiti + onarım, `verifyInclusionProof` (doğru/sahte/yanlış anahtar), yeniden başlatma (kalıcılık), kişisel veri anahtarı reddi, zamanlayıcı sızıntısı yok, doğrulama önbelleği, nonce'lu gönderim; **giden kutusu (`ledger_outbox`): `submit` satırı yazar ve blokta onaylanınca siler; sert kapanışta bekleyen işlem açılışta yeniden gönderilir; zincirdeki ve bozuk satırlar atılır; forum kaydı ile satır aynı DB işleminde (COMMIT'te birlikte kalır, geri almada birlikte silinir); gerçek süreç öldürme (`crash-recovery`): çocuk süreç SIGKILL ile öldürülür, aynı veri klasörü yeniden açılınca bekleyen işlemler bloğa girer ve simüle saat son kaydın gerisine düşmez; kalıcı kipte satır, dört doğrulayıcı deposu diske indirilmeden (`sync`) silinmez; `Db.tx` içinden gönderim COMMIT'e dek iletilmez, işlem geri alınırsa ne satır ne defter kaydı kalır; işlem içinde disk dolu (SQLITE_FULL) hatası yutulmaz: asıl hata çıkar, satır, defter kaydı ve sonraki yazım kalıcı olmaz; işlem dışındaki yazım hatasının günlüğünde `errcode` var, yük yok** |
+| `ontology` (yönetmelik) | 7 | 88 | vocab ↔ TTL tutarlılığı, katman belirleme, hak kısıtlaması (yazar/bilirkişi → T3; YZ/üye → yalnız T1), içerik etiketi eşikleri, "Görüş ayrılığı" ihlali, alt konu/üst konu, en koruyucu parametre birleştirme, K_s, `validatePatch` meta-kuralları (değiştirilemez hedef, iki adımlı atlatma, yeni değiştirilemez madde yasağı, üst/alt koruma sınırları, overrides döngüsü), `applyPatch` sürümleme, IRI enjeksiyonu reddi, belge ↔ TTL madde metni eşitliği |
+| `graph` | 4 | 51 | takip/kefalet/yakınlık, vekâlet döngü reddi, doğrulanmamış hedef, mesafe, çıkar çatışması (aile ≤3 adım, hane, yumuşak 1/0,5), DELEGATION yükünde ham kimlik yok (HMAC), Louvain belirlenimciliği ve uzlaşı önbelleği, SybilRank, kilit adım, kalıcı kaybeden, özel kenarların gizlenmesi |
+| `identity` (KVKK) | 10 | 111 | doğrulama hataları, veritabanında düz metin kişisel veri yokluğu, AAD bağlama, kör indeks tekilliği, oturum belirteci kurcalama/süre, onay/red akışı, PII erişim günlüğü, kripto-imha (sonrasında giriş/PII yok, aynı TCKN ile yeniden kayıt), KVKK döküm bütünlüğü, şifre değiştirme, takma ad (tekillik, taklit, 30 günlük sınır), düzeltme talebi akışı, ana anahtar dönüşümü; **hesap başına giriş kilidi (5 başarısız → 15 dk, var olmayan ad için aynı, takma ad ve e-posta ayrı sayılır, başarılı giriş sıfırlar; bellek dolunca kilitli kayıt atılmaz, kilitsizlerden en az denemesi olan atılır); bekleyen başvurunun 180 GERÇEK gün sonra imhası (simüle saat 400 gün ileri alınsa da imha yok); değişiklik + denetim kaydı atomikliği (denetim yazılamazsa rol/rıza/doğrulama/PII erişimi/silme geri alınır); personel rolü yalnız doğrulanmış üyeye; son yönetici hesabını silemez** |
+| `ai` | 7 | 132 | Claude çağrı biçimi (model, `server-side-fallback`, `fallbacks:"default"`, adaptive thinking, `output_config.format`, temperature yok), `refusal`/geçersiz JSON/şema dışı/hata → çevrimdışı yedek, sağlık durumu, maskeleme (istekte TCKN/e-posta/telefon/IBAN/takma ad yok), `forceOffline`, çevrimdışı sınıflandırma kalibrasyonu (zararsız "sadece/yalnızca" < 0,5; grup hedefli dışlama ≥ 0,8), moderasyon, özet (azınlık bölümü, tembel hesaplama), benzerlik, köprü taslakları, bilirkişi raporu denetimi (hukuki nitelendirme, alan dışı), kişisel veri tespiti, kayıt deposu (`AiRecordSink`) |
+| `experts` (bilirkişi) | 7 | 53 | başvuru/onay/yaptırım, aday havuzu (alt/üst kategori), kesin dışlamalar, yumuşak çatışma ağırlığı, tohum formülü ve belirlenimcilik, önceden taahhüt edilen blokla tohum doğrulaması, bekleyen kuralar, EXPERT_DRAW yükünde ham kimlik yok, genişleme, çekinme → yedek davet, rapor puanı S ve R′, askı kuralı sınırları, gecikme cezası, kapanan öneride itiraz cezasız iptal, metin sınırları (yeterlilik metni uzunluk hatası `credentials_length`) |
+| `forum` (çekirdek) | 21 | 115 | §8'in 10 senaryosu: tam akış (öneri → yürürlük, gerçek BFT defterle), tartışmalı → uzlaşma → yeniden oylama (ω), itiraz yolu (bütçe, "no" şartı, kural a, ρ), silme yolu (acil daraltma, DEL, mezar taşı, tek cevap, denetçi okuma kaydı, "Görüş ayrılığı" → inadmissible, talep sınırı), yönetmelik yaması (T2, yeni sürüm, BYLAW_VERSION; değiştirilemez hedef → inadmissible), sürüm çakışması, uzatma ve oylama sürerken sonuç gizliliği, vekâlet + cap, kişisel veri 422, **defter taraması (hiçbir kayıtta kullanıcı kimliği/takma ad/yasak anahtar yok)**, itiraz imzacılarının anonimliği; her kesin turda `verifyTally(bülten)` ✔; yaşam döngüsü hataları ve geri çekilme, YZ kotası, metin sınırları; **bilirkişi tohumu taahhüdü (pay +1: taahhüt edilen bloğu taahhüdü taşıyan `SEED_COMMIT` oluşturur, kura o blok işlenmeden yapılmaz, tohum tam o bloktan alınır); gerçek defterle kura canlılığı: bilirkişi talebi, hak bayrağı ve uzlaşma turunda panel ilgisiz bir işlem beklemeden çekilir; anlamlı küme eşiklerinin (σ_share, σ_min) yürürlükteki yönetmelikten okunması** |
+| `http` | 15 | 224 | API.md'deki **104** uç noktanın her birinin kayıtlı olduğu (ve belgelenmemiş uç olmadığı), hata biçimi (400/401/403/404/409/413/415/422/429/500 — yığın izi yok), yetki matrisi, CORS (`http://localhost`, `capacitor://localhost`), SPA geri dönüşü, HTTP üzerinden tam öneri akışı + istemci tarafı `verifyTally` + makbuz kanıtı, saat kalıcılığı, görüş/oy gizliliği (küme haritası ve graf düğümleri yalnız kişinin kendisine; küme yeniden hesabı anonim), kapanış sırası; **`Idempotency-Key` (yeniden gönderim işlemi tekrarlamaz, farklı gövde 422, süre/boyut sınırı, kopan bağlantıda da saklanır, gerçek soketle) ve `TRUST_PROXY` (ayrıştırma, açılış uyarısı, `X-Forwarded-For` güveni, hız sınırının istemci başına sayması); hesap silme ve giriş kilidi uçtan uca (son yönetici 409, tek işlem — geri alınınca vekâletlerin `DELEGATION` kaydı da deftere ulaşmaz —, 429 `login_locked`)** |
+| `core` | 7 | 61 | ortam değişkenlerinin ayrıştırılması ve açık hata iletileri, veri klasörü kilidi, kapanış sırası, bildirimler, kimlik bakım zamanlayıcısı, şema indeksleri; **simüle saatin yeniden açılışta geriye gitmemesi (`clock-resume`): kayıtlı an, kira üst sınırı ve en son olay zamanı; düzgün kapanışta saat aynen sürer; çalışırken duvar saati geri adım atsa da `ScaledClock` geri gitmez, "ileri al" bu sırada da tam etkilidir** |
+| `db` | 2 | 25 | şema sürümü ve göçler (taban, sıralı yükseltme, hata → hepsi geri alınır, daha yeni sürüm reddi, sürüm 2 = `ledger_outbox`, v1 → v2 yükseltme, belgelenen el ile 2 → 1 geri dönüş); **`Db.tx`: disk dolu (SQLITE_FULL) ve SAVEPOINT/RELEASE hatalarında asıl hata iletilir, iç hata yakalanıp devam edilse de sonraki deyim ve dış RELEASE asıl hatayı fırlatır (autocommit'e taşma yok), iç içe işlem, Promise döndüren geri çağrı reddi; `Db.afterCommit`: en dıştaki COMMIT'ten sonra, geri almada (iç savepoint dahil) atılır** |
+| `architecture` | 1 | 6 | import yönlerini zorlar: `shared` sunucu/web'e bağlanmaz, `forum` `ai`'ya bağlanmaz, rotalar SQL katmanına bağlanmaz, web alt katmanları üst katmana bağlanmaz ([MIMARI §2.2](MIMARI.md)) |
+| `seed` | 3 | 8 | küçültülmüş tohumun bellek içinde zincir ve sayım doğrulaması, saat kalıcılığı, `--reset` ile `DB_PATH` temizliği |
+| **Toplam (5 Ekim)** | **100** | **1038** | Bağımsız inceleme düzeltmelerinden önce: 100 dosya / 1020 test; önceki tur: 86 dosya / 907 test. Sürüm geçmişi ve düzeltme turları: [MUHENDISLIK.md](MUHENDISLIK.md) |
+
+### Web birim testleri (vitest)
+
+| Konum | Dosya | Test | Kapsam |
+|---|---|---|---|
+| `api/` | 3 | 25 | istemci zaman aşımı (gövde okuması dahil), oturum hataları (yalnız 401'de oturum kapanır), **`Idempotency-Key` (otomatik UUID, belirsiz sonuçta aynı anahtar, kesin yanıtta unutma, hesap değişince temizlik; anahtar yalnız kaynağa yapılan en son istekse yeniden kullanılır: oy Evet→Hayır→Evet, takip/bırak, yakınlık `?kind`, taslak A→B→A, vekâlet ver/geri al yeni anahtar alır; ilgisiz kaynak belirsiz denemeyi bozmaz)** |
+| `auth/` | 2 | 25 | **`derivePermissions`: görev rolleri ve bilirkişilik yalnız doğrulanmış hesapta geçerli (sunucudaki `requireRole`/`requireExpert` ile aynı)**; **`RequireRole`: rolü olan ama doğrulanmamış hesapta asıl neden söylenir**, yeni hata başlıkları (`login_locked`, `not_verified`), **Yönetim › Roller onay kutuları (doğrulanmamış üyeye görev rolü verilemez, verilmiş rol kaldırılabilir)** |
+| `components/` | 2 | 82 | rozet bütçesi; **kayıt formu kuralları sunucudaki `parseRegistration` ile 80 girdi üzerinde karşılaştırılır (sapma testte kırılır)** |
+| `components/home`, `layout`, `community` | 4 | 83 | Ana sayfa yerleşimi, görev rozeti ve gezinme, kaybeden göstergesi |
+| `components/participation` | 9 | 170 | öneri sayfası bölümleri ve çapaları, eylem panelleri, sonuç kartı, tartışma, bilirkişi/YZ, kanıt özetleri; "Sayımı kendim doğrulayayım" metni vekâletle sayılan oyların taahhütle denetlenemediğini söyler |
+| `components/proposals`, `components/system` | 6 | 125 | yeni öneri formu, konular, hesap/Ayarlar mantığı, ontoloji, hata sınırı |
+| `lib/` | 11 | 171 | `ledgerVerify` (**`checkTxPage`: işlem sayfası doğrulaması adresteki özete bağlıdır**), `blockVerify`, makbuzlar, sözlük, görev deposu, bildirim sınıfları, sıradaki adım, kategori ağacı, çapa parametresi, Android otomatik yedeğinin belirteç ve makbuzları dışarı taşımaması (`androidBackup`) |
+| `pages/`, `ui/` | 7 | 120 | Keşfet modeli, Bildirimler, Öneriler sekmeleri; temel bileşenler, `Term`, görsel dil (kontrast belirteçleri) |
+| `vite.config.test.ts` | 1 | 3 | geliştirme vekili hedefi (`PORT`, `VITE_API_TARGET`; sabit 4000 değil) |
+| **Toplam (5 Ekim)** | **45** | **804** | Bağımsız inceleme düzeltmelerinden önce: 45 dosya / 795 test; önceki tur: 40 dosya / 668 test |
+
+Bu belgedeki ve README'deki test, uç nokta ve denetim sayıları elle güncellenir; sayıları belgeye bağlayan otomatik bir kapı yoktur
+(tek istisna: `http/routes.test.ts` API.md'deki uç noktaların kayıtlı olduğunu, belgelenmemiş uç olmadığını denetler).
 
 ## 3. Tarayıcıda uçtan uca senaryo (Playwright, tohumlanmış sunucu)
 
@@ -41,7 +62,7 @@ Testler `e2e/` klasöründedir (Playwright 1.63, Chromium). Çalıştırma: kök
 `npm run e2e`; tip denetimi `npm run e2e:typecheck`.
 
 **Düzenek.** Küresel kurulum (`e2e/global-setup.ts`) `web/dist` yoksa ya da kaynaklardan eskiyse web'i derler (`vite build`) ve
-geçici bir klasörde demo verisini tohumlar (`DATA_DIR=<geçici>/template/data`, `seed.ts --reset`; 16 tohum denetimi dahil, ~20–30 sn).
+geçici bir klasörde demo verisini tohumlar (`DATA_DIR=<geçici>/template/data`, `seed.ts --reset`; 19 tohum denetimi dahil, ~20–30 sn).
 Her test dosyası bu şablonun **taze bir kopyasıyla** gerçek sunucuyu (`server/src/index.ts`, `node --import tsx`, kabuksuz süreç)
 `PORT=4100`'de başlatır, `/api/system` yanıt verene kadar bekler ve dosya bitince süreç ağacını kapatır (Windows'ta
 `taskkill /pid <pid> /T /F`). Senaryolar saati ileri aldığı için dosyalar birbirinin verisini bozmaz; her dosya tek başına da
@@ -82,19 +103,32 @@ iz (trace) ve sunucu günlüğü rapora eklenir (`e2e/playwright-report`).
 | | Profil, Ayarlar, Konular (5 test) | Profil: 'Oy hakkınız' kartı en üstte, eksik koşullar ve TEK eylem; seyrek işler başlığı görünür katlı kartlarda, `?bolum=` açar; Ayarlar: Görünüm → Sunucu → Makbuzlar → Gelişmiş, TOFU ve Ed25519 ilk okumada yok; Konular: tek satır sayaçlar, telefonda 'Süz'; Konu ayrıntısı: metin → açık öneriler → tartışma → alt konular → katlı sürüm geçmişi, çapalar | 19,6 sn |
 | | Kontrast (Faz 3) | Keşfet, Öneriler, Konular, Bildirimler, Profil, Ayarlar, yeni öneri ve Term penceresi — açık ve iki koyu temada WCAG AA, 360 px'de taşma 0 | 28,3 sn |
 | | Veri üreten (3 test) | bir iş tamamlanınca 'Ana sayfa' rozeti Ana sayfaya girmeden sayfa gezinince yenilenir; **iş tamamlanıp hemen Ana sayfaya dönülünce rozet panoyla eşitlenir (yoklamayı beklemez)**; 'Okundu işaretle' satırı süzgeçten çıkarır ve odağı sıradaki satıra taşır, satır bağlantısı okundu işaretler, 'Tümünü okundu işaretle' | 17,7 sn |
+| `07-hesap-guvenligi.spec.ts` | giriş kilidi (5 test) | aynı takma ada 5 başarısız denemeden sonra **429 `login_locked` + `Retry-After`** (≈15 dk); kilitliyken doğru şifre de reddedilir, başka hesap etkilenmez; var olmayan ad için aynı yanıt ve aynı ileti (hesabın varlığı sızmaz); başarılı giriş sayacı sıfırlar; `identity.login_locked` denetim kaydı var ve tanımlayıcıyı içermez; giriş sayfası kilidi "Giriş geçici olarak durduruldu" başlığıyla gösterir | 1,5 sn |
+| | hesap silme | iki ayrı vekâleti olan veren üyeye tek "Vekâletiniz düştü" bildirimi; yanlış şifrede yan etki yok (vekâletler yerinde); silinen hesapla giriş yapılamaz | 0,2 sn |
+| | Idempotency-Key | aynı anahtarla yeniden gönderilen mesaj tek kez yayımlanır (`Idempotent-Replayed: true`), aynı anahtar farklı gövdeyle 422 `idempotency_key_reused` | 0,1 sn |
 
-**Sonuç (3 Ekim 2026, Windows 11, Node 24.15, Playwright 1.63 / Chromium):** 61 / 61 test geçti, toplam ~9,2 dk (küresel
-kurulum ~16–30 sn dahil); arayüz hafifletme Faz 3 ve inceleme düzeltmeleri sonrası tam koşu yeşil. 360 px'de **219 görünüm,
-yatay taşma 0, sayfa/konsol hatası 0**. Koşu sonunda geçici klasör silinir, 4100 portunda dinleyen süreç kalmaz. (Faz 2 sonu:
-33 / 33 test, 169 görünüm, ~5,3 dk.) Faz 3'ün önce/sonra ölçümü aynı tohum ve aynı betikle (06 › 'ölçüm') alındı:
-[ARAYUZ_PLANI.md › Ölçüm](ARAYUZ_PLANI.md#ölçüm). Not: bu turun ilk tam koşusunda `04-itiraz` testi, tohumun zamana bağlı küçük bir
-farkı yüzünden kırmızı çıktı (hak sahibi listesi 3'te kesildiği için K-29'da yalnız 5 imza toplanabildi; çapraz küme kuralı 6 ister).
-Hak sahibi sınırı 8'e çıkarıldı (uygulama değişmedi); sonraki tam koşu 61 / 61.
+**Sonuç (5 Ekim 2026, Windows 11, Node 24.15, Playwright 1.63 / Chromium; sorun giderme turu ve bağımsız inceleme düzeltmeleri
+sonrası):** 68 / 68 test geçti, toplam ~10 dk (küresel kurulum ~16–35 sn dahil). 360 px'de **219 görünüm, yatay taşma 0, sayfa/konsol hatası 0**. Koşu sonunda geçici klasör silinir,
+4100 portunda dinleyen süreç kalmaz. (3 Ekim, Faz 3 sonu: 61 / 61 test, ~9,2 dk; Faz 2 sonu: 33 / 33 test, 169 görünüm, ~5,3 dk.)
+Faz 3'ün önce/sonra ölçümü aynı tohum ve aynı betikle (06 › 'ölçüm') alındı: [ARAYUZ_PLANI.md › Ölçüm](ARAYUZ_PLANI.md#ölçüm).
+Not (3 Ekim): o turun ilk tam koşusunda `04-itiraz` testi, tohumun zamana bağlı küçük bir farkı yüzünden kırmızı çıktı (hak sahibi
+listesi 3'te kesildiği için K-29'da yalnız 5 imza toplanabildi; çapraz küme kuralı 6 ister). Hak sahibi sınırı 8'e çıkarıldı (uygulama
+değişmedi); sonraki tam koşu 61 / 61.
 
-Gözlem (uygulama, düzeltilmedi): oylama kapandıktan hemen sonra (yaklaşık bir blok aralığı, ~0,5 sn) bültendeki TALLY/BALLOT_REVEAL
-işlemleri henüz bir bloğa girmemiştir; bu arada "Sayımı kendim doğrulayayım"a basılırsa panel "İşlem bulunamadı" ile kırmızı
-**"doğrulama BAŞARISIZ"** gösterir ("Oyum kayıtlı mı?" sayfası aynı durumu "henüz" olarak gösterir). Test, sayım işlemleri bloğa
-girene kadar API'yi yoklayarak bekler.
+**Tohum tarihe bağlıdır (5 Ekim gözlemi).** Demo verisinin zaman çizelgesi gerçek tarihe göre kurulur (`Simüle zaman: 2026-09-01 → şimdi`);
+aynı kod farklı günlerde tohumlandığında oylar küçük farklarla değişir (aynı gün tohumlandığında, yük altında da, birebir aynıdır). `06 › bütünlük
+uyarısı` testi, 14 üyenin tohumdaki oy geçmişinin kilit adım örüntüsü (ikili uyum ≥ %90, en az 3 ortak oylama, 4 kişilik çekirdek) oluşturmasına
+dayanır. Aynı kod (HEAD), tarihi 3 Ekim'e alınarak tohumlandığında 9 uyumlu çift ve 5 kişilik çekirdek verir (uyarı üretilir); gerçek tarih 5 Ekim
+iken yalnız 6 çift uyumlu ve çekirdek yoktur — yani bu bir kod gerilemesi değil, tohumun tarihe bağlılığıdır. Test bu durumda önceden tasarlanmış
+atlama dalına girer (`[atlandı]` ek açıklaması): uyarı kuralı sunucu ve birim testlerinde sınanır, arayüzde uyarının görünümü yalnız örüntü
+oluştuğunda e2e'de sınanır. Kalıcı çözüm, testin kendi oy geçmişini üretmesidir ([MUHENDISLIK.md](MUHENDISLIK.md) › kısmi kalanlar).
+
+Gözlem (uygulama, **düzeltildi**): oylama kapandıktan hemen sonra (yaklaşık bir blok aralığı, ~0,5 sn) bültendeki TALLY/BALLOT_REVEAL
+işlemleri henüz bir bloğa girmemiş olabilir. "Sayımı kendim doğrulayayım" bunu artık hata saymaz: defterde bulunamayan işlem (404)
+"henüz bloğa girmedi" (beklemede) sayılır, panel 1,2 sn arayla en çok 4 kez yeniden dener ve hâlâ beklemedeyse kırmızı "doğrulama
+BAŞARISIZ" yerine mavi **"sayım hesaplandı, defter kaydı bekleniyor"** başlığını gösterir ("Oyum kayıtlı mı?" sayfası aynı durumu
+"henüz" olarak gösterir; `web/src/lib/ledgerVerify.ts`, `VerifyTallyPanel.tsx`). Gerçek bir uyuşmazlık (özet tutmuyor, kanıt geçersiz)
+ise yine kırmızı BAŞARISIZ'dır. Test, sayım işlemleri bloğa girene kadar API'yi yoklayarak bekler.
 
 ### 3.2 İlk koşu (bulut ortamı, geçici betiklerle)
 
@@ -161,3 +195,12 @@ Ayrıntı ve tablolar: [SIMULASYON.md](SIMULASYON.md) (gerçek `decide()`/`compu
 - **Android açık metin trafiği:** Demo, HTTP sunucuya bağlanmak için `usesCleartextTraffic` kullanır; gerçek kullanımda sunucu HTTPS arkasında olmalı ve bu ayar kapatılmalıdır.
 - **Gerçek Claude API çağrısı** bu ortamda yapılmadı (anahtar yok); Claude yolu sahte istemciyle birim testlerinde doğrulandı, çevrimdışı sezgisel mod uçtan uca çalıştı.
 - **Defter düğümleri** aynı süreçte çalışır (arayüzde açıkça belirtilir); çok süreçli kip yoktur.
+- **Elektrik kesintisi:** doğrulayıcı depoları her blokta fsync yapmaz (`synchronous=NORMAL`); işletim sistemi düzeyinde bir kesintide
+  son blok depolardan kaybolabilir. Giden kutusu satırı depolar diske indirilmeden (`BlockStore.sync`) silinmediğinden işlem kaybolmaz,
+  açılışta yeniden gönderilir; kaybolan bloğun yüksekliği ve kanıtı yeniden üretilen blokla değişebilir. Sıra (önce fsync, sonra
+  satır silme) `ledger/outbox.test.ts`'te sınanır; gerçek bir elektrik kesintisi sınanmadı. Süreç ölümünde (çökme, `taskkill /F`,
+  SIGKILL) kayıp yoktur ve gerçek süreç öldürülerek sınanır (`server/test/ledger/crash-recovery.test.ts`).
+- **Bellek içi sınırlayıcılar:** hesap başına giriş kilidi ve `Idempotency-Key` yanıt deposu süreç belleğindedir; yeniden başlatmada
+  sıfırlanır ve birden çok sunucu sürecinde paylaşılmaz.
+- **Belge sayıları elle güncellenir:** test, uç nokta ve denetim sayılarını belgeye bağlayan otomatik bir kapı yoktur (tek istisna
+  `http/routes.test.ts`: API.md'deki uç noktalar).

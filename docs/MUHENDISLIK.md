@@ -1,8 +1,8 @@
 # Yazılım Mühendisliği İlkeleri İncelemesi
 
-> Tarih: 2 Ekim 2026.
+> Tarih: 2 Ekim 2026 (ilk üç tur); dördüncü tur: 5 Ekim 2026.
 > Yöntem: 18 ilke ayrı ayrı incelendi. Her ilke için bir inceleyici (Claude Sonnet 5.5) bütün depoyu salt okunur taradı ve her bulguya dosya, satır ve kanıt ekledi.
-> Bulgular tekilleştirildi ve kod üzerinde doğrulandı. Üç turda toplam 48 sorun düzeltildi (her turda 15–17); diğerleri aşağıda kayıtlıdır.
+> Bulgular tekilleştirildi ve kod üzerinde doğrulandı. Üç turda toplam 48 sorun düzeltildi (her turda 15–17); dördüncü turda 21 sorun grubu daha giderildi (§3d). Diğerleri aşağıda kayıtlıdır.
 
 ## 1. İncelenen ilkeler ve başlangıç puanları (0–10)
 
@@ -133,14 +133,92 @@ Kısmi kalanlar:
 - #37: Mimari testte döngüsel bağımlılık denetimi yok. CI e2e ve Android derlemesini çalıştırmıyor.
 - #48: Android `FileProvider` / `file_paths.xml` temizliği yapılmadı.
 
+## 3d. Dördüncü tur: gerçek yayına hazırlık, dayanıklılık ve belge doğruluğu (21 sorun grubu, 5 Ekim 2026)
+
+Bu tur, kullanıcı adına verilen altı karara göre yürüdü: rol görünürlüğü herkese açık kalır (yalnız belgelendi); bekleyen başvuru imhası gerçek
+duvar saatiyle ölçülür; kura tohumu için belge ile kod arasında önce kodu belgeye uydurmak değerlendirilir, bir değişmezi ya da canlılığı bozuyorsa
+belge gerekçesiyle düzeltilir; giriş güvenliği (`TRUST_PROXY`, hesap başına kilit); çift kayıt için `Idempotency-Key`; sert kapanışta kayıpsızlık.
+Sütundaki `#n` numaraları bulgu kimlikleridir.
+
+| # | Sorun (bulgu) | İlke | Düzeltme |
+|---|---|---|---|
+| 49 | Ters vekil arkasında herkes tek IP sayılıyor; hesap başına deneme sınırı yok (#226, #343) | Güvenlik, işletilebilirlik | `TRUST_PROXY` (kapalı varsayılan; vekil adresi listesi önerilir, sayı ve `true` açılışta uyarı yazar) → Fastify `trustProxy`. Hesap başına giriş kilidi: tanımlayıcı başına 15 dk'da 5 başarısız → 15 dk kilit, 429 `login_locked` + `Retry-After`; var olmayan ad için aynı davranış (hesabın varlığı sızmaz); takma ad ve e-posta ayrı sayılır; sayaç bellekte |
+| 50 | Son yöneticinin reddedilen hesap silme denemesi yine de vekâletleri düşürüyor ve yanlış bildirim gönderiyor (#14, #81, #159, #280) | Bütünlük | `eraseSelf` ön koşulları (hesap açık, son yönetici değil) her yan etkiden önce ve eşzamanlı denetler; imha ve vekâlet geri alma tek işlemde; bildirim ve `MEMBER_ERASED` işlem sonrası. Aynı ilke rol atama, rıza, doğrulama/red, PII erişimi ve bekleyen başvuru imhasına yayıldı: değişiklik ve denetim kaydı tek işlemde |
+| 51 | Bekleyen başvurular demo hızıyla birkaç gerçek günde geri dönüşsüz imha ediliyor (#276) | KVKK, güvenlik | 180 gün gerçek duvar saatiyle ölçülür; gerçek açılış anı `meta` tablosundaki `identity.pending_since:<üye>`; kuraldan önceki başvurularda süre ilk bakımda başlar. KVKK.md §6 |
+| 52 | Bağlantı kopunca yeniden gönderilen mesaj/öneri iki kez yayımlanıyor (#275) | Hata yönetimi, bütünlük | `Idempotency-Key`: istemci her denemeye UUID verir, belirsiz sonuçta aynı anahtarı kullanır; sunucu kullanıcı + yöntem + yol + anahtar için başarılı yanıtı 10 dk saklar, farklı gövdede 422 verir. API.md |
+| 53 | Sert kapanışta (çökme, `taskkill /F`) bekleyen defter işlemleri kayboluyor; simüle saat geri gidiyor (#273, #281) | Bütünlük, işletilebilirlik | Şema sürümü 2: `ledger_outbox` (işlemsel outbox; açılışta yeniden gönderim, zincirdekiler ve bozuklar atılır). Saat `leaseUntil` kirasıyla ve veritabanındaki en son olay zamanından başlar: geri gitmez. Kimlik modülünün reddedilen defter kaydı artık yutulmaz (`identity.ledger_error`). MIMARI §4, §6 |
+| 54 | Doğrulanmamış üyeye personel rolü verilince menüde görünüyor ama sayfalar hata veriyor (#106) | Tasarımda güvenlik, hızlı başarısızlık | Sunucu: 409 `not_verified` (rol geri almak serbest). İstemci: saf `derivePermissions` — görev rolleri ve bilirkişilik yalnız doğrulanmış hesapta geçerli |
+| 55 | "Anlamlı görüş grubu" eşiği yönetmelikle değişince mesaj köprü puanı eski kuralla hesaplanıyor (#9, #251) | DRY, bütünlük | Tek kural `isSignificant` (`shared/src/decision.ts`): köprü puanı yürürlükteki yönetmeliğin σ_share/σ_min değerleriyle, öneri sayfası önerinin dondurulmuş parametreleriyle hesaplanır |
+| 56 | İşlem sayfasındaki doğrulama gösterilen kaydın adresteki işleme ait olduğunu denetlemiyor (#218) | Güvenlik | `checkTxPage`: içerik–özet bağı, kanıtın işlem özeti ve imza adresteki özete bağlı |
+| 57 | Disk dolunca gerçek neden yerine "no such savepoint" görünüyor (#212, #283) | Hata yönetimi | `Db.tx`: SAVEPOINT `try` içinde, geri alma hatası yutulup asıl hata iletilir; Promise döndüren geri çağrı reddedilir |
+| 58 | Kayıt formu sunucunun kabul edeceği tam genişlikli takma adı reddediyor (#97, #166) | DRY, belge–kod tutarlılığı | Form kuralları sunucudakiyle aynı (NFKC, uzunluk sınırları, e-posta deseni); 80 girdilik eşitlik testi |
+| 59 | Kura tohum bloğu bağlayıcı belgede `+2`, kodda `+1` (#286) | Belge–kod tutarlılığı, canlılık | **Karar: kod değişmedi, belge düzeltildi.** Defter boş blok üretmez; `+2` bloğu ek bir işlem gelmeden oluşmaz, boşta kalan defterde kura tartışma süresince beklerdi ve oylama raporsuz açılırdı. Güvenlik amacı `+1` ile de korunur (yükseklik taahhüt anında var olmayan bloğa işaret eder). Pay tek sabite bağlandı (`SEED_COMMIT_LEAD`); bilinen sınırlar ALGORITMA §12 madde 9'da |
+| 60 | API belgesinde yanlış hata kodları; hesap silmede şifre yazmıyor (#310) | Belge–kod tutarlılığı | API.md hata kataloğu koddan çıkarıldı (`already_voted`, `inadmissible` kaldırıldı; `inadmissible_revision`, `consent_required`, `last_admin`… eklendi); `/api/me/erase` gövdesi |
+| 61 | Mimari belge görüş grubu gizliliğini uygulamadan sıkı anlatıyor (#311) | Belge–kod tutarlılığı | MIMARI §5: iki dar istisna (silme oylamasında yazar kümesi, azınlık raporu) ve rollerin herkese açık olduğu |
+| 62 | Algoritma belgesinde onay eşiği formülü yarım, karar kodunun yeri yanlış (#312) | Belge–kod tutarlılığı | ALGORITMA başlık notu ve §4.1: `Y·den > num·(Y+N)`; kod `shared/src/decision.ts`'te |
+| 63 | README'deki "değiştirilemez maddeler" listesi yönetmelikle örtüşmüyor (#318) | Belge–kod tutarlılığı | 20 fıkra tek tek yazıldı (13 (2) ve 14 dahil; 20 ve 21'de yalnız korumalı fıkralar) |
+| 64 | Test raporunda eski sayılar ve düzelmiş bir hatayı "düzeltilmedi" gösteren not (#242, #309, #319) | Belge–kod tutarlılığı | Modül tabloları koddan yeniden sayıldı (sunucu ve web), tohum denetimi 19, uç nokta 104; gözlem "düzeltildi" olarak yeniden yazıldı |
+| 65 | Belgeler evre geçişlerinin yalnız zamanlayıcıdan geldiğini söylüyor (#21, #44) | Belge–kod tutarlılığı | README, ALGORITMA §3, MIMARI, `lifecycle.ts`/`forum-contracts.ts` yorumları ve Yönetim paneli: iki geçiş yazarın eylemidir; hepsi `applyTransition` ile yazılır |
+| 66 | "Modüller yalnızca arayüzle görür" anlatımı kodla örtüşmüyor (#22, #78, #170, #191) | Belge–kod tutarlılığı | MIMARI §2: modüler monolit gerekçesi, tablo sahipliği haritası, zorlanan sınırlar ve HTTP katmanındaki iki istisna; küme yeniden hesabının anonim olduğu API.md'de |
+| 67 | KVKK belgesi otomatik reşitlik güncellemesini işletmeci işi gibi anlatıyor (#315) | Belge–kod tutarlılığı | KVKK §8 madde 7: açılışta ve her 10 dakikada kendiliğinden (`startIdentityMaintenance`) |
+| 68 | Web kılavuzu çağıranı olmayan işlevleri listeliyor, yenileri eksik (#153, #317) | Belge–kod tutarlılığı | `web/src/README.md`: 104 işlevin tamamı, çağıranı olmayanlar işaretli; düzeltme talebi, kefalet/yakınlık geri alma, `Idempotency-Key`, `derivePermissions`, `checkTxPage` eklendi |
+| 69 | Kod yorumlarında eski ya da yanlış açıklamalar (#114, #262, #325) | Temiz kod | "wave-1/2" etiketleri, yanlış § atıfları, `LIMIT` ve `nickname_norm` yorumları, `applyTransition` açıklamasının yeri, `AiServiceExt` yorumu düzeltildi |
+
+Doğrulama (5 Ekim 2026, dördüncü tur sonrası):
+
+| Kontrol | Sonuç |
+|---|---|
+| Sunucu testleri | 100 dosya, 1020/1020 |
+| Web birim testleri | 45 dosya, 795/795 |
+| Tip denetimi | temiz |
+
+Kısmi kalanlar:
+- Giriş kilidi ve `Idempotency-Key` deposu süreç belleğindedir (yeniden başlatmada sıfırlanır, çok süreçli dağıtımda paylaşılmaz); kalıcılaştırma şema değişikliği ister.
+- Elektrik kesintisinde (işletim sistemi düzeyi) doğrulayıcı depolarından son blok kaybolabilir (`synchronous=NORMAL`); giden kutusu satırı depolar diske indirilmeden silinmediğinden işlem kaybolmaz, ama kaybolan bloğun yüksekliği/kanıtı yeniden üretilen blokla değişebilir. Gerçek bir güç kesintisi sınanmadı (sıra birim testinde).
+- Kura: taahhüt anında oylanmakta olan bir blok varsa tohum onun hash'i olabilir; yalnız doğrulayıcıları işleten sunucu bunu görebilir (ALGORITMA §12 madde 9, bilinen sınır a). Taahhüdün defter işlemi taşımaması sorunu `SEED_COMMIT` ile giderildi.
+- Giriş kilidi belleği: 10 000 tanımlayıcının hepsi kilitliyse kilidi en erken bitecek olan atılır; bunun için ~50 000 başarısız deneme gerekir (kilitsiz kayıtlar önce atılır).
+- Reşitlik hesabı simüle saatle yapılır (`TIME_SCALE > 1` iken gerçek takvimden hızlı).
+- Kayıt formu kuralları sunucudaki doğrulamanın kopyasıdır (eşitlik testi var); kalıcı çözüm kuralları `shared`'e taşımaktır.
+- Doğrulanmamış (bekleyen/askıdaki) hesaba görev rolü verilemez: sunucu 409 `not_verified` döner, Yönetim › Roller'de ilgili onay kutuları kapalıdır (`roleCheckbox`; verilmiş bir rolü kaldırmak serbest); rolü olan ama doğrulanmamış hesapta `RequireRole` asıl nedeni söyler ("görev rolleri yalnızca doğrulanmış hesapta geçerlidir").
+- Vekâletle sayılan oylar (`via = "delegated"`) taahhütle denetlenemez; `verifyTally` yalnız `revealHash` eşleşmesini ve yeniden sayımı doğrular, arayüz bunu "Neyi denetler?" metninde söyler (ALGORITMA §11).
+- e2e `06 › bütünlük uyarısı` testi tohumun oy geçmişine bağlıdır: demo verisinin zaman çizelgesi gerçek tarihe göre kurulduğundan oylar günden güne küçük farklarla değişir ve 14 üyenin ikili uyumu %90 eşiğini geçmeyebilir; o zaman test kendi atlama dalına girer (`[atlandı]` ek açıklaması, kural sunucu ve birim testlerinde sınanır). Kalıcı çözüm testin kendi oy geçmişini üretmesidir (yeni üyeler + üç ek oylama).
+- `server/package.json` içindeki `rdf-canonize` ve `@rdfjs/data-model` kaynakta hiçbir yerde içe aktarılmaz (araştırma sırasında denendi; bkz. ARASTIRMA §6.3).
+
+### Dördüncü turun bağımsız incelemesi (20 bulgu, 5 Ekim 2026)
+
+Üç bağımsız inceleyici (güvenlik, bütünlük, belge) dördüncü turu yeniden denetledi. Bulguların hepsi önce doğrulandı; hiçbiri
+reddedilmedi.
+
+| # | Bulgu | Düzeltme |
+|---|---|---|
+| 70 | Web istemcisi belirsiz kalan eski isteğin anahtarını, aynı kaynağa sonradan başka istek gitse de yeniden kullanıyordu: "Evet (belirsiz) → Hayır → Evet" eski makbuzu döndürüyor, oy "Hayır" kalıyordu (takip/bırak, taslak A→B→A, vekâlet için de) | Anahtar yalnız o kaynağa (sorgusuz yol ya da doğrudan üst/alt kaynak) yapılan **en son** istek bu belirsiz denemeyse yeniden kullanılır; başka bir değiştiren istek eskisini unutturur (`client.ts`, 9 yeni test) |
+| 71 | Giriş sayacı belleği dolunca kilitli kayıt da "en eski" diye atılıyordu (rastgele adlarla kilit silinebiliyordu) | Önce süresi dolmuşlar, sonra kilitsiz kayıtlardan en az denemesi olan atılır; kilitli kayıt ancak hepsi kilitliyse (`login-throttle.ts`) |
+| 72–73, 76 | `InProcessLedger.submit` işlem içinden çağrılınca işlemi hemen doğrulayıcılara iletiyordu: hesap silme geri alınırsa `DELEGATION` "revoke" deftere yazılıyordu | `Db.afterCommit` (savepoint kapsamlı, geri almada atılır); işlem içinden gönderimde satır işlemde yazılır, iletim COMMIT'e ertelenir. Hesap silme artık defterde de atomik |
+| 74 | Giden kutusu yazım hatası işlem içindeyken yutuluyordu: işlemin yarısı kalıcı oluyor, "no such savepoint" geri geliyordu | İşlem içinde hata yutulmaz; `Db`, SQLite işlemi kendiliğinden geri aldıysa iç hatayı yakalayıp devam eden kodun sonraki deyimlerinde de asıl hatayı fırlatır (autocommit'e taşma yok); günlüğe `errcode`/`errstr` |
+| 75 | Kura canlılığı: uzlaşma, karşı panel, hak bayrağı ve bilirkişi talebi yollarındaki taahhüt bir defter işlemi taşımıyordu; boştaki defterde zorunlu panel çekilmeyebiliyordu | Her taahhüt yolunda aynı işlemde `SEED_COMMIT {proposalId, height, phase}` (`commitSeedBlock`); +1 bloğunu bu işlem oluşturur ve taahhüt defterde denetlenebilir. Pay `+1` kaldı (ALGORITMA §12 madde 9 güncellendi) |
+| 77 | Elektrik kesintisinde giden kutusu satırı, blok diske yazılmadan siliniyordu | Satırlar doğrulayıcı depoları `sync()` (WAL denetim noktası = fsync) edildikten sonra silinir (tick, `flush`, kapanış) |
+| 78 | Simüle saat çalışırken duvar saati geri alınınca geri gidebiliyordu | `ScaledClock.now()` son verdiği andan küçük değer vermez; "ileri al" bu sırada da tam etkilidir |
+| 79 | Şema sürümü 2'den geri dönüş yolu yoktu | MIMARI §7: düzgün kapanış, yedek, boş giden kutusu denetimi, `DROP TABLE ledger_outbox` + `schema_version = 1` (belgelenen adımlar testle sınanır) |
+| 80 | Belge tutarsızlıkları: web kılavuzunda rol kutuları ters anlatılıyordu; "roller kişisel veri değildir" KVKK envanteriyle çelişiyordu; var olmayan `decideRevote`/`drawExpertPanel` adları; TEST_RAPORU başlık tarihi; "güvenlik süreleri gerçek saatle" genellemesi (YZ kotası ve oturum süresi simüle saatle); KVKK §4.5 kapsam dışı listesi eksik; KVKK hesap silme satırı; `forum-contracts.ts` yorumu; ARASTIRMA'da `@rdfjs/data-model`; `schema.sql` yorumu | Hepsi koda göre düzeltildi. Bilirkişi yeterlilik metni uzunluk hatasının kodu `invalid_credentials` (girişteki 401 ile çakışıyordu) yerine `credentials_length` oldu |
+
+Doğrulama (5 Ekim 2026, inceleme düzeltmeleri sonrası):
+
+| Kontrol | Sonuç |
+|---|---|
+| Sunucu testleri | 100 dosya, 1038/1038 |
+| Web birim testleri | 45 dosya, 804/804 |
+| Tip denetimi (shared, server, web, e2e) | temiz |
+| Derleme (web) | temiz |
+| e2e | 68/68 (~10 dk) |
+
 ## 4. Bilinçli olarak ertelenenler
 
 Bunlar kayıt altında; kullanım sınırları nedeniyle bu turlarda yapılmadı.
 
 - **Büyük servislerin parçalanması (SRP, KISS).** Öneri servisi yaklaşık 1100 satır, bilirkişi servisi 930, kimlik servisi 740. `decide()` 284 satır, `ValidatorNode` 1000 satır.
 - **Kayıt (log) soyutlaması.** Sunucu günlüğü hâlâ doğrudan `console` ve Fastify günlükçüsü üzerinden yazılıyor. Şema göç mekanizması 3. turda eklendi.
-- **Bilinçli tasarım kararı olarak bırakılanlar** (gerekçesi MIMARI.md'de):
-  - modüllerin ortak SQLite tablolarını salt okunur sorgulaması (modüler monolit);
+- **Bilinçli tasarım kararı olarak bırakılanlar** (gerekçe, tablo sahipliği ve zorlanan sınırlar: MIMARI.md §2):
+  - modüllerin ortak SQLite tablolarını çoğunlukla salt okunur sorgulaması (modüler monolit; sütun düzeyinde iki yazma istisnası MIMARI §2.1'de);
   - hata türünde HTTP durum kodunun taşınması;
   - tek `BALLOT_REVEAL` işleminin kapasite sınırı (yaklaşık 20 bin oy);
   - süreç içi 4 doğrulayıcılı defter.

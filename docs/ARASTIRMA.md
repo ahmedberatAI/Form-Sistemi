@@ -670,6 +670,8 @@ mevzuat.gov.tr, metinleri MevzuatNo, Tür ve Tertip ile tanımlar [187]. (2006 m
 - `rdflib` 2.4.1.
 - `rdf-canonize` 5.0.0: RDFC-1.0 kanonikleştirme [198], SHA-256.
 
+**Uygulamada kullanılanlar.** Yukarıdaki paketlerden yalnız `n3` (ayrıştırma, depo, akıl yürütme), `shacl-engine` (SHACL) ve `@rdfjs/dataset` (SHACL veri kümesi; türleri `@rdfjs/types`) kullanılır; diğerleri (`rdf-validate-shacl`, `eyereasoner`, `eyeling`, `@comunica/query-sparql-rdfjs`, `rdflib`) araştırma sırasında denendi ve uygulamaya alınmadı. `@rdfjs/data-model` ve `rdf-canonize` `server/package.json`'da kayıtlı kalsa da kaynakta içe aktarılmaz (`rdf-canonize` yalnızca araştırmada denendi). Yönetmelik sürüm özeti RDFC-1.0 ile değil, sıralı ve tekilleştirilmiş N-Triples satırlarının SHA-256'sı ile hesaplanır (`server/src/ontology/rdf.ts › hashQuads`).
+
 **Prototip** (bu araştırma sırasında çalıştırıldı): Ontoloji, yönetmelik, N3 kuralları, SHACL şekilleri ve örnek veri birlikte çalıştırıldı.
 
 - Akıl yürütme sonrasında 156 dörtlü (quad) 218'e çıktı.

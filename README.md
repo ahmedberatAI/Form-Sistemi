@@ -54,7 +54,7 @@ npm run dev:web                      # yalnız Vite, port 5173 (/api → VITE_AP
 
 ```bash
 npm run typecheck                    # shared + server + web
-npm test                             # sunucu (907) + web (668) testleri
+npm test                             # sunucu (100 dosya, 1038) + web (45 dosya, 804) testleri
 npm run sim -w server                # Monte Carlo simülasyonu → docs/SIMULASYON.md
 ```
 
@@ -62,7 +62,7 @@ npm run sim -w server                # Monte Carlo simülasyonu → docs/SIMULAS
 
 ```bash
 npx playwright install chromium      # bir kez: test tarayıcısı
-npm run e2e                          # Playwright, 6 senaryo dosyası, 61 test (≈9 dk)
+npm run e2e                          # Playwright, 7 senaryo dosyası, 68 test (≈10 dk)
 npm run e2e:typecheck                # e2e/ kaynaklarının tip denetimi
 ```
 
@@ -72,15 +72,25 @@ dosyası bu verinin taze bir kopyasıyla **4100** portunda kendi sunucusunu aça
 kapatır (Windows'ta `taskkill /T /F`). 4000'deki sunucunuza ve `server/data`'ya dokunulmaz. Senaryolar: 360 px'de tüm sayfaların
 taraması, kayıttan kesin sayıma oylama akışı, silme talebi, itiraz/uzlaşma, defter kurcalama ve düğüm çökmesi, sade arayüz
 sözleşmeleri (Sıradaki adım, 'Bu sayfada', derin bağlantılar, 'Tam' görünüm, kontrast; Faz 3: sözlük penceresi, Keşfet ve
-gösterim rehberi, görev sayısı rozeti, bildirimler, yeni öneri formu, Profil/Ayarlar/Konular)
-([TEST_RAPORU §3](docs/TEST_RAPORU.md)). Seçenekler: `E2E_PORT` (taban port), `E2E_BUILD=1|0` (web'i her zaman derle / yalnız `web/dist` yoksa derle),
+gösterim rehberi, görev sayısı rozeti, bildirimler, yeni öneri formu, Profil/Ayarlar/Konular), hesap güvenliği (hesap başına giriş kilidi
+429, hesap silme kaskadı, `Idempotency-Key`) ([TEST_RAPORU §3](docs/TEST_RAPORU.md)). Seçenekler: `E2E_PORT` (taban port), `E2E_BUILD=1|0` (web'i her zaman derle / yalnız `web/dist` yoksa derle),
 `E2E_KEEP=1` (geçici klasörü ve sunucu günlüklerini bırak). Rapor: `e2e/playwright-report/index.html`.
 
 ### Simüle saat
 
 Demo için zaman **hızlandırılmıştır**: `TIME_SCALE=60` iken 1 simüle saat ≈ 1 gerçek dakika. Bu yüzden 72 saatlik bir tartışma
 gerçekte 72 dakika sürer ve takvim tutarlı kalır. Yönetici **Yönetim** sayfasından saati ileri alabilir (+1, +6, +24, +72, +168 saat).
-Faz geçişlerinin tek otoritesi sunucudaki zamanlayıcıdır.
+
+Evre geçişlerini çoğunlukla sunucudaki zamanlayıcı yürütür (süre dolunca, destek eşiği aşılınca, oylama kapanınca…). İki geçiş
+yazarın kendi eylemiyle, zamanlayıcı beklenmeden olur: **'Destekçi toplamaya gönder'** (taslak → destek) ve **'Geri çek'**.
+Bütün geçişlerin yazıldığı tek yer `applyTransition`'dır (durum, `phase_events` satırı ve `PHASE_CHANGED` defter kaydı); web ve
+Android istemcileri bu yüzden hiçbir zaman farklı durum görmez ([ALGORITMA §3](docs/ALGORITMA.md)).
+
+Alan mantığı simüle saati kullanır. **Dört süre gerçek duvar saatiyle ölçülür** ve `TIME_SCALE`'den ya da 'ileri al'dan etkilenmez:
+doğrulanmayan başvurunun 180 günlük imhası, hesap başına giriş kilidi, `Idempotency-Key` saklama süresi ve IP hız sınırı (penceresi
+ve `Retry-After`'ı). Oturum süresi (180 gün), reşitlik hesabı ve saatlik YZ analiz kotası ise simüle saatledir. Simüle saat geri
+gitmez: ne sunucu sert biçimde kapanınca (çökme, `taskkill /F`) açılışta ne de çalışırken duvar saati geri alınınca
+([MIMARI §6](docs/MIMARI.md)).
 
 ### Ortam değişkenleri
 
@@ -95,9 +105,43 @@ Faz geçişlerinin tek otoritesi sunucudaki zamanlayıcıdır.
 | `NEW_MASTER_KEY` | — | Yalnız ana anahtar dönüşüm betiği için yeni anahtar (`server/scripts/rotate-master-key.ts`, [KVKK §8.1](docs/KVKK.md)) |
 | `RATE_LIMIT_GLOBAL` | `300` | Genel hız sınırı (istek/dk/IP); `0` → kapalı |
 | `RATE_LIMIT_AUTH` | `20` | `/api/auth/*` (giriş, kayıt, çıkış) hız sınırı; `0` → kapalı. Uçtan uca testlerde yükseltin, üretimde düşük tutun |
+| `TRUST_PROXY` | kapalı | Ters vekil (nginx, Caddy…) arkasında istemci IP'sini `X-Forwarded-For`'dan okur; hız sınırı bu adrese göre sayar. `127.0.0.1` ya da `loopback,10.0.0.0/8` (vekil adresleri; **önerilen**), `1`–`32` (vekil sayısı), `true` (tüm vekiller). Ayrıntı ve nginx örneği: aşağıdaki "Ters vekil arkasında" |
 | `CORS_ORIGINS` | `http://localhost,http://localhost:5173,capacitor://localhost,https://localhost` | İzin verilen kökenler |
 | `LEDGER_BLOCK_MS` | `400` | Blok aralığı |
 | `LOG_LEVEL` | `warn` | Sunucu günlük düzeyi (`info` her isteği yazar) |
+
+Giriş kilidi ve `Idempotency-Key` saklama sınırları ortam değişkeni değil kod sabitidir ([API.md](docs/API.md)).
+
+#### Ters vekil (nginx, Caddy) arkasında
+
+Sunucu bir ters vekilin arkasındaysa tüm bağlantılar vekilin adresinden gelir; varsayılan kurulumda hız sınırı (`RATE_LIMIT_*`,
+IP başına) bütün kullanıcıları **tek kova** sayar. Vekil gerçek istemci adresini `X-Forwarded-For` başlığıyla iletir; `TRUST_PROXY`
+sunucuya bu başlığa **kimden** güveneceğini söyler:
+
+| `TRUST_PROXY` | Anlamı |
+|---|---|
+| boş, `false`, `hayır`, `off`, `0` (varsayılan) | Kapalı. Bağlantının kendi adresi kullanılır, `X-Forwarded-For` yok sayılır. |
+| `127.0.0.1`, `loopback,10.0.0.0/8` (**önerilen**) | Virgülle ayrılmış vekil adresleri: IP, IP/önek (CIDR) ya da `loopback`, `linklocal`, `uniquelocal`. Yalnız bu adreslerden gelen `X-Forwarded-For`'a güvenilir; istemcinin kendi yazdığı sahte adresler sağdan ayıklanır. |
+| `1`–`32` | Bağlantıyı kuran adres doğrulanmadan en yakın n atlama vekil sayılır. Yalnız sunucuya vekili atlayarak ulaşılamıyorsa (`HOST=127.0.0.1` ya da güvenlik duvarı) kullanın. |
+| `true`, `evet`, `on` | Tüm vekillere güven: `X-Forwarded-For`'un en soldaki adresi istemci sayılır. İstemci başlığı kendisi yazabiliyorsa hız sınırı atlatılabilir. |
+
+Sayı ve `true` başlangıçta `[yapılandırma]` uyarısı yazar; geçersiz değer sunucuyu Türkçe bir hatayla durdurur. Vekilsiz yayında
+**açmayın**: herkes `X-Forwarded-For` göndererek istediği IP'yi taklit eder. Aynı makinedeki nginx için:
+
+```nginx
+location / {
+  proxy_pass         http://127.0.0.1:4000;
+  proxy_set_header   Host $host;
+  proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+```
+
+```bash
+HOST=127.0.0.1 TRUST_PROXY=127.0.0.1 npm start     # sunucu yalnız yerel vekile açık; yalnız onun başlığına güvenilir
+```
+
+Vekil `Idempotency-Key` ve `Authorization` başlıklarını olduğu gibi iletmelidir (varsayılan davranış). Üretimde TLS'i vekil sonlandırır;
+sunucunun kendisi HTTPS konuşmaz.
 
 ## 2. Demo hesapları
 
@@ -206,7 +250,7 @@ dengeleyen katmanlı bir tasarım kullanır.
 | **Köprülü Çoğunluk** (ALGORITMA §4). Görüş kümeleri oylardan PCA + k-means ile hesaplanır ve oylama açılışında dondurulur. Anlamlı her kümede P_g = (1+Y_g)/(2+Y_g+N_g) ≥ φ aranır. | Azınlık kümesinin aktif "hayır"ı kararı **tartışmalı** yapar ve uzlaşma turu açılır. | Laplace yumuşatması sayesinde boykot (oy vermemek) P_g = ½ verir; engel olmaz. Azınlık ancak aktif "hayır" ile ve yalnızca bir kez erteleyebilir. |
 | **Erteleyici, tek seferlik itiraz ("alarm zili")** (§6) | Kabulden sonra azınlık itiraz imzası toplayabilir: anlamlı bir kümede "hayır" verenlerin %75'i, ya da iki kümeden toplam %10 imza. | Her öneri yalnızca bir kez uzlaşmaya girer. İmza bütçesi 30 günde 2'dir. |
 | **Uzlaşma ve yeniden oylama** (§7, §4.3) | Azınlık raporu kalıcı olarak kaydedilir. YZ köprü taslakları üretir, bilirkişi görüşü alınır, yazar metni revize edebilir. | Yeniden oylamada **2/3 aşma eşiği** (ω) ile çoğunluk sonuca ulaşır. Sonuç kesindir. |
-| **Değiştirilemez çekirdek** (Yönetmelik Madde 3–6, 15, 19–21) | Eşit oy, temel hakların özü, gizli oy, tartışmanın silinmezliği ve azınlık korumasının kendisi **oylanamaz** (T3). | Çoğunluğun kendi politikasını "değiştirilemez" yapması (kalıcılaştırma) yasaktır. Koruma eşiklerinin üst sınırı da vardır: eşikler yükseltilerek azınlığa kalıcı veto verilemez. Köprü testi parametreyle dolaylı olarak da kapatılamaz: küme başına asgari oy (μ_votes) en çok 3'tür (daha büyüğü her kümeyi "nötr" saydırırdı); tartışma, oylama ve uzatma 24 saatten, T0–T2 uzlaşması 24 saatten kısa olamaz. |
+| **Değiştirilemez çekirdek** (Yönetmelik'te 20 fıkra: Madde 3 (1–2), 4 (1–2), 5 (1–3), 6 (1–3), 13 (2), 14 (1–2), 15 (1–2), 19 (1–2), 20 (2), 21 (1) ve (3)) | Eşit oy, temel hakların özü, azınlık korumasının kendisi, değiştirilemez hükümlerin korunması, **bilirkişi ve yapay zekânın yalnızca danışman olması**, gizli oy, tartışmanın silinmezliği ve karartılan yazarın cevap hakkı, "görüş ayrılığı" silme gerekçesi olamaması, kişisel verinin defterde tutulmaması ve kendi verisini silme talebinin oylanmaması **oylanamaz** (T3). Madde 20 ve 21'in öbür fıkraları (20 (1), (3), (4); 21 (2)) değiştirilemez **değildir**; yalnızca listelenen fıkralar korumalıdır. | Çoğunluğun kendi politikasını "değiştirilemez" yapması (kalıcılaştırma) yasaktır. Koruma eşiklerinin üst sınırı da vardır: eşikler yükseltilerek azınlığa kalıcı veto verilemez. Köprü testi parametreyle dolaylı olarak da kapatılamaz: küme başına asgari oy (μ_votes) en çok 3'tür (daha büyüğü her kümeyi "nötr" saydırırdı); tartışma, oylama ve uzatma 24 saatten, T0–T2 uzlaşması 24 saatten kısa olamaz. |
 | **Temel hak kısıtlaması → nitelikli çoğunluk** | Bir hakkı kısıtlayan öneri en az T1 (≥ %60, φ = 0,40) olur. YZ ve üyeler bu bayrağı ekleyebilir; yalnızca bilirkişi kaldırabilir ("yalnızca yükseltme"). | YZ ya da sıradan bir üye bayrağı öneriyi geçersiz (T3) yapamaz; bunun için bilirkişi teyidi gerekir. |
 | **Silmede yazarın kümesi** (§10) | Bir görüşü susturmak için silme kullanılamaz: "görüş ayrılığı" gerekçe olamaz, 2/3 onay ve yazarın kendi kümesinde P ≥ ½ gerekir. | Acil daraltma süreli ve gerekçelidir. Talep sınırı vardır: açıkta en çok 3, günde 5. |
 | **Gizli oy, açık sayım** (§11) | Oy kimliğe bağlanamaz (`ballotId = HMAC(...)`). İtiraz imzacıları anonimdir. Görüş kümesi bilgisi yalnızca kişinin kendisine gösterilir (KVKK md. 6); iki dar istisna: açık sayım için silme oylamasında hedef mesaj yazarının kümesi bültende durur (arayüz grubu adıyla anmaz) ve azınlık raporu, yazara önceden söylenerek takma ad ve görüş grubuyla yayımlanır ([KVKK §4.3](docs/KVKK.md)). | Herkes sayımı bültenden yeniden yapar (`verifyTally`); sonuç tartışmaya açık değildir. |
@@ -234,8 +278,8 @@ Ayrıntı: [MIMARI.md](docs/MIMARI.md).
                      │  REST/JSON (Bearer)  — docs/API.md (104 uç nokta)
 ┌────────────────────▼──────────────────────────────────────────────────────────┐
 │ Fastify 5  http/  (yetki U/V/VV/R/D/A/E · zod · hata biçimi · CORS · hız sınırı · web/dist + SPA)  │
-│ forum/   öneri · yaşam döngüsü (TEK otorite) · sayım · konu · tartışma · küme · topluluk          │
-│ ─────────── yalnızca arayüzler (core/contracts.ts) ───────────                                     │
+│ forum/   öneri · yaşam döngüsü (zamanlayıcı) · sayım · konu · tartışma · küme · topluluk          │
+│ ─── arayüzlerle bağlı, ortak SQLite tabloları (core/contracts.ts; MIMARI §2) ───                   │
 │ ledger/ BFT×4 · ontology/ TTL+N3+SHACL · governance/ PCA/k-means, vekâlet, kura · graph/          │
 │ identity/ kasa+KVKK · ai/ Claude ya da çevrimdışı · experts/ kura+rapor+itibar                    │
 │ core/ ScaledClock · Config · AppError · Notifier · AuditLogger      db/ SQLite (node:sqlite)      │
@@ -252,7 +296,7 @@ shared/  karar fonksiyonu (decide / evaluateObjection / verifyTally) · kripto �
 | `shared/src/` | Ortak tipler, API sözleşmesi, karar fonksiyonu, kriptografi, ontoloji IRI'leri |
 | `server/src/` | Modüller: `core`, `db`, `ledger`, `ontology`, `governance`, `graph`, `identity`, `ai`, `experts`, `forum`, `http`, `seed` |
 | `server/ontology/` | `fy-schema.ttl`, `yonetmelik.ttl`, `yonetmelik-sekiller.ttl`, `yonetmelik-kurallar.n3` |
-| `server/test/` | Modül bazında testler |
+| `server/test/` | Modül bazında testler (100 dosya, 1038 test; [TEST_RAPORU §2](docs/TEST_RAPORU.md)) |
 | `server/scripts/simulate.ts` | Simülasyon betiği |
 | `web/src/` | `api`, `auth`, `ui`, `lib`, `components`, `pages`; altyapı kılavuzu `web/src/README.md` |
 | `web/android/` | Capacitor Android projesi |
@@ -273,6 +317,16 @@ shared/  karar fonksiyonu (decide / evaluateObjection / verifyTally) · kripto �
   kaydındaki azınlık raporlarını ve kesin sayım tartışmalıysa köprü testini geçemeyen kümenin "hayır" tarafını gösterir;
   bunlar yoksa sayıca az olan tutumu (lehte/aleyhte) aktarır. Özetin kendisi yine danışma niteliğindedir.
 - Kategorileri yazar seçer (alt konu ve düzenleme üst konudan miras alır); üyeler başkasının önerisine kategori ekleyemez, yalnızca hak etkisi bayrağı ekleyebilir (Madde 8 (2)).
+- Kimin yönetici, kayıt memuru ya da denetçi olduğu **herkese açıktır** (`PublicUser.roles`; üye listesi ve profil). Bu bilinçli bir
+  yönetişim şeffaflığı kararıdır: yetkiyi kimin kullandığı bilinmeden denetlenemez. Roller takma adlı hesap verisidir (özel nitelikli
+  değil); açıklanmaları meşru menfaate (KVKK md. 5/2-f) dayanır ([KVKK §4.2](docs/KVKK.md)).
+- Dayanıklılık: bir blokta onaylanmamış defter işlemleri ana veritabanındaki `ledger_outbox` tablosunda tutulur ve sert kapanıştan
+  (çökme, `taskkill /F`) sonra açılışta yeniden gönderilir; simüle saat açılışta geriye gitmez. Satır, doğrulayıcı depoları diske
+  indirilmeden silinmez: elektrik kesintisinde depolardan son blok kaybolsa bile işlem açılışta yeniden gönderilir ve yeni bir bloğa
+  girer (o bloğun yüksekliği ve kanıtı değişebilir). Bir veritabanı işlemi içinden gönderilen defter kaydı işlem COMMIT olunca
+  iletilir; geri alınan işlem deftere kayıt bırakmaz ([MIMARI §4](docs/MIMARI.md)).
+- Giriş kilidi (hesap başına) ve `Idempotency-Key` yanıt deposu **süreç belleğindedir**: yeniden başlatmada sıfırlanır, birden çok
+  sunucu sürecinde paylaşılmaz. Yeniden başlatmadan sonra gelen bir yeniden gönderim baştan işlenir.
 - Anahtarlar demo ortamında dosyada (`server/data/keys`, 0600) tutulur; üretimde KMS ya da ortam değişkeni kullanılmalıdır.
   Ana anahtar `server/scripts/rotate-master-key.ts` ile döndürülebilir (DEK'ler yeni KEK ile yeniden sarılır; `--dry-run`).
 - Personel hesapları için iki faktörlü kimlik doğrulama yoktur; gerekçe ve telafi edici tedbirler [KVKK.md §8](docs/KVKK.md).

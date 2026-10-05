@@ -1,6 +1,9 @@
 # Karar Algoritması Spesifikasyonu — "Köprülü Çoğunluk" (KÇ-1.0, revizyon r2)
 
-> Bu belge sistemin **bağlayıcı** algoritma tanımıdır. Kod (`server/src/governance/*`) bu belgeye uymak zorundadır.
+> Bu belge sistemin **bağlayıcı** algoritma tanımıdır. Karar kodu bu belgeye uymak zorundadır: karar fonksiyonları (`decide` —
+> yeniden oylama da `decide` ile, `round = 2` ve `revote` alanıyla —, `evaluateObjection`, `verifyTally`, `isSignificant`)
+> **`shared/src/decision.ts`**'tedir ve sunucuyla istemcide AYNI kod çalışır; ona veri sağlayan kümeleme, vekâlet çözümü ve
+> parametreler `server/src/governance/*`, yaşam döngüsü ve sayım `server/src/forum/*` içindedir.
 > Araştırma gerekçeleri için bkz. [ARASTIRMA.md](ARASTIRMA.md) (özellikle Bölüm 11–13).
 > Algoritma sürümü: `KC-1.0`. Sürüm değişirse defterdeki `TALLY` kayıtlarında `algoVersion` alanı değişir.
 > **Revizyon r2 (2026-10):** §4.1 nötr küme kuralı, §4.4 soğuk başlangıç formülü, §4.2 gösterim tutarlılığı, §5 vekâlet çözüm ayrıntıları, §9 permütasyon sıfır modeli ve yeniden üretim ayrıntıları; değişiklik listesi §12'de (madde 13–19). Bu değişiklikler yalnızca sınır durumlarında sonucu etkiler; `algoVersion` bilinçli olarak `KC-1.0` bırakılmıştır (geliştirme aşaması). Kümeleme algoritmasının kimliği `pca2-kmeans-silhouette-null/2` olur. Simülasyon kanıtları: [SIMULASYON.md](SIMULASYON.md).
@@ -96,7 +99,12 @@ Kurallar:
 - **Düzenleme teklifi:** Hedef, yürürlükteki bir konudur. Öneri `baseVersion` taşır. Kabul anında konunun güncel sürümü `baseVersion` değilse sonuç `rejected` olur ve gerekçesi "sürüm çakışması" yazılır.
 - **Tartışma içi öneriler (suggestion):** `deliberation` sırasında herkes metne değişiklik önerebilir. Yazar kabul ederse yeni sürüm oluşur ve öneren kişi anılır. Reddedilen öneriler herkese açık kalır ve öneren kişi bunu **ayrı bir öneri** olarak açabilir. Böylece yazarın tek başına veto hakkı yoktur. Yazar kararı (kabul ya da ret) yalnızca `deliberation` ve `reconciliation` evrelerinde verilebilir. Yazar karar vermeden bu evrelerden çıkılırsa (oylama başlar; ya da öneri geri çekilir, düşer veya kesin sonuca ulaşır) açık öneriler **karar verilmeden kapanır** (`lapsed`). Bu öneriler de herkese açık kalır, öneren kişiye bildirim gider ve öneri ayrı bir öneri olarak açılabilir. Böylece karar vermemek de sessiz bir veto olamaz.
 - Her durum geçişi deftere `PHASE_CHANGED {proposalId, from, to, textHash, at}` olarak yazılır.
-- Faz geçişlerinin tek otoritesi sunucudaki zamanlayıcıdır. Bu sayede web ve Android istemcileri hiçbir zaman farklı durum görmez.
+- Faz geçişleri sunucuda yürür; istemciler durum üretmez, yalnız sunucunun durumunu gösterir (web ve Android hiçbir zaman farklı durum
+  görmez). Geçişlerin çoğunu zamanlayıcı yürütür (`lifecycle.tick()`: süre dolunca, destek eşiği aşılınca, oylama kapanınca…).
+  İki geçiş **yazarın kendi eylemiyle**, zamanlayıcı beklenmeden olur: `draft → sponsoring` ("Destekçi toplamaya gönder") ve oylama
+  başlamadan önce `draft | sponsoring | deliberation → withdrawn` ("Geri çek"). Hangi yoldan olursa olsun bir geçişin yazıldığı tek
+  yer `applyTransition`'dır (durum, `phase_events` satırı ve `PHASE_CHANGED` defter kaydı); yani geçişin biçimi ve deftere yazılan
+  kayıt her yolda aynıdır.
 
 ## 4. Sayım (Tally)
 
@@ -111,7 +119,7 @@ girdi: params, E, etkin oylar v(u), küme anlık görüntüsü C, round=1, autho
 2. Onay:
    a = Y/(Y+N)
    τ' = τ  (soğuk başlangıçta τ' = max(τ, min(τ+δ_cold, 2/3)); §4.4)
-   thresholdMet = (strict ? Y·den > N·num... : ...)  // tamsayı karşılaştırması, §4.5
+   thresholdMet = strict ? Y·den > num·(Y+N) : Y·den ≥ num·(Y+N)   // τ' = num/den; tamsayı karşılaştırması, Y+N = 0 ise sağlanmaz (§4.5)
 3. Köprü (bridgeApplicable ise):
    anlamlı kümeler S = {g : n_g/n_C ≥ σ_share ∧ n_g ≥ σ_min}
    her g ∈ S için P_g = (1+Y_g)/(2+Y_g+N_g)
@@ -148,7 +156,10 @@ Gösterim kuralları (r2):
 - `participation_shortfall` satırı yalnızca uzatma gerektirdiğinde ✘'tir. Uzatmadan sonra "nötr sayıldı" bilgisi ✔ olarak gösterilir.
 - `quorum` açıklaması, gerekli katılım `|E|` ile sınırlandığında bunu belirtir (§12.1).
 
-### 4.3 Yeniden oylama — `decideRevote(input)`
+### 4.3 Yeniden oylama — `decide(input)`, `round = 2`
+
+Ayrı bir işlev yoktur: yeniden oylama `decide` ile, `round = 2` ve `revote = {origin, strongObjection}` verilerek sayılır
+(`round = 2` iken `revote` zorunludur).
 
 - **origin = contested:** `PASS ⇔ quorumMet ∧ ((thresholdMet ∧ bridgeMet) ∨ a ≥ ω)`
 - **origin = objection:** `PASS ⇔ quorumMet ∧ a ≥ ρ'`. Burada `ρ' = ρ`'dur. İtirazı imzalayanlar herhangi bir **anlamlı** kümenin (§1) **tüm üyelerinin** (`n_g`) en az 2/3'ü ise ("güçlü itiraz") `ρ' = max(ρ, 2/3)` olur. Küme tabanları bu turda **uygulanmaz** ama hesaplanıp gösterilir.
@@ -218,13 +229,13 @@ Süre: §2'deki tabloya göre. Bu sürede şunlar yapılır:
 4. Kategori bilirkişi gerektiriyorsa ve rapor yoksa ya da bir **karşı bilirkişi talebi** varsa yeni panel çekilir (§8).
 5. Süre dolunca `revote` başlar. Uygun seçmen anlık görüntüsü ilk turdakiyle **aynıdır**. Küme anlık görüntüsü de aynıdır.
 
-## 8. Bilirkişi seçimi — `drawExpertPanel`
+## 8. Bilirkişi seçimi — `experts.drawPanel` (ağırlıklı çekiliş: `governance.drawWeighted`)
 
 1. **Tetikleyiciler:** Ontolojide `requiresExpert` kuralı varsa, uygun seçmenlerin ≥%10'u talep ederse ya da yazar talep ederse panel çekilir.
 2. **Aday havuzu:** `active` bilirkişilerden, alanlarından en az biri önerinin kategorilerinden birinin kendisi, üst sınıfı ya da alt sınıfı olanlar alınır.
 3. **Kesin çıkar çatışması (dışlanır):** öneri yazarının kendisi; yazarla aralarında doğrudan `RELATED_TO` (aile, iş, hane) kenarı bulunanlar (kenarı ikisinden biri beyan etmiş olmalıdır) ve yazarla aynı haneden olanlar (daha uzun `RELATED_TO` zincirleri ile üçüncü kişilerin beyanları yalnız yumuşak çatışmadır, adım 4); aynı önerinin önceki paneline girmiş olanlar; kendisi beyan edenler.
 4. **Yumuşak çatışma:** `soft = 1,0` (grafta mesafe 1: takip veya vekâlet) ya da `0,5` (mesafe 2; `RELATED_TO` ile 2-3 adımlık zincir). Ağırlık: `w = clamp(R, 0,5, 1,5) / (1 + aktifGörev) · (1 − soft)`.
-5. **Tohum:** `seed = SHA256(sonİşlenmişBlokHash ‖ proposalId ‖ round)`. Bu tohum deftere `EXPERT_DRAW` ile, aday listesi ve ağırlıklarla birlikte yazılır. Herkes çekilişi yeniden üretebilir.
+5. **Tohum:** `seed = SHA256(sonİşlenmişBlokHash ‖ proposalId ‖ round)`. Burada blok, **önceden taahhüt edilen** bloktur (taahhüt anındaki son blok yüksekliği + 1; taahhüt deftere `SEED_COMMIT {proposalId, height, phase}` olarak yazılır ve bu işlem taahhüt edilen bloğun içindedir; §12 madde 9). Bu tohum deftere `EXPERT_DRAW` ile, aday listesi ve ağırlıklarla birlikte yazılır. Herkes çekilişi yeniden üretebilir.
 6. **Çekiliş:** Tohumlu sözde rastgele sayı üreteciyle, ağırlıklı ve yerine koymadan `k=3` kişi seçilir (aday azsa hepsi alınır). Adaylar kimliğe göre sıralanır; bu sıralama belirlenimciliği sağlar.
 7. Aday bulunamazsa üst kategoriye genişletilir. Yine yoksa "bilirkişi bulunamadı" bayrağı konur ve süreç durmaz.
 8. **Rapor şeması:** `assessment ∈ {feasible, infeasible, uncertain}`, `confidence ∈ [0,1]`, riskler, sorulara yanıtlar, karşı görüş. Hukuki nitelendirme yasaktır (6754 s. Kanun md. 3/2). Yapay zekâ denetleyicisi bu tür ifadeleri işaretler. **Azınlık güvenceli soru** (en küçük anlamlı görüş kümesinden o öneriye sorulan ilk soru) yanıtlanmadan rapor kabul edilmez (yanıt en az 10 karakter); diğer soruların yanıtlanması yalnızca itibar ölçütüdür (madde 11).
@@ -278,6 +289,8 @@ Tohum, `SHA256(sonBlokHash ‖ "cluster" ‖ zaman damgası)` olarak alınır.
 
 **Doğrulama:** Kullanıcı, cihazında sakladığı makbuzla (`ballotId, choice, salt`) oyunun deftere doğru yazıldığını doğrular. Kontrol edilenler: Merkle kanıtı, blok başlığı ve ≥3 doğrulayıcı imzası. Herkes `BALLOT_REVEAL` verisinden sayımı yeniden hesaplayabilir (`verifyTally`).
 
+**Doğrulamanın kapsamı (bilinen sınır).** Taahhüt denetimi yalnız `via = "direct"` açıklamalarına uygulanır: doğrudan oy verenin `VOTE_COMMIT` taahhüdü vardır. Vekâletle sayılan oylar için (`via = "delegated"`) defterde seçim taahhüdü yoktur; `verifyTally` bunlar için yalnız açıklanan oyların özetinin (`revealHash`) `TALLY` kaydıyla eşleştiğini ve sonucun aynı girdilerle yeniden hesaplandığını doğrular. Bir vekâlet oyunun hangi seçime sayıldığını (vekilin oyunu) bağımsız olarak kanıtlayamaz; arayüzdeki "Sayımı kendim doğrulayayım" metni bunu açıkça söyler.
+
 **Tehdit modeli (dürüstçe):** Bu sistem düşük riskli topluluk yönetişimi içindir; siyasi seçim için değildir. Sunucu, seçmen uygunluğu ve oy gizliliği konusunda güvenilir kabul edilir. Cihazda imzalı oy ve MACI benzeri zorlama direnci gelecek çalışmadır. Dört doğrulayıcı aynı makinede çalışıyorsa bu durum arayüzde açıkça belirtilir.
 
 ## 12. Uygulama netleştirmeleri (KC-1.0, r1 ve r2)
@@ -292,7 +305,11 @@ Aşağıdaki maddeler spesifikasyonun belirsiz bıraktığı noktaları **en kor
 6. **Ara sayımın gizliliği.** `needs_more_votes` ara sayımı deftere açıklanmaz ve oylama sürerken hiçbir istemciye gösterilmez. Uzatmadan sonra yapılan kesin sayım hem `BALLOT_REVEAL` hem `TALLY` olarak yazılır.
 7. **Sayım anahtarı.** Sunucu `decide()` fonksiyonunu `voterKey = ballotId` ile çağırır. Böylece defterdeki bültenden yapılan bağımsız yeniden sayım (`verifyTally`) aynı `inputsHash` değerini üretir. Vekâletle gelen etkin oyların `ballotId`'si de aynı HMAC ile hesaplanır, `salt` boş bırakılır ve kayıtta `via = "delegated"` yazar.
 8. **İtiraz imzacısının oyu.** "İlk turda etkin oyu `no`" koşulu bülten (`BALLOT_REVEAL`) üzerinden denetlenir; vekâletle `no` sayılan kişi de itiraz edebilir.
-9. **Bilirkişi tohumunun öğütülmesine karşı.** Panel çekilişini yazar değil zamanlayıcı başlatır. Tohumdaki blok, tartışma evresi açılırken **önceden taahhüt edilen** yüksekliktir (`o anki yükseklik + 2`), yani çekiliş anı seçilerek uygun bir blok hash'i yakalanamaz.
+9. **Bilirkişi tohumunun öğütülmesine karşı.** Panel çekilişini yazar değil zamanlayıcı başlatır. Tohumdaki blok, taahhüt anında henüz var olmayan ve **önceden taahhüt edilen** yüksekliktir: `taahhüt anındaki son blok yüksekliği + 1` (kodda `SEED_COMMIT_LEAD = 1`, `server/src/forum/lifecycle.ts`). Taahhüt, tartışma evresi açılırken; ayrıca bilirkişi talebi eşiği aşılınca, hak bayrağı bilirkişiyi zorunlu kılınca ve uzlaşma turu ya da karşı panel için yapılır. Yükseklik yalnız boşken yazılır ve sonradan değişmez; kura bu blok işlenmeden yapılmaz (`seed_block_pending`) ve tohum tam o bloktan alınır. Böylece çekiliş anı seçilerek uygun bir blok hash'i yakalanamaz. Taahhüdün yazıldığı **her** yolda aynı veritabanı işleminde bir `SEED_COMMIT {proposalId, height, phase}` defter işlemi gönderilir (`commitSeedBlock`): defter boş blok üretmediğinden taahhüt edilen bloğu bu işlem oluşturur ve taahhüt defterde denetlenebilir olur (işlem taahhüt edilen bloğun içindedir; demek ki taahhüt o bloğun hash'i bilinmeden yapılmıştır).
+
+   **Düzeltme notu (pay `+1`, `+2` değil).** Bu madde önceden payı `+2` olarak yazıyordu; kod hep `+1` kullandı ve belge buna uydurulmadı, **belge düzeltildi**. Gerekçe: (i) defter **boş blok üretmez** (havuz boşsa bekler; `server/test/ledger/consensus.test.ts` "boş blok yok"). `+1` bloğunu taahhüdü taşıyan işlem (tartışma açılışında `PHASE_CHANGED` ve `SEED_COMMIT`, diğer yollarda `SEED_COMMIT`) oluşturur; `+2` bloğu ise ancak başka bir işlem gelirse oluşur. Boşta kalan bir defterde kura tartışma süresince beklerdi, süre dolunca çekiliş hiç yapılmazdı ve bilirkişi gerekliyken oylama raporsuz açılırdı (canlılık ihlali; bu da bilirkişi seçimi güvencesini ortadan kaldırırdı). (ii) `+1`, güvenlik amacını korur: yükseklik taahhüt anında var olmayan bir bloğa işaret eder, bir kez yazılır ve kura o blok işlenmeden yapılmaz. (iii) `+2` testlerin açık beklentilerini (`taahhüt edilen blok PHASE_CHANGED bloğudur`) bozardı. Payı değiştirmeden önce `server/test/forum/seed-commit.test.ts` ve bu gerekçe gözden geçirilmelidir.
+
+   **Bilinen sınırlar (dürüstçe).** (a) Taahhüt anında `+1` bloğu zaten oylanıyorsa (uçuşta) tohum o bloğun hash'i olabilir; bunu ancak doğrulayıcıları işleten sunucu önceden görebilir ve sunucu bu sistemde güvenilir kabul edilir (§11 tehdit modeli). `+2` payı bunu kapatırdı ama ayrıca zorunlu blok isterdi. (b) *Giderildi:* önceden uzlaşma turu, karşı panel, hak bayrağı ve bilirkişi talebi yollarındaki taahhüt bir defter işlemi taşımıyordu; blok ancak ilgisiz bir defter işlemiyle oluşuyor, boşta kalan bir defterde zorunlu panel süre bitene dek çekilmeyebiliyordu. Artık her yolda `SEED_COMMIT` gönderilir ve kura bir blok aralığı içinde yapılabilir (`server/test/forum/seed-commit.test.ts`, gerçek defterle "kura canlılığı").
 10. **Küme manipülasyonuna karşı.** Kümeleme girdisine yalnızca en az 3 gündür doğrulanmış hesapların oyları alınır. Anlık görüntü oylama açılışında dondurulur ve yeniden oylamada aynı görüntü kullanılır. Kilit adım (lockstep) oy grupları graf modülünde işaretlenir: tarama her **kesin** sayımda (ara sayımda değil) yapılır, sonucu **kararı değiştirmez**; yalnızca bütünlük uyarısı olarak denetim günlüğüne yazılır ve gösterilir (herkese grup sayısı ve büyüklüğü, üyeler yalnız denetçi/yöneticiye; deftere yazılmaz).
 11. **Hak etkisi bayrakları: yalnızca yükseltme.** Yazar dışındaki üyelerin ve yapay zekânın eklediği "temel hak kısıtlaması" bayrakları katmanı en fazla T1'e yükseltir, uyarı üretir ve bilirkişiyi zorunlu kılar. Öneriyi T3 (geçersiz) yapamazlar. Bayrağı yalnızca ilgili alandaki bilirkişi ya da yönetici kaldırabilir.
 12. **Silme talebi kötüye kullanımına karşı.** Bir kullanıcının aynı anda en fazla 3 açık silme talebi olabilir ve 24 saatte en fazla 5 talep açabilir. Acil gerekçeli daraltma, karar çıkana kadar sürer; talep reddedilir, düşer ya da geri çekilirse kaldırılır. Bir mesaj için aynı anda yalnızca bir etkin silme talebi açılabilir (kural talep oluşturulurken ve taslak gönderilirken denetlenir). İki istisna vardır: (a) geçersiz talep ("Görüş ayrılığı" gerekçeli ya da gönderimde yönetmeliğe aykırı bulunmuş) başka talebi engellemez; (b) mevcut talep acil değilse kişisel veri ifşası ya da tehdit gerekçeli talep yine açılır ve mesaj talep anında daraltılır (§10 madde 3). Böylece olağan bir talep, acil daraltmayı geciktiremez; bir mesajı aynı anda en çok bir olağan ve bir acil talep hedefler. Talepler ayrı ayrı oylanır; biri kabul edilirse mesaj gizlenir, öbürünün kabulü bir şey değiştirmez.
