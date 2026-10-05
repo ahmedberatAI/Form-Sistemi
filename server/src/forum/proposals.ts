@@ -4,9 +4,9 @@ import {
   aiLabel,
   ceilMul,
   clusterLabel,
-  fracAtLeast,
   fy,
   hashCanonical,
+  isSignificant,
   PROPOSAL_TEXT_LIMITS as TEXT,
   TEXT_LIMITS,
   rat,
@@ -41,7 +41,7 @@ import { memberToken } from "../core/notification-text";
 import { json, type SqlValue } from "../db";
 import { type ClusterServiceImpl } from "./clusters";
 import { buildProposalDetail, receiptOf, visibleProposal } from "./detail";
-import { applyTransition, auditInputFor, findingsSummary } from "./lifecycle";
+import { applyTransition, auditInputFor, commitSeedBlock, findingsSummary, seedCommitHeight } from "./lifecycle";
 import { assertNoPii, moderationContext } from "./messages";
 import { OBJECTION_BUDGET, objectionBudgetOf } from "./objection-budget";
 import { bulletinRounds, evaluateObjections, firstRoundChoice } from "./tally";
@@ -77,7 +77,7 @@ import {
   type RightsFlag,
   type TopicRow,
 } from "./util";
-import { querySummaries, SUMMARY_COLUMNS, proposalSummaries, sponsorsNeeded, type SummaryRow } from "./views";
+import { querySummaries, SUMMARY_COLUMNS, proposalSummaries, significanceFor, sponsorsNeeded, type SummaryRow } from "./views";
 
 const SALAMI_WINDOW_MS = 30 * DAY;
 const SALAMI_SCORE = 0.35;
@@ -182,8 +182,8 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
   }
   /**
    * İçerik etiketleri (yalnız danışma): her etiketin güveni, modelin ya da çevrimdışı sezgiselin o etiket için KENDİ
-   * bildirdiği güvendir (`labelConfidences`); risk düzeyinden türetilmez (eski 0,4 + 0,2·risk formülü tek bir sözlük
-   * eşleşmesini 0,95'e çıkarıyordu). Güven bildirilmemişse temkinli varsayılan 0,5 (orta güven: uyarı + bilirkişi).
+   * bildirdiği güvendir (`labelConfidences`); risk düzeyinden türetilmez (tek bir sözlük eşleşmesi güveni şişirmesin).
+   * Güven bildirilmemişse temkinli varsayılan 0,5 (orta güven: uyarı + bilirkişi).
    */
   function contentLabelsOf(m: ModerationResult | null): ContentLabel[] {
     if (!m || m.risk < 1) return [];
@@ -899,7 +899,9 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
         const set: Record<string, SqlValue> = { rights_flags: JSON.stringify(flags), audit_report: JSON.stringify(report), updated_at: core.now() };
         if (!parsed.fixedParams) set.tier = report.tier;
         if (cur.status === "deliberation" && report.params?.requiresExpert && cur.expert_draw_height === null && !safe(() => deps.experts.panel(id), null)) {
-          set.expert_draw_height = deps.ledger.latestBlock().height + 1;
+          const height = seedCommitHeight(deps.ledger.latestBlock().height);
+          set.expert_draw_height = height;
+          commitSeedBlock(core, id, height, cur.status);
         }
         core.updateProposal(id, set);
         core.audit.log(actor.id, data.remove ? "proposal.rights_flag_removed" : "proposal.rights_flag_added", id, { right, direction: data.direction, source });
@@ -1047,12 +1049,18 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
           const threshold = Math.max(1, ceilMul(rat(1, 10), core.verifiedCount()));
           if ((byAuthor || count >= threshold) && cur.request_expert === 0) {
             const set: Record<string, SqlValue> = { request_expert: 1 };
-            if (cur.status === "deliberation" && !panel && cur.expert_draw_height === null) set.expert_draw_height = latest + 1;
+            if (cur.status === "deliberation" && !panel && cur.expert_draw_height === null) {
+              const height = seedCommitHeight(latest);
+              set.expert_draw_height = height;
+              commitSeedBlock(core, id, height, cur.status);
+            }
             core.updateProposal(id, set);
             core.notify([p.author_id], { kind: "expert_request", title: `${proposalRef(p)} için bilirkişi paneli çekilecek`, body: "Bilirkişi talebi eşiğe ulaştı; kura zamanlayıcı tarafından önceden taahhüt edilen blokla yapılır.", link: proposalLink(id) });
           }
         } else if ((byAuthor || count >= 3) && cur.expert_draw_height === null && !(panel?.isCounterPanel && panel.createdAt >= Number(cur.phase_started_at ?? 0))) {
-          core.updateProposal(id, { expert_draw_height: latest + 1 });
+          const height = seedCommitHeight(latest);
+          core.updateProposal(id, { expert_draw_height: height });
+          commitSeedBlock(core, id, height, cur.status);
           core.notify([p.author_id], { kind: "expert_request", title: `${proposalRef(p)} için karşı bilirkişi paneli çekilecek`, body: "Karşı bilirkişi talebi eşiğe ulaştı.", link: proposalLink(id) });
         }
       });
@@ -1069,10 +1077,9 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
       const snap = clusters.latest();
       if (snap) {
         const params: DecisionParams | null = parseProposal(p).fixedParams ?? parseProposal(p).audit?.params ?? null;
-        const share = params?.significantShare ?? rat(1, 10);
-        const minMembers = params?.significantMinMembers ?? 3;
+        const rule = significanceFor(core, params);
         const sizes = clusters.sizes(snap.id);
-        const sig = Object.keys(sizes.sizes).filter((g) => sizes.sizes[g] >= minMembers && fracAtLeast(sizes.sizes[g], sizes.clusteredTotal, share));
+        const sig = Object.keys(sizes.sizes).filter((g) => isSignificant(sizes.sizes[g], sizes.clusteredTotal, rule));
         const mine = clusters.clusterOf(snap.id, actor.id);
         if (mine && sig.length >= 2 && sig.includes(mine)) {
           const smallest = Math.min(...sig.map((g) => sizes.sizes[g]));
@@ -1150,18 +1157,17 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
         }
         minorityReports.push({ id: r.id, pseudonym: pseudoOf(r.author_id), clusterId: r.cluster_id, body: r.body });
       }
-      // Anlamlı kümelerin NÜFUS büyüklükleri (sayımın parametreleriyle; yoksa varsayılan pay 1/10 ve en az 3 üye).
+      // Anlamlı kümelerin NÜFUS büyüklükleri (sayımın parametreleriyle; öneride parametre yoksa yürürlükteki yönetmeliğin değerleriyle).
       let clusterSizes: Record<string, number> | undefined;
       if (snap) {
         clusterSizes = {};
         if (snap.k >= 2) {
           const parsed = parseProposal(p);
           const params: DecisionParams | null = parsed.fixedParams ?? parsed.audit?.params ?? null;
-          const share = params?.significantShare ?? rat(1, 10);
-          const minMembers = params?.significantMinMembers ?? 3;
+          const rule = significanceFor(core, params);
           const sig = Object.keys(snap.sizes)
             .sort()
-            .filter((g) => snap.sizes[g] >= minMembers && fracAtLeast(snap.sizes[g], snap.clusteredTotal, share));
+            .filter((g) => isSignificant(snap.sizes[g], snap.clusteredTotal, rule));
           if (sig.length >= 2) for (const g of sig) clusterSizes[g] = snap.sizes[g];
         }
       }

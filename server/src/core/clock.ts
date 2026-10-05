@@ -48,17 +48,45 @@ export class ManualClock implements Clock {
 export const HOUR = 3_600_000;
 export const DAY = 24 * HOUR;
 
+/** Kalıcı simüle saat durumu (meta.sim_clock). */
+export interface SimClockState {
+  simNow: number;
+  advancedTotal: number;
+  /**
+   * Çalışırken yazılan kayıtlarda: bir sonraki kalıcılaştırmaya dek verilebilecek en geç simüle zaman (kira). Sert kapanışta
+   * (çökme, taskkill /F) son kayıttan sonra verilen zaman damgaları bunu aşamaz. Düzgün kapanışta yazılmaz (saat tam kaydedilir).
+   */
+  leaseUntil?: number;
+}
+
+/**
+ * Yeniden açılışta simüle saatin başlayacağı an (#281). Saat ASLA geri gitmez: kayıtlı an, kira üst sınırı ve veritabanındaki
+ * en son olay zamanının (+1 ms) en büyüğü. Kayıt yoksa (ilk açılış) gerçek saatten başlar; yine de mevcut kayıtların gerisine düşmez.
+ * Düzgün kapanıştan sonra kayıtlı an aynen sürer (sunucu kapalıyken simüle zaman ilerlemez).
+ */
+export function resumeSimTime(saved: SimClockState | null, latestRecorded: number | null, realNow: number): number {
+  const candidates = [saved ? saved.simNow : realNow];
+  if (saved && typeof saved.leaseUntil === "number" && Number.isFinite(saved.leaseUntil)) candidates.push(saved.leaseUntil);
+  if (latestRecorded !== null && Number.isFinite(latestRecorded)) candidates.push(latestRecorded + 1);
+  return Math.max(...candidates);
+}
+
 /**
  * Hızlandırılmış simüle saat (demo): simüle zaman gerçek zamandan `scale` kat hızlı akar
  * (TIME_SCALE=60 → 1 saat = 1 dakika). Süreler ALGORITMA.md'deki gerçek saat değerleriyle hesaplanır;
  * takvim tutarlı kalır (ör. 72 saatlik tartışma gerçek zamanda 72 dakika sürer).
  * Sunucu kapalıyken simüle zaman ilerlemez: kalıcılık için `snapshot()` meta tablosuna yazılır ve
  * yeniden başlatmada `startSim` olarak verilir.
+ * Çalışırken de geri gitmez: duvar saati geri adım atarsa (ör. işletim sisteminin zaman eşitlemesi) hesaplanan an son verilen
+ * andan küçük olur; o zaman son an verilir (saat, duvar saati yeniden yetişene dek durur). Yoksa TIME_SCALE ile çarpılan geri
+ * adım yeni kayıtlara mevcutlardan eski zaman damgası verdirir ve "en son kayıt" sıralamaları bozulurdu.
  */
 export class ScaledClock implements Clock {
   private simAnchor: number;
   private realAnchor: number;
   private advanced: number;
+  /** Şimdiye dek verilen en büyük an (monotonluk). */
+  private last = Number.NEGATIVE_INFINITY;
   constructor(
     private readonly opts: {
       scale: number;
@@ -82,11 +110,15 @@ export class ScaledClock implements Clock {
     return (this.opts.realNow ?? Date.now)();
   }
   now(): number {
-    return Math.floor(this.simAnchor + (this.real() - this.realAnchor) * this.opts.scale);
+    const t = Math.floor(this.simAnchor + (this.real() - this.realAnchor) * this.opts.scale);
+    if (t > this.last) this.last = t;
+    return this.last;
   }
   advance(ms: number): void {
     if (!(ms > 0)) throw new Error("advance: ms > 0 olmalı");
     this.simAnchor += ms;
+    // Saat (geri adım yüzünden) son verilen anda bekliyorsa da ileri alma tam ms kadar etkili olur.
+    if (Number.isFinite(this.last)) this.last += ms;
     if (this.opts.countAdvances !== false) this.advanced += ms;
     this.opts.onChange?.(this.snapshot());
   }

@@ -27,12 +27,16 @@ const MAX_MESSAGE_CHARS = 2000;
  */
 export const DEFAULT_LABEL_CONFIDENCE = 0.5;
 
-/** lintExpertReport için ek seçenek: bilirkişinin uzmanlık alanları (etiket ya da IRI) "out_of_domain" denetimine verilir. */
+/**
+ * lintExpertReport seçenekleri: bilirkişinin uzmanlık alanları (etiket ya da IRI) "out_of_domain" denetimine verilir. Sözleşme
+ * (core/contracts.ts `AiCallOptions`) `domains` alanını artık kendisi taşır; bu tür geriye dönük bir takma addır, yeni kod
+ * `AiCallOptions` kullanmalıdır.
+ */
 export interface LintOptions extends AiCallOptions {
   domains?: string[];
 }
 
-/** AiService + uzmanlık alanı alan lint (sözleşme genişletilene dek somut tip üzerinden kullanılabilir). */
+/** AiService'in geriye dönük takma adı: `lintExpertReport` imzası sözleşmeyle aynıdır (core/contracts.ts); yeni kod doğrudan `AiService` kullanmalıdır. */
 export interface AiServiceExt extends AiService {
   lintExpertReport(text: string, opts?: LintOptions): ReturnType<AiService["lintExpertReport"]>;
 }

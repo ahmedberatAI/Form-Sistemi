@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS meta (
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,                       -- rastgele üye UUID (oy/graf/defter yalnızca bunu bilir)
   nickname TEXT NOT NULL,                    -- takma ad (herkese açık)
-  nickname_norm TEXT NOT NULL UNIQUE,        -- NFKC + tr-TR küçük harf
+  nickname_norm TEXT NOT NULL UNIQUE,        -- shared nicknameKey: NFKC + kırpma + tr-TR küçük harf + I/ı/İ/i → i katlaması
   password_hash TEXT NOT NULL,               -- scrypt$N$r$p$salt$hash
   roles TEXT NOT NULL DEFAULT '["member"]',  -- JSON dizi
   status TEXT NOT NULL DEFAULT 'pending',    -- pending|verified|suspended|rejected|erased
@@ -483,6 +483,21 @@ CREATE TABLE IF NOT EXISTS audit_log (
   target TEXT,
   meta TEXT,
   at INTEGER NOT NULL
+);
+
+-- ───────────── Defter giden kutusu (şema sürümü 2) ─────────────
+-- Gönderilmiş ama henüz bir blokta onaylanmamış defter işlemleri. Bir DB işlemi içinden yapılan gönderim satırı o işlemde yazar
+-- (işlemsel outbox: COMMIT ile birlikte kalır, geri almada birlikte silinir); işlem dışındaki gönderimleri defter servisi submit anında
+-- yazar. İşlem blokta onaylanıp doğrulayıcı depoları diske indirilince (fsync) satır silinir (bu bir kuyruktur, kayıt değildir). Sert
+-- kapanıştan (çökme, taskkill /F) ya da elektrik kesintisinden sonra açılışta kalan satırlar yeniden gönderilir; elektrik kesintisinde
+-- kaybolan son blok yeniden üretilir, işlem kaybolmaz (MIMARI §4).
+-- Yük deftere yazılacak yükün aynısıdır: kişisel veri ve kullanıcı kimliği içermez (prepareTx denetler).
+CREATE TABLE IF NOT EXISTS ledger_outbox (
+  hash TEXT PRIMARY KEY,                     -- işlem özeti: H(type, payload, nonce)
+  type TEXT NOT NULL,
+  payload TEXT NOT NULL,                     -- kanonik JSON
+  nonce TEXT NOT NULL,
+  submitted_at INTEGER NOT NULL              -- simüle saat
 );
 
 -- ───────────── Sorgu indeksleri (sıcak WHERE/JOIN sütunları; mevcut veritabanları bir sonraki açılışta alır) ─────────────

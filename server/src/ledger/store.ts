@@ -14,6 +14,11 @@ export interface BlockStore {
   put(block: StoredBlock): void;
   getState(key: string): string | null;
   setState(key: string, value: string): void;
+  /**
+   * Şimdiye dek yazılan blokları diske KALICI olarak indirir (fsync). Giden kutusu satırı ancak bundan sonra silinir: elektrik
+   * kesintisinde son blok kaybolsa bile işlem giden kutusundan yeniden gönderilir (#273). Bellek deposunda bir şey yapmaz.
+   */
+  sync(): void;
   close(): void;
 }
 
@@ -43,6 +48,7 @@ export class MemoryBlockStore implements BlockStore {
   setState(key: string, value: string): void {
     this.state.set(key, value);
   }
+  sync(): void {}
   close(): void {}
 }
 
@@ -65,7 +71,8 @@ export class SqliteBlockStore extends MemoryBlockStore {
   constructor(path: string) {
     super();
     this.db = new Db(path);
-    // WAL + NORMAL: süreç çökmesine dayanıklı; ani güç kesintisinde son birkaç yazım kaybolabilir (demo).
+    // WAL + NORMAL: süreç çökmesine dayanıklı; ani güç kesintisinde son (henüz sync() edilmemiş) yazımlar kaybolabilir. Her blokta
+    // fsync yerine defter, onaylanan işlemlerin giden kutusu satırlarını silmeden önce toplu sync() çağırır (bkz. InProcessLedger).
     this.db.exec("PRAGMA synchronous = NORMAL;");
     this.db.exec(SCHEMA);
     for (const r of this.db.all<{ height: number; data: string }>("SELECT height, data FROM blocks ORDER BY height")) {
@@ -86,6 +93,10 @@ export class SqliteBlockStore extends MemoryBlockStore {
   override setState(key: string, value: string): void {
     super.setState(key, value);
     this.db?.run("INSERT OR REPLACE INTO node_state(k, v) VALUES (?, ?)", key, value);
+  }
+  /** WAL denetim noktası: NORMAL kipte SQLite WAL'ı denetim noktasından önce, veritabanı dosyasını sonra fsync eder. */
+  override sync(): void {
+    this.db?.exec("PRAGMA wal_checkpoint(FULL);");
   }
   override close(): void {
     this.db?.close();

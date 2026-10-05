@@ -8,7 +8,7 @@ import { assertValidSecrets, loadConfig, parseEnvBool, parseEnvInt, parseEnvNumb
 import { keyFingerprint } from "../../src/core/keycheck";
 import { openDb } from "../../src/db";
 
-const ENV_NAMES = ["PORT", "TIME_SCALE", "LEDGER_BLOCK_MS", "AI_ENABLED", "MASTER_KEY", "TOKEN_KEY", "VOTE_KEY", "DATA_DIR", "DB_PATH", "HOST", "AI_MODEL"];
+const ENV_NAMES = ["PORT", "TIME_SCALE", "LEDGER_BLOCK_MS", "AI_ENABLED", "MASTER_KEY", "TOKEN_KEY", "VOTE_KEY", "DATA_DIR", "DB_PATH", "HOST", "AI_MODEL", "TRUST_PROXY"];
 const saved: Record<string, string | undefined> = {};
 let dir = "";
 

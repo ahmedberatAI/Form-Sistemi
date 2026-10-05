@@ -36,6 +36,8 @@ function categoryIris(ontology: OntologyService): Set<string> {
 
 export function registerMeRoutes(app: FastifyInstance, { services }: RouteDeps): void {
   const { identity, forum, graph, ontology, experts, notifier } = services;
+  // Yalnız hesap silme kaskadının işlem sınırı için (vekâletler + imha tek işlemde); burada SQL yazılmaz.
+  const { db } = services.ctx;
 
   app.get("/api/me", async (req): Promise<Me> => forum.community.me(requireUser(req).id));
 
@@ -80,18 +82,45 @@ export function registerMeRoutes(app: FastifyInstance, { services }: RouteDeps):
     if (!(await identity.verifyPassword(user.id, body.password))) {
       throw new AppError(400, "wrong_password", "Şifre hatalı.", { password: "Şifre hatalı." });
     }
-    // Aktif vekâletler geri alınır (kenarlar silinmez). Bu kişiye verilmiş vekâletler de düşer; verenlere haber verilir.
-    for (const d of graph.delegations(user.id)) graph.revokeDelegation(d.id, user.id);
-    for (const d of graph.delegations().filter((x) => x.to === user.id)) {
-      graph.revokeDelegation(d.id, d.from);
-      notifier.notify(d.from, {
+    // Tek veritabanı işlemi (#14/#81/#159/#280). Db.tx eşzamanlıdır; imha sözü işlemin DIŞINDA beklenir.
+    let delegators: string[] = [];
+    let erased: Promise<void> | undefined;
+    let graphTouched = false;
+    try {
+      db.tx(() => {
+        // 1) Önce imha: eraseSelf ön koşulları (hesap açık, son yönetici değil) HER yan etkiden önce denetler ve hatayı EŞZAMANLI
+        //    fırlatır — 409'da hiçbir vekâlete dokunulmaz, defter kaydı ve bildirim olmaz. İmhanın defter kaydı da işlem sonrasına
+        //    ertelenir (işlem geri alınırsa yazılmaz).
+        erased = identity.eraseSelf(user.id);
+        // 2) Aynı işlemde aktif vekâletler geri alınır (kenarlar silinmez); bu kişiye verilmiş olanlar da düşer. Herhangi bir
+        //    adım başarısız olursa imha dahil hepsi birlikte geri alınır.
+        graphTouched = true;
+        for (const d of graph.delegations(user.id)) graph.revokeDelegation(d.id, user.id);
+        const incoming = graph.delegations().filter((x) => x.to === user.id);
+        for (const d of incoming) graph.revokeDelegation(d.id, d.from);
+        delegators = incoming.map((d) => d.from);
+      });
+    } catch (e) {
+      // İşlem geri alındı: bellek içi graf (düşürülen kenarlar) veritabanıyla yeniden eşlensin.
+      if (graphTouched) {
+        try {
+          graph.rebuild();
+        } catch {
+          /* asıl hata önemlidir */
+        }
+      }
+      throw e;
+    }
+    await erased;
+    // 3) İşlem sonrası: vekâlet verenlere haber verilir (kişi başına bir bildirim).
+    for (const from of new Set(delegators)) {
+      notifier.notify(from, {
         kind: "delegation_revoked",
         title: "Vekâletiniz düştü",
         body: "Vekâlet verdiğiniz üye hesabını kapattığı için bu vekâlet geri alındı. Dilerseniz başka bir üyeye vekâlet verebilirsiniz.",
         link: "/profil",
       });
     }
-    await identity.eraseSelf(user.id);
     return { ok: true };
   });
 

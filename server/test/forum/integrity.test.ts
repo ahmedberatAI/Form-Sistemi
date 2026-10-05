@@ -1,4 +1,4 @@
-// DEVAM §4.4:
+// Bütünlük ve görünürlük testleri (ALGORITMA.md §12 madde 10 ve 11; mimari kural için MIMARI.md):
 //  a) ProposalDetail.rightsFlags (yön + kaynak) ve canWriteMinorityReport (uygun seçmen, tur-1 etkin oyu "red", tek rapor);
 //  b) kilit adım (lockstep) taraması kesin sayımda çalışır, KARARI DEĞİŞTİRMEZ, denetim uyarısı olarak görünür
 //     (herkese yalnız sayılar; üyeler yalnız denetçi/yöneticiye; defterde iz yok);

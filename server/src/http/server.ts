@@ -5,10 +5,11 @@ import Fastify, { type FastifyInstance, type onRequestHookHandler } from "fastif
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
-import type { Config } from "../core/config";
+import type { Config, TrustProxy } from "../core/config";
 import { AppError } from "../core/errors";
 import { installAuth } from "./auth";
 import { installErrorHandling, rateLimitedError } from "./errors";
+import { IDEMPOTENCY_KEY_HEADER, IDEMPOTENT_REPLAYED_HEADER, installIdempotency, type IdempotencyOptions } from "./idempotency";
 import { registerRoutes } from "./routes";
 import type { AppServices, HttpOptions, RateLimitOptions, RouteDeps } from "./types";
 
@@ -21,12 +22,15 @@ const IDLE_SWEEP_MS = 100;
 export interface BuildServerOptions extends HttpOptions {
   /** Kapanışta uçuştaki isteklere tanınan süre (ms); varsayılan HTTP_DRAIN_MS. */
   drainMs?: number;
+  /** Idempotency-Key saklama sınırları (varsayılan DEFAULT_IDEMPOTENCY; testler küçültür). */
+  idempotency?: IdempotencyOptions;
 }
 export const DEFAULT_RATE_LIMIT = { global: 300, auth: 20 } as const;
 const MINUTE = 60_000;
 
 /**
  * Hız sınırını ortam değişkenlerinden okur: RATE_LIMIT_GLOBAL (varsayılan 300) ve RATE_LIMIT_AUTH (varsayılan 20), istek/dk/IP.
+ * IP, ters vekil arkasında TRUST_PROXY ile doğru okunur (bkz. config.ts parseTrustProxy).
  * 0 → o sınırlayıcı kapalı; ikisi de 0 → hız sınırı tamamen kapalı (false). Geçersiz değer açık bir hatayla durdurur.
  */
 export function rateLimitFromEnv(env: Record<string, string | undefined> = process.env): RateLimitOptions {
@@ -42,6 +46,15 @@ export function rateLimitFromEnv(env: Record<string, string | undefined> = proce
   return global === 0 && auth === 0 ? false : { global, auth };
 }
 
+/**
+ * Config.trustProxy → Fastify trustProxy. Fastify 5 sayıyı (atlama sayısı) artık "hiçbir şeye güvenme" sayar; TRUST_PROXY=n'nin
+ * belgelenen anlamı korunsun diye sayı, en yakın n atlamaya güvenen işleve çevrilir (uyarı: config.ts trustProxyWarning).
+ */
+export function fastifyTrustProxy(tp: TrustProxy | undefined): boolean | string[] | ((address: string, hop: number) => boolean) {
+  if (typeof tp === "number") return (_address, hop) => hop < tp;
+  return tp ?? false;
+}
+
 function isDir(p: string): boolean {
   try {
     return statSync(p).isDirectory();
@@ -52,7 +65,13 @@ function isDir(p: string): boolean {
 
 export async function buildServer(services: AppServices, config: Config, opts: BuildServerOptions = {}): Promise<FastifyInstance> {
   // Günlük: LOG_LEVEL (varsayılan "warn": yalnız uyarı ve hatalar; her isteği görmek için LOG_LEVEL=info).
-  const app = Fastify({ logger: opts.logger ? { level: process.env.LOG_LEVEL ?? "warn" } : false, bodyLimit: BODY_LIMIT });
+  // trustProxy (TRUST_PROXY): ters vekil arkasında req.ip, güvenilen vekillerin X-Forwarded-For'undan okunur; kapalıyken
+  // (varsayılan) doğrudan bağlantının adresidir. Hız sınırı req.ip'ye göre sayar: vekil arkasında kapalı kalırsa herkes tek IP olur.
+  const app = Fastify({
+    logger: opts.logger ? { level: process.env.LOG_LEVEL ?? "warn" } : false,
+    bodyLimit: BODY_LIMIT,
+    trustProxy: fastifyTrustProxy(config.trustProxy),
+  });
 
   // Kapanış: yeni bağlantı kabul edilmez, uçuştaki istekler bitene kadar beklenir. İstek bitince bağlantı keep-alive'a düşer ve
   // Fastify'ın varsayılan 72 sn'lik keepAliveTimeout'u close()'u ~70 sn tutardı; bu yüzden boşa düşenleri yoklayıp kapatırız,
@@ -70,12 +89,16 @@ export async function buildServer(services: AppServices, config: Config, opts: B
     if (hardStop) clearTimeout(hardStop);
   });
 
+  // Yeniden gönderimde çift kayıt önleme (Idempotency-Key): kancaları rotalardan önce kurulur; ham gövde özeti ayrıştırıcıdan gelir.
+  const idempotency = installIdempotency(app, opts.idempotency);
+
   // Boş gövdeli JSON isteklerini kabul et (gövde yok sayılır); geri kalanı Fastify'ın güvenli ayrıştırıcısında.
   // API yalnız JSON kabul eder (text/plain → 415).
   const defaultJson = app.getDefaultJsonParser("error", "ignore");
   app.removeContentTypeParser(["application/json", "text/plain"]);
   app.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, done) => {
     const raw = typeof body === "string" ? body : body.toString("utf8");
+    idempotency.noteRawBody(req, raw);
     if (raw.trim() === "") return done(null, undefined);
     defaultJson(req, raw, (err, parsed) => {
       if (err) return done(new AppError(400, "validation", "İstek gövdesi geçerli bir JSON değil."), undefined);
@@ -97,8 +120,8 @@ export async function buildServer(services: AppServices, config: Config, opts: B
   await app.register(cors, {
     origin: config.corsOrigins.includes("*") ? true : config.corsOrigins,
     methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Authorization", "Content-Type", "Accept"],
-    exposedHeaders: ["Retry-After", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"],
+    allowedHeaders: ["Authorization", "Content-Type", "Accept", IDEMPOTENCY_KEY_HEADER],
+    exposedHeaders: ["Retry-After", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset", IDEMPOTENT_REPLAYED_HEADER],
     maxAge: 600,
   });
 

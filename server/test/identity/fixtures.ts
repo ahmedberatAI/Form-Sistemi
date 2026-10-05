@@ -2,7 +2,7 @@
 import { generateTckn, type RegistrationInput } from "@forum/shared";
 import { createAuditLogger } from "../../src/core/audit";
 import { MemoryNotifier } from "../../src/core/notifier";
-import { createIdentityService } from "../../src/identity";
+import { createIdentityService, type IdentityDeps } from "../../src/identity";
 import { FakeLedger, insertUser, makeCtx } from "../helpers/fakes";
 
 let seq = 0;
@@ -26,12 +26,13 @@ export function regInput(over: Partial<RegistrationInput> = {}): RegistrationInp
   };
 }
 
-export function setup() {
+/** opts: gerçek duvar saati (bekleyen başvuru imhası, giriş kilidi) ve giriş kilidi ayarları; verilmezse Date.now ve varsayılanlar. */
+export function setup(opts: Pick<IdentityDeps, "realNow" | "loginThrottle"> = {}) {
   const ctx = makeCtx();
   const ledger = new FakeLedger(ctx.clock);
   const notifier = new MemoryNotifier();
   const audit = createAuditLogger(ctx);
-  const identity = createIdentityService(ctx, { ledger, notifier, audit });
+  const identity = createIdentityService(ctx, { ledger, notifier, audit, ...opts });
   const registrarId = insertUser(ctx.db, { nickname: "memur", roles: ["member", "registrar"] });
   const adminId = insertUser(ctx.db, { nickname: "yonetici", roles: ["member", "admin"] });
   const auditorId = insertUser(ctx.db, { nickname: "denetci", roles: ["member", "auditor"] });

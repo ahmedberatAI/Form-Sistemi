@@ -1,4 +1,4 @@
-// Forum entegrasyon testleri için bileşim: GERÇEK wave-1 modülleri (ontoloji, graf, yönetişim, kimlik, YZ (çevrimdışı),
+// Forum entegrasyon testleri için bileşim: GERÇEK modüller (ontoloji, graf, yönetişim, kimlik, YZ (çevrimdışı),
 // bilirkişi) + gerçek ya da sahte defter. Saat ManualClock; faz geçişleri lifecycle.tick() ile.
 import { fy, type Role } from "@forum/shared";
 import { createAiRecordSink, createAiService } from "../../src/ai";

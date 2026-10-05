@@ -1,6 +1,7 @@
 // Ortam değişkenlerinden yapılandırma. Gizli anahtarlar ASLA koda/veritabanına/loga yazılmaz.
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { isIP } from "node:net";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { databaseFileHasKeyBoundData, SECRET_ENV, type SecretName } from "./keycheck";
@@ -29,7 +30,14 @@ export interface Config {
   corsOrigins: string[];
   webDist: string;
   ontologyDir: string;
+  /**
+   * Ters vekil güveni (TRUST_PROXY → Fastify trustProxy): false/tanımsız = kapalı (doğrudan bağlantı adresi), true = tüm
+   * vekiller, sayı = en yakın n vekil, liste = güvenilen vekil IP/CIDR'leri. Hız sınırı bu adrese göre sayar.
+   */
+  trustProxy?: TrustProxy;
 }
+
+export type TrustProxy = boolean | number | string[];
 
 /** LEDGER_MODE ortam değişkeni: desteklenmeyen değer sessizce yok sayılmaz, uyarıyla "in-process" kullanılır. */
 function ledgerModeFromEnv(): Config["ledgerMode"] {
@@ -78,6 +86,87 @@ export function parseEnvBool(name: string, raw: string | undefined, def: boolean
   if (TRUE_WORDS.has(v)) return true;
   if (FALSE_WORDS.has(v)) return false;
   throw new Error(`${name}="${raw?.trim()}" geçersiz: true/false, 1/0, evet/hayır, yes/no, on/off ya da auto olmalıdır.`);
+}
+
+// ───────────── Ters vekil (TRUST_PROXY) ─────────────
+
+const TRUST_PROXY_ON = new Set(["true", "yes", "on", "evet"]);
+const TRUST_PROXY_OFF = new Set(["false", "no", "off", "hayır", "hayir"]);
+/** proxy-addr'in hazır adres kümeleri (127.0.0.0/8 + ::1, 169.254.0.0/16 + fe80::/10, özel ağlar + fc00::/7). */
+const TRUST_PROXY_PRESETS = new Set(["loopback", "linklocal", "uniquelocal"]);
+const MAX_PROXY_HOPS = 32;
+
+/** IP, IP/önek (CIDR) ya da hazır küme adı mı? */
+function trustedProxyEntry(item: string): string | null {
+  const preset = item.toLowerCase();
+  if (TRUST_PROXY_PRESETS.has(preset)) return preset;
+  const slash = item.indexOf("/");
+  const kind = isIP(slash < 0 ? item : item.slice(0, slash));
+  if (kind === 0) return null;
+  if (slash < 0) return item;
+  const prefix = item.slice(slash + 1);
+  return /^\d{1,3}$/.test(prefix) && Number(prefix) <= (kind === 4 ? 32 : 128) ? item : null;
+}
+
+/**
+ * TRUST_PROXY: sunucu bir ters vekilin (nginx, Caddy…) arkasındaysa istemci adresi X-Forwarded-For'dan okunur.
+ *   - boş / false / hayır / off / 0 → kapalı (varsayılan): doğrudan bağlantının adresi kullanılır.
+ *   - virgülle ayrılmış liste (ÖNERİLEN) → yalnız bu adreslerden gelen X-Forwarded-For'a güven: IP, IP/önek (CIDR) ya da
+ *     loopback / linklocal / uniquelocal (ör. aynı makinedeki nginx için "127.0.0.1", "loopback,10.0.0.0/8").
+ *   - tamsayı n (1–32) → bağlantıyı kuran adres doğrulanmadan en yakın n atlama vekil sayılır. Sunucuya vekili atlayarak
+ *     doğrudan ulaşılabiliyorsa istemci X-Forwarded-For ile IP taklit edebilir; yalnız sunucu dışarıya kapalıysa
+ *     (HOST=127.0.0.1 ya da güvenlik duvarı) kullanın. Fastify 5 sayıyı artık kendisi desteklemediği için server.ts
+ *     bunu atlama sayacına çevirir.
+ *   - true / evet / on → tüm vekillere güven: X-Forwarded-For'un en soldaki adresi istemci sayılır. İstemci bu başlığı
+ *     kendisi yazabildiği için hız sınırı atlatılabilir; yalnız vekil başlığı her istekte baştan yazıyorsa kullanın.
+ * Vekilsiz yayında açmayın: herkes X-Forwarded-For göndererek istediği IP'yi taklit edebilir.
+ */
+export function parseTrustProxy(name: string, raw: string | undefined): TrustProxy {
+  const v = raw?.trim();
+  if (!v) return false;
+  const word = v.toLocaleLowerCase("tr-TR");
+  if (TRUST_PROXY_ON.has(word)) return true;
+  if (TRUST_PROXY_OFF.has(word)) return false;
+  if (/^\d+$/.test(v)) {
+    const n = Number(v);
+    if (n > MAX_PROXY_HOPS) throw new Error(`${name}=${v} aralık dışı: vekil sayısı 0 ile ${MAX_PROXY_HOPS} arasında olmalıdır.`);
+    return n === 0 ? false : n;
+  }
+  const items = v.split(",").map((s) => s.trim());
+  const parsed = items.map(trustedProxyEntry);
+  const bad = items.filter((item, i) => parsed[i] === null);
+  if (bad.length) {
+    throw new Error(
+      `${name}="${v}" geçersiz (${bad.map((b) => (b ? `"${b}"` : "boş öğe")).join(", ")}): true/false, vekil sayısı (ör. 1) ya da virgülle ayrılmış ` +
+        `vekil adresleri (IP, IP/önek, loopback, linklocal, uniquelocal) olmalıdır.`,
+    );
+  }
+  return parsed as string[];
+}
+
+/** Açılış başlığı için TRUST_PROXY özeti (adres/uyarı değil; yalnız hangi kipte olduğu). */
+export function describeTrustProxy(tp: TrustProxy | undefined): string {
+  if (tp === undefined || tp === false) return "kapalı (X-Forwarded-For yok sayılır)";
+  if (tp === true) return "TÜM vekillere güveniliyor (TRUST_PROXY=true)";
+  if (typeof tp === "number") return `en yakın ${tp} atlama vekil sayılıyor (TRUST_PROXY=${tp})`;
+  return `yalnız şu adreslerden gelen X-Forwarded-For'a güveniliyor: ${tp.join(", ")}`;
+}
+
+/** Bağlantıyı kuran adresi doğrulamayan TRUST_PROXY ayarları için açılış uyarısı (adres listesi ya da kapalıysa null). */
+export function trustProxyWarning(tp: TrustProxy | undefined): string | null {
+  if (tp === true) {
+    return (
+      "TRUST_PROXY=true: X-Forwarded-For'un en soldaki adresi istemci sayılır ve istemci bu başlığı taklit edebilir. " +
+      "Vekil adreslerini (ör. TRUST_PROXY=127.0.0.1) vermeniz önerilir."
+    );
+  }
+  if (typeof tp === "number") {
+    return (
+      `TRUST_PROXY=${tp}: bağlantıyı kuran adres doğrulanmadan vekil sayılır; sunucuya vekili atlayarak doğrudan ulaşılabiliyorsa ` +
+      "istemci X-Forwarded-For ile IP taklit edebilir. Vekil adreslerini (ör. TRUST_PROXY=127.0.0.1) vermeniz önerilir."
+    );
+  }
+  return null;
 }
 
 // ───────────── Gizli anahtarlar ─────────────
@@ -169,9 +258,12 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
   const timeScale = take(60, () => parseEnvNumber("TIME_SCALE", process.env.TIME_SCALE, 60, 0.001, 1_000_000));
   const ledgerBlockIntervalMs = take(400, () => parseEnvInt("LEDGER_BLOCK_MS", process.env.LEDGER_BLOCK_MS, 400, 1, 600_000));
   const aiEnabled = take(true, () => parseEnvBool("AI_ENABLED", process.env.AI_ENABLED, true));
+  const trustProxy = take<TrustProxy>(false, () => parseTrustProxy("TRUST_PROXY", process.env.TRUST_PROXY));
   const names: SecretName[] = ["master", "token", "vote"];
   const sources = Object.fromEntries(names.map((n) => [n, resolveSecret(n, dataDir, dbPath, problems, overrides[`${n}Key` as const])])) as Record<SecretName, SecretSource>;
   if (problems.length) throw new Error(`Yapılandırma geçersiz, sunucu başlatılmadı:\n  - ${problems.join("\n  - ")}`);
+  const proxyRisk = trustProxyWarning(trustProxy);
+  if (proxyRisk) console.warn(`[yapılandırma] ${proxyRisk}`);
   const secret = (n: SecretName): string => {
     const s = sources[n];
     return "value" in s ? s.value : writeNewSecret(s.create);
@@ -195,6 +287,7 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
       .filter(Boolean),
     webDist: process.env.WEB_DIST ?? resolve(SERVER_ROOT, "..", "web", "dist"),
     ontologyDir: process.env.ONTOLOGY_DIR ?? join(SERVER_ROOT, "ontology"),
+    trustProxy,
     ...overrides,
   };
   return cfg;
@@ -218,6 +311,7 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     corsOrigins: ["*"],
     webDist: "",
     ontologyDir: join(SERVER_ROOT, "ontology"),
+    trustProxy: false,
     ...overrides,
   };
 }

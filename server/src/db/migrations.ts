@@ -32,11 +32,23 @@ export interface Migration {
   up(db: Db): void;
 }
 
+/** Sürüm 2'nin tablosu; schema.sql'deki tanımla birebir aynıdır (orada da bulunur, çünkü schema.sql son hâldir). */
+const LEDGER_OUTBOX_SQL = `CREATE TABLE IF NOT EXISTS ledger_outbox (
+  hash TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  nonce TEXT NOT NULL,
+  submitted_at INTEGER NOT NULL
+);`;
+
 /**
- * Sıralı göç listesi. Şu an boş: mevcut şema = sürüm 1.
- * Örnek: { version: 2, description: "users.locale sütunu", up: (db) => db.exec("ALTER TABLE users ADD COLUMN locale TEXT") }
+ * Sıralı göç listesi (sürüm 1 = taban).
+ * Örnek: { version: 3, description: "users.locale sütunu", up: (db) => db.exec("ALTER TABLE users ADD COLUMN locale TEXT") }
  */
-export const MIGRATIONS: readonly Migration[] = [];
+export const MIGRATIONS: readonly Migration[] = [
+  // #273: gönderilmiş ama blokta onaylanmamış defter işlemleri sert kapanışta kaybolmasın (işlemsel outbox; ledger/outbox.ts).
+  { version: 2, description: "ledger_outbox tablosu (defter giden kutusu)", up: (db) => db.exec(LEDGER_OUTBOX_SQL) },
+];
 
 /** Veritabanı sürümü yazılımın desteklediğinden yeniyse ya da sürüm bozuksa fırlatılır. */
 export class SchemaVersionError extends Error {

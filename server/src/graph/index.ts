@@ -574,7 +574,7 @@ export function createGraphService(ctx: CoreContext, deps: { ledger: LedgerServi
     return db.get<SnapshotRow>("SELECT id, seed, assignments, coords FROM cluster_snapshots ORDER BY created_at DESC, rowid DESC LIMIT 1");
   }
 
-  /** stats/visualization için Louvain tohumu: son küme anlık görüntüsünün tohumu (§9.7 çapraz kontrol). */
+  /** stats/visualization için Louvain tohumu: son küme anlık görüntüsünün tohumu (ALGORITMA §9 madde 8: çapraz kontrol). */
   function defaultSeed(): string {
     return latestSnapshot()?.seed ?? DEFAULT_AGREEMENT_SEED;
   }

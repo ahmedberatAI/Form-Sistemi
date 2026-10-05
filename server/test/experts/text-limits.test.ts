@@ -30,7 +30,7 @@ describe("metin sınırları: şema ve bilirkişi servisi uyuşur", () => {
     const { max } = TEXT_LIMITS.expertCredentials;
     expect(expertApplyBody.safeParse({ domains: [DOMAIN], credentials: x(max) }).success).toBe(true);
     expect(expertApplyBody.safeParse({ domains: [DOMAIN], credentials: x(max + 1) }).success).toBe(false);
-    expect(catchErr(() => w.svc.apply("basvuran", [DOMAIN], x(max + 1)))).toMatchObject({ status: 400, code: "invalid_credentials" });
+    expect(catchErr(() => w.svc.apply("basvuran", [DOMAIN], x(max + 1)))).toMatchObject({ status: 400, code: "credentials_length" });
     expect(w.svc.apply("basvuran", [DOMAIN], x(max))).toBeTruthy();
   });
 

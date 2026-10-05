@@ -267,12 +267,14 @@ describe("doğrulama akışı", () => {
     await identity.register(regInput({ tckn: inp.tckn, email: inp.email, nickname: "reddedilecek" }));
   });
 
-  it("periyodik imha: süresi geçen bekleyen başvurular kripto-imha edilir", async () => {
-    const { identity, registrarId, ctx } = setup();
+  it("periyodik imha: süresi geçen bekleyen başvurular kripto-imha edilir (gerçek saatle)", async () => {
+    // Süre gerçek duvar saatiyle ölçülür (#276): burada elle ilerletilen sahte gerçek saat.
+    let real = Date.UTC(2026, 9, 1);
+    const { identity, registrarId } = setup({ realNow: () => real });
     const old = (await identity.register(regInput())).user;
-    ctx.clock.advance(100 * DAY);
+    real += 100 * DAY;
     const fresh = (await identity.register(regInput())).user;
-    ctx.clock.advance(81 * DAY);
+    real += 81 * DAY;
     expect(identity.purgeStalePending()).toBe(1);
     expect(identity.me(old.id).status).toBe("rejected");
     expect(identity.me(fresh.id).status).toBe("pending");
@@ -447,7 +449,8 @@ describe("KVKK hakları", () => {
     const d = identity.exportOwnData(user.id) as Record<string, any>;
     expect(d.personalData).toBeNull();
 
-    await expectAppError(identity.eraseSelf(user.id), 409, "already_erased");
+    // eraseSelf hatayı eşzamanlı fırlatır (rota onu kendi işleminde çağırır); bu yüzden işlev olarak verilir.
+    await expectAppError(() => identity.eraseSelf(user.id), 409, "already_erased");
     const again = await identity.register(regInput({ tckn: inp.tckn, email: inp.email, nickname: "silinecek" }));
     expect(again.user.id).not.toBe(user.id);
   });

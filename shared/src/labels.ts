@@ -134,6 +134,7 @@ export const LEDGER_TX_LABELS: Record<LedgerTxType, string> = {
   MESSAGE_EDITED: "Mesaj düzenlendi",
   MESSAGE_HIDDEN: "Mesaj karartıldı",
   TOPIC_REVISION: "Konu sürümü",
+  SEED_COMMIT: "Kura tohum bloğu taahhüdü",
   EXPERT_DRAW: "Bilirkişi kurası",
   EXPERT_REPORT: "Bilirkişi raporu",
   AI_ANALYSIS: "Yapay zekâ analizi",

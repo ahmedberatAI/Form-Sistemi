@@ -1,10 +1,12 @@
 // Görünüm birleştirme: ProposalSummary, TopicSummary, MessageView, PublicUser — toplu sorgularla (N+1 yok).
 import {
   clusterLabel,
-  fracAtLeast,
+  fy,
+  isSignificant,
   publicJoinDay,
-  rat,
   sponsorsRequired,
+  toRational,
+  type DecisionParams,
   type MessageView,
   type ProposalSummary,
   type PublicUser,
@@ -15,6 +17,7 @@ import {
   type UserStatus,
 } from "@forum/shared";
 import { json } from "../db";
+import { defaultDecisionParams } from "../governance/params";
 import { integrityWarningCounts } from "./integrity";
 import {
   ACTIVE_SQL,
@@ -23,6 +26,7 @@ import {
   groundLabel,
   isVotingStatus,
   jsonList,
+  safe,
   type ForumCore,
   type MessageRow,
   type ProposalRow,
@@ -255,6 +259,36 @@ export interface BridgeContext {
   significant: Set<string>;
 }
 
+/** Anlamlı küme kuralının iki parametresi (σ_share, σ_min): `DecisionParams`'ın ilgili alt kümesi. */
+export type SignificanceParams = Pick<DecisionParams, "significantShare" | "significantMinMembers">;
+
+/**
+ * Anlamlı küme kuralının YÜRÜRLÜKTEKİ parametreleri: yönetmeliğin genel parametreleri (`fy:GenelParametreler`; yama kabul
+ * edilince hemen değişir). Ontoloji denetimi de `significantShare`/`significantMinMembers` değerlerini aynı kaynaktan alır.
+ * Okunamazsa ya da değer geçersizse kurucu yönetmeliğin varsayılanları (`defaultDecisionParams`) kullanılır; böylece kural
+ * hiçbir yerde sabit (1/10, 3) yazılmaz ve görünümler sayımla ayrışmaz.
+ */
+export function inForceSignificance(core: ForumCore): SignificanceParams {
+  const fallback = defaultDecisionParams("T0");
+  const general = fy("GenelParametreler");
+  const params = safe(() => core.deps.ontology.adjustableParams(), []);
+  const num = (name: string): number | null => {
+    const v = params.find((p) => p.rule === general && p.param === name)?.value;
+    return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null;
+  };
+  const share = num("anlamliKumePayi");
+  const min = num("anlamliKumeAsgariUye");
+  return {
+    significantShare: share !== null ? toRational(share) : fallback.significantShare,
+    significantMinMembers: min ?? fallback.significantMinMembers,
+  };
+}
+
+/** Önerinin kendi (denetimde/oylama açılışında belirlenen) parametreleri varsa onlar; yoksa yürürlükteki yönetmeliğin değerleri. */
+export function significanceFor(core: ForumCore, params: SignificanceParams | null | undefined): SignificanceParams {
+  return params ?? inForceSignificance(core);
+}
+
 export function bridgeContext(core: ForumCore): BridgeContext | null {
   const s = core.db.get<{ assignments: string; sizes: string; clustered_total: number; k: number }>(
     "SELECT assignments, sizes, clustered_total, k FROM cluster_snapshots ORDER BY created_at DESC, rowid DESC LIMIT 1",
@@ -262,8 +296,8 @@ export function bridgeContext(core: ForumCore): BridgeContext | null {
   if (!s) return null;
   const sizes = json<Record<string, number>>(s.sizes, {});
   const total = Number(s.clustered_total);
-  const share = rat(1, 10);
-  const significant = new Set(Object.keys(sizes).filter((g) => sizes[g] >= 3 && fracAtLeast(sizes[g], total, share)));
+  const rule = inForceSignificance(core);
+  const significant = new Set(Object.keys(sizes).filter((g) => isSignificant(sizes[g], total, rule)));
   if (significant.size < 2) return null;
   return { assignments: json<Record<string, string>>(s.assignments, {}), significant };
 }

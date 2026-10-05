@@ -122,7 +122,13 @@ function fmtApprovalVs(yes: number, total: number, bound: Rational): string {
   return s === null ? `${yes}/${total}` : "%" + s;
 }
 
-function isSignificant(size: number, clusteredTotal: number, p: DecisionParams): boolean {
+/**
+ * "Anlamlı görüş grubu" kuralı (ALGORITMA.md §1): küme büyüklüğü ≥ σ_min ve ≥ σ_share · kümelenmiş toplam.
+ * Kural tek yerdedir: sayım (`decide`; yeniden oylama da `decide` ile, `round = 2` + `revote`) ve sayım dışındaki her görünüm
+ * (ör. mesajların köprü puanı, bilirkişi "azınlık güvenceli soru", YZ özeti) bunu çağırır; eşikler yönetmelikle değişebildiği
+ * için dışarıdan sabit 1/10 ve 3 yazılmaz, yürürlükteki parametreler (`significantShare`, `significantMinMembers`) verilir.
+ */
+export function isSignificant(size: number, clusteredTotal: number, p: Pick<DecisionParams, "significantShare" | "significantMinMembers">): boolean {
   return clusteredTotal > 0 && size >= p.significantMinMembers && fracAtLeast(size, clusteredTotal, p.significantShare);
 }
 

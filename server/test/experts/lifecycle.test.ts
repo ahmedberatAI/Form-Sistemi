@@ -17,7 +17,7 @@ describe("bilirkişi başvurusu", () => {
     expect(e2.status).toBe(400);
     expect(e2.code).toBe("domains_required");
     expect(catchErr(() => w.svc.apply("u-1", ["  "], "İnşaat mühendisi")).code).toBe("domains_required");
-    expect(catchErr(() => w.svc.apply("u-1", [CAT.toplu], " ")).code).toBe("invalid_credentials");
+    expect(catchErr(() => w.svc.apply("u-1", [CAT.toplu], " ")).code).toBe("credentials_length");
   });
 
   it("başvuru 'applied' olur, yöneticilere bildirim ve denetim kaydı düşer", () => {

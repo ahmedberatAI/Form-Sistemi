@@ -1,6 +1,7 @@
-// Wave-2 SÖZLEŞMELERİ: forum çekirdeği (öneri, konu, tartışma, küme, topluluk, yaşam döngüsü).
+// FORUM SÖZLEŞMELERİ: forum çekirdeği (öneri, konu, tartışma, küme, topluluk, yaşam döngüsü). Çekirdek dışı modüllerin sözleşmeleri core/contracts.ts'tedir.
 // Uygulama: server/src/forum/ — fabrika: createForumServices(deps: ForumDeps): ForumServices
-// HTTP katmanı (server/src/http/) yalnızca bu arayüzleri kullanır.
+// HTTP katmanı (server/src/http/) forum servislerine bu arayüzlerle erişir (çekirdek dışı servisler core/contracts.ts; istisnalar
+// docs/MIMARI.md §2.2).
 import type {
   AdminUserRow,
   AiAnalysisInfo,
@@ -207,8 +208,8 @@ export interface LifecycleEngine {
   /** Zamanlayıcıyı durdurur; uçuştaki tick/poke tamamlanınca çözülür. */
   stop(): Promise<void>;
   /**
-   * Süresi dolan evreleri ilerletir (ALGORITMA.md §3). Tek otorite: faz geçişleri YALNIZCA burada olur
-   * (istisna: yazarın submit/withdraw eylemleri). Eşzamanlı çağrılar sıraya alınır (yeniden giriş yok).
+   * Süresi dolan evreleri ilerletir (ALGORITMA.md §3): zamanlayıcının faz geçişleri burada olur. Yazarın submit/withdraw eylemleri
+   * (ProposalService) zamanlayıcıyı beklemeden, aynı `applyTransition` ile geçiş yapar. Eşzamanlı çağrılar sıraya alınır (yeniden giriş yok).
    */
   tick(): Promise<Transition[]>;
   /** Tek bir öneri için hemen değerlendirme (ör. K_s'ye ulaşınca). */

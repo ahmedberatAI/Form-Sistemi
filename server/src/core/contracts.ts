@@ -298,7 +298,13 @@ export interface IdentityService {
   setConsents(userId: string, c: { aiConsent?: boolean; politicalConsent?: boolean }): Me;
   setRoles(actorId: string, userId: string, roles: Role[]): Me;
   exportOwnData(userId: string): Record<string, unknown>;
-  /** KVKK: kripto-imha. Oylamaya konmaz. */
+  /**
+   * KVKK: kripto-imha. Oylamaya konmaz. Ön koşullar (hesap açık, son yönetici değil) HER yan etkiden önce denetlenir ve hata
+   * EŞZAMANLI fırlatılır (Promise reddi değil; 409 last_admin / already_erased); çağıran bunu kendi işleminin başında çağırarak
+   * ardından gelen yazımları (vekâlet iptali vb.) aynı işlemde toplayabilir. Hesap satırı + denetim kaydı tek işlemde yazılır;
+   * MEMBER_ERASED defter kaydı ve WAL denetim noktası işlem tamamlandıktan SONRA yapılır (işlem geri alınırsa yazılmaz).
+   * Dönen söz yalnız başarıda, bu son adımlardan sonra çözülür.
+   */
   eraseSelf(userId: string): Promise<void>;
   /** keepToken: verilen oturum açık kalır, diğerleri iptal edilir. */
   changePassword(userId: string, oldPw: string, newPw: string, keepToken?: string): Promise<void>;
@@ -311,7 +317,10 @@ export interface IdentityService {
   verifyPassword(userId: string, password: string): Promise<boolean>;
   /** Sonradan 18 yaşını dolduranların bayrağını günceller (zamanlayıcı çağırır). */
   refreshAdulthood(): number;
-  /** Süresi geçmiş bekleyen başvuruları kripto-imha eder (zamanlayıcı çağırır). */
+  /**
+   * Süresi geçmiş bekleyen başvuruları kripto-imha eder (zamanlayıcı çağırır). Süre GERÇEK duvar saatiyle ölçülür (simüle saat
+   * ve TIME_SCALE etkilemez; demo hızlandırması gerçek kişilerin verisini yok etmemeli); başlangıç anı meta tablosunda tutulur.
+   */
   purgeStalePending(maxAgeMs?: number): number;
 
   // ── KVKK md. 11/1-d: kimlik verisi düzeltme talebi (üye → kayıt memuru; gerekçeli, amaç kayıtlı inceleme, denetim izli) ──
@@ -478,7 +487,8 @@ export interface ExpertService {
       counter?: boolean;
       /**
        * Tohum öğütmeye karşı: çekilişi zamanlayıcı başlatır ve tohum, ÖNCEDEN taahhüt edilmiş yükseklikteki
-       * bloğun hash'inden alınır (ör. tartışma açılışında "o anki yükseklik + 2"). Verilmezse son blok kullanılır.
+       * bloğun hash'inden alınır (ör. tartışma açılışında "o anki yükseklik + 1"; bkz. forum/lifecycle SEED_COMMIT_LEAD).
+       * Verilmezse son blok kullanılır.
        */
       seedBlock?: { height: number; hash: string };
     },

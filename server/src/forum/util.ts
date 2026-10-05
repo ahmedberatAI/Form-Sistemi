@@ -23,6 +23,7 @@ import type { AuthUser } from "../core/contracts";
 import { AppError, badRequest, forbidden, notFound } from "../core/errors";
 import type { ForumDeps } from "../core/forum-contracts";
 import { json, type Db, type SqlValue } from "../db";
+import { recordOutbox } from "../ledger/outbox";
 import { prepareTx } from "../ledger/tx";
 
 // ───────────── Durumlar ─────────────
@@ -505,16 +506,20 @@ export class ForumCore {
    * Bir DB işleminin (tx) İÇİNDEYSE özet önceden hesaplanır ve gerçek gönderim EN DIŞTAKİ işlem COMMIT olduktan sonraya ertelenir:
    * defter kaydı geri alınamaz, bu yüzden geri alınan işlem deftere "hayalet" kayıt bırakmamalıdır. Yük doğrulaması (tür, kişisel
    * veri, boyut) yine hemen yapılır; hatası işlemi geri alır. İşlem dışındaysa hemen gönderilir.
+   * İşlem içindeyken defter giden kutusu satırı AYNI işlemde yazılır (işlemsel outbox, #273): COMMIT kayıtla birlikte kalıcılaştırır;
+   * süreç COMMIT'ten sonra, gönderimden önce ölürse ya da gönderim başarısız olursa defter açılışta satırı yeniden gönderir.
    */
   submit(type: LedgerTxType, payload: Record<string, unknown>): string {
     if (this.pending === null) return this.deps.ledger.submit(type, payload).txHash;
     const tx = prepareTx(type, payload);
+    recordOutbox(this.db, { hash: tx.hash, type, payload: tx.payload, nonce: tx.nonce, submittedAt: this.now() });
     this.after(() => {
       try {
         const sent = this.deps.ledger.submit(type, tx.payload, tx.nonce).txHash;
         if (sent !== tx.hash) throw new Error("defter özeti önceden hesaplanan özetle eşleşmiyor");
       } catch (e) {
-        // COMMIT sonrası: DB işlemi geri alınamaz; kayıt eksik kalır, durum denetim günlüğüne ve loga düşer (yük yazılmaz).
+        // COMMIT sonrası: DB işlemi geri alınamaz; giden kutusu satırı kalır ve defter onu bir sonraki açılışta yeniden gönderir
+        // (kural dışı yük ise atılır). Durum denetim günlüğüne ve loga düşer (yük yazılmaz).
         console.error(`[forum] ${type} defter kaydı COMMIT sonrası gönderilemedi (${tx.hash}):`, e);
         try {
           this.audit.log(null, "system.ledger_submit_failed", null, { type, txHash: tx.hash, code: e instanceof AppError ? e.code : "internal" });

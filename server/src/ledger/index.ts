@@ -1,6 +1,9 @@
 // Dağıtık defter servisi: aynı süreçte N (varsayılan 4) Tendermint tarzı doğrulayıcı, bellek içi mesaj ağı.
 // Uygulama sunucusu işlemleri kendi Ed25519 anahtarıyla imzalar ve bir doğrulayıcıya iletir; işlem gossip ile
 // yayılır, 2f+1 precommit ile işlenir. Okumalar sağlıklı çoğunluk düğümünden (kanonik görünüm) yapılır.
+// Bekleyen (onaylanmamış) işlemler ana veritabanındaki giden kutusunda da tutulur ve açılışta yeniden gönderilir (./outbox.ts).
+// Bir DB işlemi içinden yapılan gönderim, işlem COMMIT olana dek doğrulayıcılara iletilmez (geri alınan işlem deftere hayalet kayıt
+// bırakmaz); giden kutusu satırı ise o işlemin parçasıdır ve yazılamazsa işlem asıl hatayla geri alınır.
 import { join } from "node:path";
 import {
   CHAIN_ID,
@@ -19,6 +22,7 @@ import { AppError, badRequest, notFound, unprocessable } from "../core/errors";
 import { loadLedgerKeys } from "./keys";
 import { ValidatorNode } from "./node";
 import { MemoryBlockStore, SqliteBlockStore, type BlockStore } from "./store";
+import { forgetOutbox, loadOutbox, recordOutbox } from "./outbox";
 import { MemoryTransport, type LinkConditions } from "./transport";
 import { checkEvidence, prepareTx, signTxHash } from "./tx";
 import { faultToleranceOf, quorumOf, type ChainParams } from "./verify";
@@ -56,6 +60,18 @@ interface FlushWaiter {
 const FAULTS: Fault[] = ["none", "crash", "byzantine"];
 const stoppedError = () => new AppError(503, "ledger_stopped", "Defter durduruldu; işlem kabul edilmiyor.");
 
+/**
+ * Günlük için güvenli hata özeti: node:sqlite hatalarında `code` hep "ERR_SQLITE_ERROR"dır; asıl neden SQLite'ın sayısal kodu
+ * (`errcode`) ve genel açıklaması (`errstr`, ör. "database or disk is full") alanlarındadır. Hata iletisi YAZILMAZ.
+ */
+export function safeErrorInfo(e: unknown): string {
+  const o = (typeof e === "object" && e !== null ? e : {}) as { code?: unknown; errcode?: unknown; errstr?: unknown; name?: unknown };
+  const parts = [typeof o.code === "string" ? o.code : typeof o.name === "string" ? o.name : "bilinmiyor"];
+  if (typeof o.errcode === "number") parts.push(`errcode=${o.errcode}`);
+  if (typeof o.errstr === "string" && o.errstr) parts.push(o.errstr);
+  return parts.join(", ");
+}
+
 export class InProcessLedger implements LedgerService {
   readonly ids: string[];
   readonly persist: boolean;
@@ -75,6 +91,12 @@ export class InProcessLedger implements LedgerService {
   private readonly flushWaiters = new Set<FlushWaiter>();
   private tickTimer: NodeJS.Timeout | null = null;
   private cursor = 0;
+  /**
+   * Kalıcı kipte blokta onaylanmış ama doğrulayıcı depoları henüz diske indirilmemiş (sync) işlemlerin özetleri. Giden kutusu
+   * satırları ancak depolar sync() edildikten sonra silinir: elektrik kesintisinde son blok kaybolsa bile satır kalır ve işlem
+   * açılışta yeniden gönderilir.
+   */
+  private readonly unsynced = new Set<string>();
 
   constructor(
     private readonly ctx: CoreContext,
@@ -129,10 +151,101 @@ export class InProcessLedger implements LedgerService {
       this.transport = new MemoryTransport(this.opts.network);
       this.stopped = false;
     }
+    this.recoverOutbox();
     this.running = true;
     for (const n of this.nodes) n.start(this.transport);
     for (const p of this.pending.values()) this.deliver(p.tx);
     this.scheduleTick();
+  }
+
+  /**
+   * Açılış uzlaştırması (#273): giden kutusunda kalan satırlar (sert kapanışta havuzdan kaybolmuş ya da COMMIT sonrası gönderilememiş
+   * işlemler) yeniden imzalanıp bekleyenlere eklenir. Zaten zincirde olanların satırı silinir (onaylandıktan hemen sonra kesilmiş);
+   * doğrulamadan geçmeyen bozuk satır atılır. Özet (type, payload, nonce) üzerinden hesaplandığından aynı işlem iki kez yazılamaz.
+   */
+  private recoverOutbox(): void {
+    let rows: ReturnType<typeof loadOutbox>;
+    try {
+      rows = loadOutbox(this.ctx.db);
+    } catch {
+      return; // veritabanı okunamıyor: yalnız bellekteki bekleyenlerle devam (eski davranış)
+    }
+    const canon = this.canonical();
+    const drop: string[] = [];
+    const inChain: string[] = [];
+    for (const r of rows) {
+      if (this.pending.has(r.hash)) continue;
+      if (canon.hasTx(r.hash)) {
+        inChain.push(r.hash);
+        continue;
+      }
+      let prepared: ReturnType<typeof prepareTx>;
+      try {
+        prepared = prepareTx(r.type, JSON.parse(r.payload));
+      } catch {
+        drop.push(r.hash);
+        continue;
+      }
+      if (prepared.hash !== r.hash || prepared.nonce !== r.nonce || (r.type === "EVIDENCE" && checkEvidence(prepared.payload, this.params.validators))) {
+        drop.push(r.hash);
+        continue;
+      }
+      const submittedAt = Number.isFinite(r.submitted_at) ? Number(r.submitted_at) : this.ctx.clock.now();
+      const tx: SignedTx = { type: r.type as LedgerTxType, payload: prepared.payload, nonce: prepared.nonce, submittedAt, sig: signTxHash(prepared.hash, this.appSecretKey), hash: prepared.hash };
+      this.pending.set(prepared.hash, { tx, age: 0 });
+    }
+    this.forget(drop);
+    this.retire(inChain);
+  }
+
+  /** Bir Db.tx işleminin içinden mi çağrıldık? (Sahte bağlamlarda alan yoksa: hayır.) */
+  private inDbTx(): boolean {
+    return this.ctx.db.inTransaction === true;
+  }
+
+  /**
+   * Giden kutusu satırlarını siler. Otomatik kayıt kipinde hata yutulur: kalan satır bir sonraki açılışta zincirde bulunup yine
+   * silinir. Çağıran bir DB işlemi içindeyse hata YUTULMAZ: SQLite işlemi kendiliğinden geri almış olabilir (disk dolu …) ve
+   * çağıranın işlemi asıl hatayla geri alınmalıdır (yutulsa sonraki yazımlar işlemin dışına taşardı).
+   */
+  private forget(hashes: readonly string[]): void {
+    if (hashes.length === 0) return;
+    if (this.inDbTx()) {
+      forgetOutbox(this.ctx.db, hashes);
+      return;
+    }
+    try {
+      forgetOutbox(this.ctx.db, hashes);
+    } catch {
+      /* veritabanı kapalı/meşgul: açılış uzlaştırması temizler */
+    }
+  }
+
+  /** Blokta onaylanan işlemlerin satırlarını siler: bellek kipinde hemen, kalıcı kipte depolar sync() edildikten sonra. */
+  private retire(hashes: readonly string[]): void {
+    if (hashes.length === 0) return;
+    if (!this.persist) {
+      this.forget(hashes);
+      return;
+    }
+    for (const h of hashes) this.unsynced.add(h);
+  }
+
+  /**
+   * Doğrulayıcı depolarını diske indirir (fsync), ardından onaylanmış işlemlerin giden kutusu satırlarını tek deyimle siler.
+   * Bir depo indirilemezse satırlar kalır (sonraki tick yeniden dener; açılış uzlaştırması zincirdekileri zaten siler).
+   */
+  private syncRetired(): void {
+    if (this.unsynced.size === 0) return;
+    try {
+      for (const n of this.nodes) n.store.sync();
+    } catch (e) {
+      console.error(`[defter] doğrulayıcı deposu diske indirilemedi (${safeErrorInfo(e)}); giden kutusu satırları korunuyor.`);
+      return;
+    }
+    const hashes = [...this.unsynced];
+    this.unsynced.clear();
+    this.forget(hashes);
   }
 
   async stop(): Promise<void> {
@@ -155,6 +268,7 @@ export class InProcessLedger implements LedgerService {
     this.flushWaiters.clear();
     for (const n of this.nodes) n.stop();
     this.transport.close();
+    this.syncRetired(); // depolar kapanmadan: onaylananların satırları diske indirildikten sonra silinir
     if (this.persist) for (const n of this.nodes) n.store.close();
   }
 
@@ -170,13 +284,16 @@ export class InProcessLedger implements LedgerService {
   /** Havuzdan düşmüş olabilecek (ör. kayıplı ağ, çöken giriş düğümü) bekleyen işlemleri yeniden iletir. */
   private onTick(): void {
     const canon = this.canonical();
+    const settled: string[] = [];
     for (const [hash, p] of this.pending) {
       if (canon.hasTx(hash)) {
-        this.settle(hash, canon);
+        this.settle(hash, canon, settled);
         continue;
       }
       if (++p.age % 3 === 0) this.deliver(p.tx, true);
     }
+    this.retire(settled);
+    this.syncRetired();
     this.checkFlush();
   }
 
@@ -185,6 +302,11 @@ export class InProcessLedger implements LedgerService {
   /**
    * `nonce` isteğe bağlıdır: verilirse kurala (txNonce) uymak ZORUNDADIR — ForumCore, işlem içinde önceden hesapladığı özetle
    * gerçek gönderimin aynı işlemi üreteceğini böyle doğrular. Verilmezse nonce kuraldan türetilir.
+   *
+   * Bir Db.tx işleminin İÇİNDEN çağrılırsa (ör. graf vekâleti, bilirkişi kurası, hesap silme kaskadı) özet hemen hesaplanır ve
+   * döndürülür, giden kutusu satırı işlemin parçası olarak yazılır; işlemin bekleyenlere eklenmesi ve doğrulayıcılara iletilmesi
+   * EN DIŞTAKİ işlem COMMIT olana dek ertelenir (Db.afterCommit). İşlem geri alınırsa satır da gönderim de geri alınır: defterde
+   * veritabanında karşılığı olmayan kayıt kalmaz.
    */
   submit(type: LedgerTxType, payload: Record<string, unknown>, nonce?: string): { txHash: string } {
     if (this.stopped) throw stoppedError();
@@ -196,18 +318,54 @@ export class InProcessLedger implements LedgerService {
       if (e) throw unprocessable("ledger_bad_evidence", e);
     }
     const hash = prepared.hash;
-    if (this.pending.has(hash) || this.canonical().hasTx(hash)) return { txHash: hash };
+    if (this.pending.has(hash)) return { txHash: hash };
+    if (this.canonical().hasTx(hash)) {
+      this.retire([hash]); // ForumCore işlem içinde satır yazmış olabilir: işlem zaten zincirde (kalıcı kipte sync sonrası silinir)
+      return { txHash: hash };
+    }
     const tx: SignedTx = { type, payload: normalized, nonce: prepared.nonce, submittedAt: this.ctx.clock.now(), sig: signTxHash(hash, this.appSecretKey), hash };
-    this.pending.set(hash, { tx, age: 0 });
-    if (this.running) this.deliver(tx);
+    this.persistPending(tx);
+    if (this.inDbTx()) this.ctx.db.afterCommit(() => this.enqueue(tx));
+    else this.enqueue(tx);
     return { txHash: hash };
+  }
+
+  /** İşlemi bekleyenlere ekler ve iletir (işlem dışında hemen, işlem içinden gönderimde COMMIT sonrası). */
+  private enqueue(tx: SignedTx): void {
+    // Durdurulduysa satır giden kutusunda kalır ve bir sonraki açılışta gönderilir.
+    if (this.stopped || this.pending.has(tx.hash)) return;
+    if (this.canonical().hasTx(tx.hash)) {
+      this.retire([tx.hash]);
+      return;
+    }
+    this.pending.set(tx.hash, { tx, age: 0 });
+    if (this.running) this.deliver(tx);
+  }
+
+  /**
+   * Bekleyen işlemi giden kutusuna yazar (sert kapanışta kaybolmasın; #273). Çağıran bir DB işlemi içindeyse satır o işleme katılır
+   * ve yazım hatası YUTULMAZ: çağıranın işlemi asıl hatayla (ör. disk dolu) geri alınır, işlem doğrulayıcılara hiç iletilmez.
+   * İşlem dışında yazılamazsa (veritabanı kapalı, disk dolu) gönderim yine yapılır: işlem bellekte bekler (eski davranış).
+   * Günlüğe yalnız özet ve hata kodu yazılır (yük ve hata iletisi yazılmaz).
+   */
+  private persistPending(tx: SignedTx): void {
+    const row = { hash: tx.hash, type: tx.type, payload: tx.payload, nonce: tx.nonce, submittedAt: tx.submittedAt };
+    if (this.inDbTx()) {
+      recordOutbox(this.ctx.db, row);
+      return;
+    }
+    try {
+      recordOutbox(this.ctx.db, row);
+    } catch (e) {
+      console.error(`[defter] bekleyen işlem giden kutusuna yazılamadı (${tx.hash}, ${safeErrorInfo(e)}); yalnız bellekte bekliyor.`);
+    }
   }
 
   async submitAndWait(type: LedgerTxType, payload: Record<string, unknown>, timeoutMs = 10_000): Promise<CommittedTx> {
     const { txHash } = this.submit(type, payload);
     const done = this.getTx(txHash);
     if (done) {
-      this.pending.delete(txHash);
+      if (this.pending.delete(txHash)) this.retire([txHash]);
       return done;
     }
     return new Promise<CommittedTx>((resolve, reject) => {
@@ -228,7 +386,10 @@ export class InProcessLedger implements LedgerService {
   }
 
   flush(timeoutMs = 30_000): Promise<void> {
-    if (this.flushDone()) return Promise.resolve();
+    if (this.flushDone()) {
+      this.syncRetired();
+      return Promise.resolve();
+    }
     if (!this.running) return Promise.reject(this.stopped ? stoppedError() : new AppError(503, "ledger_not_running", "Defter başlatılmadı."));
     return new Promise<void>((resolve, reject) => {
       const w: FlushWaiter = {
@@ -258,6 +419,7 @@ export class InProcessLedger implements LedgerService {
 
   private rejectPending(hash: string, err: AppError): void {
     this.pending.delete(hash);
+    this.forget([hash]); // doğrulayıcılar geçersiz buldu: yeniden göndermek aynı sonucu verir
     const set = this.waiters.get(hash);
     this.waiters.delete(hash);
     for (const w of set ?? []) {
@@ -268,7 +430,10 @@ export class InProcessLedger implements LedgerService {
 
   private onCommit(node: ValidatorNode, block: StoredBlock): void {
     if (this.eligible(node)) {
-      for (const tx of block.txs) if (this.pending.has(tx.hash) || this.waiters.has(tx.hash)) this.settle(tx.hash, node);
+      const settled: string[] = [];
+      for (const tx of block.txs) if (this.pending.has(tx.hash) || this.waiters.has(tx.hash)) this.settle(tx.hash, node, settled);
+      // Yalnız bekleyenden ilk çıkışta (her düğümün commit'inde değil). Kalıcı kipte satırlar depolar sync() edilince silinir.
+      this.retire(settled);
     }
     this.checkFlush();
   }
@@ -281,8 +446,9 @@ export class InProcessLedger implements LedgerService {
     }
   }
 
-  private settle(hash: string, node: ValidatorNode): void {
-    this.pending.delete(hash);
+  /** `settled`: bekleyenlerden yeni çıkan özetler eklenir (çağıran giden kutusundan toplu siler). */
+  private settle(hash: string, node: ValidatorNode, settled: string[]): void {
+    if (this.pending.delete(hash)) settled.push(hash);
     const set = this.waiters.get(hash);
     if (!set) return;
     const c = node.committedTx(hash) ?? this.canonical().committedTx(hash);
@@ -304,6 +470,7 @@ export class InProcessLedger implements LedgerService {
 
   private checkFlush(): void {
     if (!this.flushWaiters.size || !this.flushDone()) return;
+    this.syncRetired();
     for (const w of this.flushWaiters) {
       clearTimeout(w.timer);
       w.resolve();

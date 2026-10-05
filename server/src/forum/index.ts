@@ -1,4 +1,4 @@
-// Forum çekirdeği (wave-2): öneriler, yaşam döngüsü, konular, tartışma, görüş kümeleri, topluluk.
+// Forum çekirdeği: öneriler, yaşam döngüsü, konular, tartışma, görüş kümeleri, topluluk.
 import type { ForumDeps, ForumServices, LifecycleEngine } from "../core/forum-contracts";
 import { createClusterService } from "./clusters";
 import { createCommunityService } from "./community";

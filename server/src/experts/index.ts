@@ -599,7 +599,9 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
       const cred = typeof credentials === "string" ? credentials.trim() : "";
       const credLim = TEXT_LIMITS.expertCredentials;
       if (cred.length < credLim.min || cred.length > credLim.max) {
-        throw badRequest("invalid_credentials", `Yeterlilik bilgisi ${credLim.min} ile ${credLim.max} karakter arasında olmalıdır.`);
+        // Kod, girişteki 401 invalid_credentials ile çakışmasın diye ayrıdır (istemci bunu yanlış şifre sanmamalı).
+        const msg = `Yeterlilik bilgisi ${credLim.min} ile ${credLim.max} karakter arasında olmalıdır.`;
+        throw badRequest("credentials_length", msg, { credentials: msg });
       }
       const existing = expertRow(userId);
       if (existing?.status === "active") throw conflict("already_expert", "Zaten etkin bir bilirkişisiniz.");

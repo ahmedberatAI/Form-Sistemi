@@ -716,6 +716,7 @@ export type LedgerTxType =
   | "MESSAGE_EDITED"
   | "MESSAGE_HIDDEN"
   | "TOPIC_REVISION"
+  | "SEED_COMMIT"
   | "EXPERT_DRAW"
   | "EXPERT_REPORT"
   | "AI_ANALYSIS"

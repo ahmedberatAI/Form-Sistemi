@@ -1,5 +1,7 @@
-// Yaşam döngüsü (ALGORITMA.md §3): faz geçişlerinin TEK otoritesi. Sıralı kuyruk (yeniden giriş yok), her öneri kendi
-// try/catch'inde. Tüm süreler ctx.clock ile ve gerçek saat değerleriyle (hours · HOUR) hesaplanır.
+// Yaşam döngüsü (ALGORITMA.md §3): zamanlayıcıyla yürüyen faz geçişleri. Sıralı kuyruk (yeniden giriş yok), her öneri kendi
+// try/catch'inde. Bir geçişin YAZILDIĞI tek yer applyTransition'dır (durum + phase_events + PHASE_CHANGED defter kaydı);
+// zamanlayıcının geçişleri de yazarın submit/withdraw eylemleri de (proposals.ts) onu çağırır. Tüm süreler ctx.clock ile ve
+// gerçek saat değerleriyle (hours · HOUR) hesaplanır.
 import {
   PROPOSAL_STATUS_LABELS,
   sponsorsRequired,
@@ -46,11 +48,33 @@ export interface TransitionOpts {
   keepStart?: boolean;
 }
 
-/**
- * Tek bir faz geçişi (çağıran işlemin İÇİNDE çalışır): proposals güncellemesi (durum + sürüm koşullu),
- * phase_events satırı ve PHASE_CHANGED defter kaydı {proposalId, from, to, textHash, at, reason}.
- */
+/** Kapanan (düşen, geri çekilen, reddedilen ya da yürürlüğe giren) öneriler: bekleyen bilirkişi görevleri cezasız iptal edilir. */
 const CLOSED_FOR_EXPERTS = new Set<ProposalStatus>(["withdrawn", "expired", "inadmissible", "rejected", "enacted"]);
+
+/**
+ * Bilirkişi kurası tohum bloğunun taahhüt payı (ALGORITMA.md §12 madde 9): tohum, taahhüt anındaki son blok yüksekliğine
+ * bu pay eklenerek bulunan, o anda HENÜZ VAR OLMAYAN bloğun hash'inden alınır. Yükseklik bir kez (boşken) yazılır ve
+ * değişmez; kura bu blok işlenmeden yapılmaz (`seed_block_pending`), dolayısıyla çekiliş anı seçilerek uygun bir hash
+ * yakalanamaz. Pay 1'dir, 2 değil: defter boş blok üretmez; +1 bloğunu taahhüdü taşıyan SEED_COMMIT işlemi (bkz.
+ * commitSeedBlock) oluşturur, +2 bloğu için başka bir işlemin gelmesi gerekir ve boşta kalan bir defterde kura süre bitene
+ * kadar beklerdi (bilirkişi gerekliyken panelsiz oylama). Bu payı değiştirmeden önce ALGORITMA.md §12 madde 9'daki gerekçeye
+ * ve test/forum/seed-commit.test.ts'e bakın.
+ */
+export const SEED_COMMIT_LEAD = 1;
+
+/** Taahhüt edilecek tohum bloğunun yüksekliği: taahhüt anındaki son blok + SEED_COMMIT_LEAD. */
+export const seedCommitHeight = (latestHeight: number): number => latestHeight + SEED_COMMIT_LEAD;
+
+/**
+ * Tohum taahhüdünü TAŞIYAN defter işlemi (SEED_COMMIT {proposalId, height, phase}). Taahhüt yüksekliği yazılan HER yolda
+ * (tartışma açılışı, hak bayrağı, bilirkişi talebi, uzlaşma turu yeniden çekimi ve karşı panel) aynı ForumCore.tx içinde
+ * çağrılır: defter boş blok üretmediğinden taahhüt edilen +1 bloğunu bu işlem oluşturur (kura, ilgisiz bir defter işlemi
+ * beklemeden bir blok aralığında yapılabilir) ve taahhüt defterde denetlenebilir olur — işlem taahhüt edilen bloğun içindedir,
+ * dolayısıyla taahhüt o bloğun hash'i bilinmeden yapılmıştır. Gönderim işlem COMMIT olunca yapılır (ForumCore.submit).
+ */
+export function commitSeedBlock(core: ForumCore, proposalId: string, height: number, phase: ProposalStatus): void {
+  core.submit("SEED_COMMIT", { proposalId, height, phase });
+}
 
 /** Yazarın metin önerilerine karar verebildiği evreler (ALGORITMA.md §3, "Tartışma içi öneriler"). */
 export const SUGGESTION_DECIDABLE = new Set<ProposalStatus>(["deliberation", "reconciliation"]);
@@ -76,6 +100,11 @@ function lapseOpenSuggestions(core: ForumCore, p: ProposalRow, to: ProposalStatu
   });
 }
 
+/**
+ * Tek bir faz geçişi (çağıran işlemin İÇİNDE çalışır): proposals güncellemesi (durum + sürüm koşullu),
+ * phase_events satırı ve PHASE_CHANGED defter kaydı {proposalId, from, to, textHash, at, reason}.
+ * Durum ya da sürüm bu arada değiştiyse `StaleState` fırlatır (geçiş yapılmaz, defter kaydı gönderilmez).
+ */
 export function applyTransition(core: ForumCore, p: ProposalRow, to: ProposalStatus, reason: string, o: TransitionOpts): Transition {
   const set: Record<string, SqlValue> = { ...(o.set ?? {}), status: to, phase_ends_at: o.endsAt, updated_at: o.now };
   if (!o.keepStart) set.phase_started_at = o.now;
@@ -273,8 +302,13 @@ export function createLifecycle(core: ForumCore, parts: LifecycleParts): Lifecyc
     if (!needed) return;
     const latest = deps.ledger.latestBlock();
     if (p.expert_draw_height === null) {
-      // Taahhüt: tohum, henüz üretilmemiş bir sonraki bloğun hash'i olacak (öğütmeye karşı).
-      core.tx(() => db.run("UPDATE proposals SET expert_draw_height = ? WHERE id = ? AND expert_draw_height IS NULL", latest.height + 1, p.id));
+      // Taahhüt: tohum, henüz üretilmemiş bloğun hash'i olacak (öğütmeye karşı; bkz. SEED_COMMIT_LEAD). Yalnız boşken yazılır;
+      // taahhüdü taşıyan SEED_COMMIT işlemi aynı işlemde gönderilir ve taahhüt edilen bloğu oluşturur.
+      core.tx(() => {
+        const height = seedCommitHeight(latest.height);
+        const r = db.run("UPDATE proposals SET expert_draw_height = ? WHERE id = ? AND expert_draw_height IS NULL", height, p.id);
+        if (r.changes === 1) commitSeedBlock(core, p.id, height, p.status);
+      });
       return;
     }
     if (latest.height < p.expert_draw_height) return;
@@ -399,16 +433,18 @@ export function createLifecycle(core: ForumCore, parts: LifecycleParts): Lifecyc
         const durations = report.params.durationsHours;
         const expert = report.params.requiresExpert || cur.request_expert === 1;
         const reason = `Gerekli destekçi sayısına ulaşıldı (${count}/${required}); ontoloji denetimi geçti, tartışma başladı.`;
+        // Tohum taahhüdü: taahhüt edilen bloğu bu işlemin PHASE_CHANGED ve SEED_COMMIT kayıtları oluşturur; hash'i şu an bilinemez.
+        const seedHeight = expert ? seedCommitHeight(deps.ledger.latestBlock().height) : null;
         const t = applyTransition(core, cur, "deliberation", reason, {
           now,
           endsAt: now + hoursToMs(durations.deliberation),
           set: {
             audit_report: JSON.stringify(report),
             tier: report.tier,
-            // Tohum taahhüdü: PHASE_CHANGED ile birlikte bir sonraki blok kesin oluşur; hash'i şu an bilinemez.
-            expert_draw_height: expert ? deps.ledger.latestBlock().height + 1 : null,
+            expert_draw_height: seedHeight,
           },
         });
+        if (seedHeight !== null) commitSeedBlock(core, cur.id, seedHeight, "deliberation");
         notifyPhase(cur, "deliberation", reason);
         if (cur.kind === "deletion") {
           const target = deletionTargetAuthor(core, cur);

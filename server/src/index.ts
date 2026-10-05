@@ -1,5 +1,5 @@
 // Giriş noktası: yapılandırmayı yükler, uygulamayı kurar ve dinlemeye başlar.
-import { loadConfig } from "./core/config";
+import { describeTrustProxy, loadConfig } from "./core/config";
 import { createApp } from "./app";
 import { DataDirLockedError } from "./core/lock";
 import { createShutdown } from "./core/shutdown";
@@ -50,6 +50,7 @@ async function main(): Promise<void> {
           ? "KAPALI (RATE_LIMIT_GLOBAL=0, RATE_LIMIT_AUTH=0)"
           : `genel ${rateLimit.global ? `${rateLimit.global}/dk` : "kapalı"}, giriş ${rateLimit.auth ? `${rateLimit.auth}/dk` : "kapalı"}`
       }`,
+      `  Ters vekil     : ${describeTrustProxy(cfg.trustProxy)}`,
       `  Simüle saat    : ${new Date(services.clock.now()).toISOString()}`,
       `  Veri klasörü   : ${cfg.dataDir}`,
       "Durdurmak için Ctrl+C.",

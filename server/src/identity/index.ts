@@ -1,13 +1,14 @@
 // Kimlik ve KVKK modülü: kayıt, doğrulama, oturum, şifreli kimlik kasası, rızalar, KVKK hakları (döküm, kripto-imha).
 // Gerçek kimlik yalnızca identity_vault'ta, alan bazında AES-256-GCM ile şifreli durur; diğer modüller yalnızca
 // rastgele üye kimliğini (users.id) ve takma adı görür. Deftere yalnızca memberRef (anahtarlı HMAC) yazılır.
-import { ageOn, maskTckn, ROLE_LABELS, type AddressInput, type LedgerTxType, type Me, type PiiRecord, type Role } from "@forum/shared";
+import { ageOn, maskTckn, ROLE_LABELS, USER_STATUS_LABELS, type AddressInput, type LedgerTxType, type Me, type PiiRecord, type Role } from "@forum/shared";
 import type { AuditLogger } from "../core/audit";
 import type { CoreContext, IdentityService, LedgerService, Notifier } from "../core/contracts";
 import { AppError, badRequest, conflict, forbidden, notFound, unprocessable } from "../core/errors";
 import { newId } from "../core/ids";
 import { memberToken, renderNotificationRows } from "../core/notification-text";
-import { json, type SqlValue } from "../db";
+import { json, type Db, type SqlValue } from "../db";
+import { createLoginThrottle, throttleKey, type LoginThrottleOptions } from "./login-throttle";
 import { dummyVerify, hashPassword, INVALID_PASSWORD_HASH, verifyPassword } from "./password";
 import { createTokenSigner, SESSION_TTL_MS } from "./sessions";
 import {
@@ -36,6 +37,13 @@ export interface IdentityDeps {
   ledger: LedgerService | null;
   notifier: Notifier;
   audit: AuditLogger;
+  /**
+   * Gerçek duvar saati (ms; varsayılan Date.now). Bekleyen başvuru imhası (180 gün) ve hesap başına giriş kilidi SİMÜLE saatle
+   * değil bununla ölçülür: demo hızlandırması (TIME_SCALE, yönetici "ileri al") gerçek kişilerin verisini erken imha etmesin.
+   */
+  realNow?: () => number;
+  /** Hesap başına giriş kilidi ayarları (yalnız testler); varsayılan 15 dakikada 5 başarısızlık → 15 dakika kilit. */
+  loginThrottle?: Omit<LoginThrottleOptions, "now">;
 }
 
 /** IdentityService + HTTP katmanı ve zamanlayıcı için ek yardımcılar. */
@@ -48,9 +56,18 @@ export interface IdentityServiceImpl extends IdentityService {
   refreshAdulthood(): number;
   /**
    * Periyodik imha: maxAgeMs'den uzun süredir doğrulanmamış başvuruları reddedilmiş sayar ve kasalarını kripto-imha eder.
-   * Varsayılan 180 gün. İmha edilen başvuru sayısını döndürür.
+   * Varsayılan 180 gün; süre GERÇEK duvar saatiyle (deps.realNow) ölçülür, simüle saatle değil. Bu kural gelmeden önce açılmış
+   * başvurularda süre, bakımın onları ilk gördüğü andan başlar. İmha edilen başvuru sayısını döndürür.
    */
   purgeStalePending(maxAgeMs?: number): number;
+  /**
+   * KVKK kripto-imha. Ön koşullar (hesap açık, son yönetici değil) her yan etkiden önce denetlenir; satır güncellemeleri ve
+   * denetim kaydı tek işlemdedir. Hata EŞZAMANLI fırlatılır (dönen söz yalnız başarıda çözülür): çağıran bu çağrıyı kendi
+   * db.tx'i içinde İLK adım olarak yapar (ör. ardından vekâletleri geri alır); ön koşul ihlalinde başka hiçbir adım çalışmaz,
+   * sonraki bir adım başarısız olursa imha da geri alınır. MEMBER_ERASED defter kaydı ve WAL sıkıştırması söz çözülürken, yani
+   * çağıranın işlemi bittikten sonra ve yalnız hesap gerçekten silinmişse yapılır.
+   */
+  eraseSelf(userId: string): Promise<void>;
   /** Defterdeki takma üye referansı (HMAC). Kişisel veri içermez. */
   memberRef(userId: string): string;
 }
@@ -84,7 +101,11 @@ interface DecryptedPii {
 const STAFF_REGISTRAR: Role[] = ["registrar", "admin"];
 const STAFF_PII: Role[] = ["registrar", "auditor", "admin"];
 const LOGIN_FAILED = "Takma ad/e-posta veya şifre hatalı.";
-const STALE_PENDING_MS = 180 * 24 * 3_600_000;
+/** Bekleyen başvurunun en uzun saklanma süresi: 180 GERÇEK gün (simüle saat değil; bkz. purgeStalePending). */
+export const STALE_PENDING_MS = 180 * 24 * 3_600_000;
+/** meta tablosunda başvurunun gerçek (duvar saati) açılış anı: `identity.pending_since:<üye kimliği>` → ms. */
+const PENDING_SINCE_KEY = "identity.pending_since:";
+const LAST_ADMIN_ERASE = "Sistemdeki son yöneticisiniz; hesabınızı silmeden önce başka bir üyeye yönetici rolü verin.";
 
 const dupNickname = () => conflict("duplicate_nickname", "Bu takma ad zaten kullanılıyor.", { nickname: "Bu takma ad zaten kullanılıyor." });
 const dupTckn = () =>
@@ -96,15 +117,40 @@ const integrityError = () =>
 const erasedError = () => conflict("pii_erased", "Bu üyenin kişisel verileri imha edilmiştir (kripto-imha).");
 const closedAccount = () => conflict("invalid_state", "Bu hesap silinmiş ya da reddedilmiş; işlem yapılamaz.");
 
+const alreadyErased = () => conflict("already_erased", "Bu hesabın kişisel verileri zaten imha edilmiş.");
+
 const isClosed = (row: Pick<UserRow, "status">) => row.status === "erased" || row.status === "rejected";
+
+/** Son-yönetici değişmezi (setRoles ve eraseSelf için ortak): doğrulanmış başka yönetici yoksa bu kullanıcı yönetici olmaktan çıkarılamaz. */
+function assertNotLastAdmin(db: Db, userId: string, message: string): void {
+  const others = db
+    .all<{ id: string; roles: string }>("SELECT id, roles FROM users WHERE status = 'verified' AND id != ? AND roles LIKE '%admin%'", userId)
+    .filter((r) => parseRoles(r.roles).includes("admin"));
+  if (others.length === 0) throw conflict("last_admin", message);
+}
+
+/**
+ * Hesap silme ön koşulları — YAN ETKİSİZ okuma (#14/#81/#159/#280). eraseSelf bunu her yan etkiden önce çağırır; hesap silme
+ * kaskadı (vekâletler, bildirimler) yalnız bu denetim geçtikten sonra çalışır. Hesap kapalıysa 409 already_erased; doğrulanmış
+ * başka yönetici yoksa 409 last_admin. Satır yoksa bir şey yapmaz (eraseSelf 404 verir).
+ */
+export function assertErasable(db: Db, userId: string): void {
+  const row = loadUserRow(db, userId);
+  if (!row) return;
+  if (isClosed(row)) throw alreadyErased();
+  // shred rolleri sıfırlar: son yönetici kendini silerse sistemde yönetici kalmazdı (setRoles ile aynı değişmez).
+  if (parseRoles(row.roles).includes("admin")) assertNotLastAdmin(db, userId, LAST_ADMIN_ERASE);
+}
 
 const camel = (k: string) => k.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
 const EXPORT_JSON_COLS = new Set(["categories", "rights_flags", "domains", "meta", "ai_flags", "risks", "answers", "lint"]);
 
 export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): IdentityServiceImpl {
   const { db, clock } = ctx;
+  const realNow = deps.realNow ?? Date.now;
   const vault = createVault(ctx.config.masterKey);
   const signer = createTokenSigner(ctx.config.tokenKey);
+  const throttle = createLoginThrottle({ ...deps.loginThrottle, now: realNow });
   // Silinen/üzerine yazılan kayıtların eski baytları sayfalarda kalmasın (kripto-imhayı destekler).
   try {
     db.exec("PRAGMA secure_delete = ON;");
@@ -128,13 +174,43 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
     return a;
   }
 
+  /**
+   * Deftere gönderim veritabanı işlemi BİTTİKTEN sonra yapılır; başarısızlık asıl işlemi bozmaz (satır zaten kaydedildi) ama
+   * sessizce de yutulmaz (#273): denetim günlüğüne `identity.ledger_error` ve sunucu günlüğüne yazılır. Güvenli kayıt: yalnız işlem
+   * türü ve hata kodu/adı — hata iletisi, yük (memberRef) ve üye kimliği YAZILMAZ (takma kimlik üyeye bağlanmasın). Denetim
+   * kaydı da yazılamazsa (ör. kapanış) hata yine yayılmaz.
+   */
   function submitLedger(type: LedgerTxType, payload: Record<string, unknown>): void {
     if (!deps.ledger) return;
     try {
       deps.ledger.submit(type, payload);
     } catch (e) {
-      deps.audit.log(null, "identity.ledger_error", null, { type, error: e instanceof Error ? e.message : String(e) });
+      const code = e instanceof AppError ? e.code : e instanceof Error ? e.name : typeof e;
+      console.error(`[kimlik] ${type} defter kaydı gönderilemedi (${code}).`);
+      try {
+        deps.audit.log(null, "identity.ledger_error", null, { type, code });
+      } catch {
+        /* denetim günlüğü de yazılamıyor: sunucu günlüğündeki satır yeterli */
+      }
     }
+  }
+
+  /** Bekleyen başvurunun gerçek açılış anı (ms); kayıt yoksa ya da bozuksa null. */
+  function pendingSince(userId: string): number | null {
+    const v = Number(db.get<{ value: string }>("SELECT value FROM meta WHERE key = ?", PENDING_SINCE_KEY + userId)?.value);
+    return Number.isFinite(v) && v > 0 ? v : null;
+  }
+
+  function setPendingSince(userId: string, at: number): void {
+    db.run(
+      "INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      PENDING_SINCE_KEY + userId,
+      String(at),
+    );
+  }
+
+  function clearPendingSince(userId: string): void {
+    db.run("DELETE FROM meta WHERE key = ?", PENDING_SINCE_KEY + userId);
   }
 
   function registrarIds(): string[] {
@@ -203,7 +279,8 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
     return e;
   }
 
-  async function createAccount(input: unknown, verifiedBy: string | null): Promise<UserRow> {
+  /** roles: ilk roller (kurulumdaki ilk yönetici için ["member","admin"]); satırla aynı işlemde yazılır. */
+  async function createAccount(input: unknown, verifiedBy: string | null, roles: Role[] = ["member"]): Promise<UserRow> {
     const now = clock.now();
     const v = parseRegistration(input, now);
     const nicknameNorm = normalizeNickname(v.nickname);
@@ -232,11 +309,12 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
         db.run(
           `INSERT INTO users(id, nickname, nickname_norm, password_hash, roles, status, is_adult, region_il, region_ilce,
              political_consent, ai_consent, kvkk_notice_at, created_at, verified_at, verified_by)
-           VALUES (?, ?, ?, ?, '["member"]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           id,
           v.nickname,
           nicknameNorm,
           passwordHash,
+          JSON.stringify(ALL_ROLES.filter((r) => r === "member" || roles.includes(r))),
           verifiedBy ? "verified" : "pending",
           isAdult ? 1 : 0,
           address.il,
@@ -268,32 +346,31 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
           now,
           now,
         );
+        // Bekleyen başvurunun saklama süresi gerçek saatle ölçülür (simüle saat hızlandırılabilir).
+        if (!verifiedBy) setPendingSince(id, realNow());
       });
     } catch (e) {
       throw mapUniqueError(e);
     } finally {
       dek.fill(0);
     }
+    // Hesap açılmadan önce bu takma ada yapılan başarısız denemeler korunacak bir hesabı hedeflemiyordu (takma adlar zaten
+    // herkese açık): önceden kilitlenmiş bir adla kayıt olan kişinin kayıt sonrası otomatik girişi 429 almasın.
+    throttle.succeeded(throttleKey("nickname", nicknameNorm));
     return requireRow(id);
-  }
-
-  /** Son-yönetici değişmezi (setRoles ve eraseSelf için ortak): doğrulanmış başka yönetici yoksa bu kullanıcı yönetici olmaktan çıkarılamaz. */
-  function assertNotLastAdmin(userId: string, message: string): void {
-    const others = db
-      .all<{ id: string; roles: string }>("SELECT id, roles FROM users WHERE status = 'verified' AND id != ? AND roles LIKE '%admin%'", userId)
-      .filter((r) => parseRoles(r.roles).includes("admin"));
-    if (others.length === 0) throw conflict("last_admin", message);
   }
 
   /**
    * Kripto-imha: DEK ve tüm şifreli alanlar, kör indeksler silinir; hesap takma adsızlaştırılır. Başkalarına giden bildirimler
    * takma adı metin olarak taşımaz ({{uye:<kimlik>}} belirteci), okunurken güncel (anonim) adla çözülür; metin yeniden yazılmaz.
+   * Yalnız satırları günceller: çağıran bunu denetim kaydıyla birlikte TEK db.tx içinde yapar, işlem bittikten sonra checkpointWal.
    */
-  function shred(userId: string, status: "erased" | "rejected"): void {
+  function shredRows(userId: string, status: "erased" | "rejected"): void {
     const now = clock.now();
     const short = userId.replace(/-/g, "").slice(0, 6);
     const nickname = status === "erased" ? `Silinmiş üye #${short}` : `Reddedilen başvuru #${short}`;
     db.tx(() => {
+      clearPendingSince(userId);
       db.run(
         `UPDATE identity_vault SET wrapped_dek = NULL, enc_first_name = NULL, enc_last_name = NULL, enc_tckn = NULL,
            enc_birth_date = NULL, enc_email = NULL, enc_phone = NULL, enc_address = NULL,
@@ -322,6 +399,13 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
         userId,
       );
     });
+  }
+
+  /**
+   * İmha edilen baytlar WAL dosyasında kalmasın. Açık bir işlemin İÇİNDE çağrılırsa sıkıştırma tamamlanamaz; bu yüzden imha
+   * işlemi bittikten sonra çağrılır.
+   */
+  function checkpointWal(): void {
     try {
       db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
     } catch {
@@ -339,10 +423,12 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
     return p;
   }
 
-  /** Kişisel veri erişim kaydı: pii_access_log (aktör, üye, amaç, zaman) + audit_log (identity.pii_access). */
+  /** Kişisel veri erişim kaydı: pii_access_log (aktör, üye, amaç, zaman) + audit_log (identity.pii_access) — ikisi tek işlemde. */
   function logPiiAccess(actorId: string, userId: string, purpose: string, meta: Record<string, unknown>): void {
-    db.run("INSERT INTO pii_access_log(id, actor_id, user_id, purpose, at) VALUES (?, ?, ?, ?, ?)", newId(), actorId, userId, purpose, clock.now());
-    deps.audit.log(actorId, "identity.pii_access", userId, { purpose, ...meta });
+    db.tx(() => {
+      db.run("INSERT INTO pii_access_log(id, actor_id, user_id, purpose, at) VALUES (?, ?, ?, ?, ?)", newId(), actorId, userId, purpose, clock.now());
+      deps.audit.log(actorId, "identity.pii_access", userId, { purpose, ...meta });
+    });
   }
 
   /**
@@ -445,8 +531,7 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
       if ((existing?.n ?? 0) > 0) {
         throw conflict("admin_exists", "Sistemde zaten bir yönetici var; ilk yönetici yalnızca kurulumda oluşturulabilir.");
       }
-      const row = await createAccount(input, "kurulum");
-      db.run(`UPDATE users SET roles = '["member","admin"]' WHERE id = ?`, row.id);
+      const row = await createAccount(input, "kurulum", ["member", "admin"]);
       const memberRef = vault.memberRef(row.id);
       submitLedger("MEMBER_REGISTERED", { memberRef });
       submitLedger("MEMBER_VERIFIED", { memberRef });
@@ -467,15 +552,20 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
       const cleanNote = typeof note === "string" ? note.trim().slice(0, 1000) : "";
       const now = clock.now();
       const memberRef = vault.memberRef(userId);
+      // Satır güncellemesi ve denetim kaydı tek işlemde (#280); defter ve bildirim işlem sonrası.
       if (decision === "approve") {
         const isAdult = ageOn(readPii(userId).birthDate, now) >= 18;
-        db.run(
-          "UPDATE users SET status = 'verified', verified_at = ?, verified_by = ?, is_adult = ? WHERE id = ? AND status = 'pending'",
-          now,
-          actorId,
-          isAdult ? 1 : 0,
-          userId,
-        );
+        db.tx(() => {
+          db.run(
+            "UPDATE users SET status = 'verified', verified_at = ?, verified_by = ?, is_adult = ? WHERE id = ? AND status = 'pending'",
+            now,
+            actorId,
+            isAdult ? 1 : 0,
+            userId,
+          );
+          clearPendingSince(userId);
+          deps.audit.log(actorId, "identity.verify", userId, { decision: "approve", hasNote: cleanNote.length > 0 });
+        });
         submitLedger("MEMBER_VERIFIED", { memberRef });
         const canVote = isAdult && row.political_consent === 1;
         deps.notifier.notify(userId, {
@@ -487,9 +577,12 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
             (cleanNote ? ` Not: ${cleanNote}` : ""),
           link: "/profil",
         });
-        deps.audit.log(actorId, "identity.verify", userId, { decision: "approve", hasNote: cleanNote.length > 0 });
       } else {
-        shred(userId, "rejected");
+        db.tx(() => {
+          shredRows(userId, "rejected");
+          deps.audit.log(actorId, "identity.verify", userId, { decision: "reject", hasNote: cleanNote.length > 0 });
+        });
+        checkpointWal();
         submitLedger("MEMBER_ERASED", { memberRef });
         deps.notifier.notify(userId, {
           kind: "account_rejected",
@@ -499,7 +592,6 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
             (cleanNote ? ` Not: ${cleanNote}` : ""),
           link: null,
         });
-        deps.audit.log(actorId, "identity.verify", userId, { decision: "reject", hasNote: cleanNote.length > 0 });
       }
       return meOf(requireRow(userId));
     },
@@ -515,9 +607,15 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
     async login(nicknameOrEmail, password) {
       const ident = typeof nicknameOrEmail === "string" ? nicknameOrEmail.trim() : "";
       const pw = typeof password === "string" && password.length <= 1024 ? password : "";
+      const byEmail = ident.includes("@");
+      const emailBidx = byEmail ? vault.emailIndex(ident) : "";
+      // Hesap başına kilit (#226): anahtar normalleştirilmiş tanımlayıcıdır; var olmayan ad için de aynı sayaç işler (sızıntı yok).
+      // Kilitliyken şifre denetlenmez, veritabanına bakılmaz: 429 login_locked + Retry-After.
+      const key = byEmail ? throttleKey("email", emailBidx) : throttleKey("nickname", normalizeNickname(ident));
+      throttle.begin(key);
       let row: UserRow | undefined;
-      if (ident.includes("@")) {
-        const v = db.get<{ user_id: string }>("SELECT user_id FROM identity_vault WHERE email_bidx = ?", vault.emailIndex(ident));
+      if (byEmail) {
+        const v = db.get<{ user_id: string }>("SELECT user_id FROM identity_vault WHERE email_bidx = ?", emailBidx);
         row = v ? getRow(v.user_id) : undefined;
       } else if (ident) {
         row = db.get<UserRow>("SELECT * FROM users WHERE nickname_norm = ?", normalizeNickname(ident));
@@ -525,9 +623,13 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
       const usable = row && !isClosed(row) && pw.length > 0;
       const ok = usable ? await verifyPassword(row!.password_hash, pw) : await dummyVerify(pw);
       if (!row || !ok) {
-        if (row && !isClosed(row)) deps.audit.log(null, "identity.login_failed", row.id);
+        const target = row && !isClosed(row) ? row.id : null;
+        if (target) deps.audit.log(null, "identity.login_failed", target);
+        // Kilit başına bir kez; tanımlayıcı (takma ad/e-posta) yazılmaz. Var olmayan ad için hedef boş kalır.
+        if (throttle.failed(key)) deps.audit.log(null, "identity.login_locked", target, { via: byEmail ? "email" : "nickname" });
         throw new AppError(401, "invalid_credentials", LOGIN_FAILED);
       }
+      throttle.succeeded(key);
       const now = clock.now();
       const sid = signer.newSessionId();
       db.run("INSERT INTO sessions(id, user_id, created_at, expires_at, revoked_at) VALUES (?, ?, ?, ?, NULL)", sid, row.id, now, now + SESSION_TTL_MS);
@@ -595,13 +697,16 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
       if (typeof c.politicalConsent === "boolean" && (row.political_consent === 1) !== c.politicalConsent) changes.politicalConsent = c.politicalConsent;
       if (typeof c.aiConsent === "boolean" && (row.ai_consent === 1) !== c.aiConsent) changes.aiConsent = c.aiConsent;
       if (Object.keys(changes).length === 0) return meOf(row);
-      db.run(
-        "UPDATE users SET political_consent = ?, ai_consent = ? WHERE id = ?",
-        (changes.politicalConsent ?? row.political_consent === 1) ? 1 : 0,
-        (changes.aiConsent ?? row.ai_consent === 1) ? 1 : 0,
-        userId,
-      );
-      deps.audit.log(userId, "identity.consents", userId, changes);
+      // Rıza değişikliği ve ispatı (denetim kaydı) tek işlemde (#280): kayıtsız rıza değişikliği kalmasın.
+      db.tx(() => {
+        db.run(
+          "UPDATE users SET political_consent = ?, ai_consent = ? WHERE id = ?",
+          (changes.politicalConsent ?? row.political_consent === 1) ? 1 : 0,
+          (changes.aiConsent ?? row.ai_consent === 1) ? 1 : 0,
+          userId,
+        );
+        deps.audit.log(userId, "identity.consents", userId, changes);
+      });
       return meOf(requireRow(userId));
     },
 
@@ -617,10 +722,25 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
       if (isClosed(row)) throw conflict("invalid_state", "Silinmiş ya da reddedilmiş bir hesaba rol verilemez.");
       const prev = parseRoles(row.roles);
       const next = ALL_ROLES.filter((r) => r === "member" || roles.includes(r));
-      if (prev.includes("admin") && !next.includes("admin")) assertNotLastAdmin(userId, "Sistemde en az bir yönetici kalmalıdır.");
+      // Personel rolü yalnız doğrulanmış (etkin) üyeye VERİLEBİLİR (#106): doğrulanmamış hesap menüde personel bölümlerini görür
+      // ama her personel ucu "Hesabınız etkin değil" der. Var olan rolü geri almak her durumda serbesttir.
+      const granted = next.filter((r) => r !== "member" && !prev.includes(r));
+      if (granted.length > 0 && row.status !== "verified") {
+        const labels = granted.map((r) => ROLE_LABELS[r]).join(", ");
+        const hint = row.status === "pending" ? " Önce başvurunun kayıt memurunca onaylanması gerekir." : "";
+        throw conflict(
+          "not_verified",
+          `${labels} ${granted.length > 1 ? "rolleri" : "rolü"} yalnızca kimliği doğrulanmış, etkin bir üyeye verilebilir; bu hesabın durumu: ${USER_STATUS_LABELS[row.status]}.${hint}`,
+          { roles: `Doğrulanmamış hesaba personel rolü verilemez (${labels}).` },
+        );
+      }
+      if (prev.includes("admin") && !next.includes("admin")) assertNotLastAdmin(db, userId, "Sistemde en az bir yönetici kalmalıdır.");
       if (prev.join(",") !== next.join(",")) {
-        db.run("UPDATE users SET roles = ? WHERE id = ?", JSON.stringify(next), userId);
-        deps.audit.log(actorId, "identity.roles", userId, { from: prev, to: next });
+        // Rol değişikliği ve denetim kaydı tek işlemde (#280); bildirim işlem sonrası.
+        db.tx(() => {
+          db.run("UPDATE users SET roles = ? WHERE id = ?", JSON.stringify(next), userId);
+          deps.audit.log(actorId, "identity.roles", userId, { from: prev, to: next });
+        });
         deps.notifier.notify(userId, {
           kind: "roles_changed",
           title: "Rolleriniz güncellendi",
@@ -744,16 +864,23 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
       return out;
     },
 
-    async eraseSelf(userId) {
-      const row = requireRow(userId);
-      if (isClosed(row)) throw conflict("already_erased", "Bu hesabın kişisel verileri zaten imha edilmiş.");
-      // shred rolleri sıfırlar: son yönetici kendini silerse sistemde yönetici kalmazdı (setRoles ile aynı değişmez).
-      if (parseRoles(row.roles).includes("admin")) {
-        assertNotLastAdmin(userId, "Sistemdeki son yöneticisiniz; hesabınızı silmeden önce başka bir üyeye yönetici rolü verin.");
-      }
-      shred(userId, "erased");
-      submitLedger("MEMBER_ERASED", { memberRef: vault.memberRef(userId) });
-      deps.audit.log(userId, "identity.erase", userId, { method: "crypto-shredding" });
+    // Bilerek `async` DEĞİL: hatalar eşzamanlı fırlar ki rota bu çağrıyı vekâlet geri alımlarıyla aynı db.tx'te yapıp
+    // başarısızlıkta hepsini birlikte geri alabilsin (bkz. IdentityServiceImpl.eraseSelf).
+    eraseSelf(userId) {
+      requireRow(userId);
+      // Ön koşullar her yan etkiden önce (hesap açık, son yönetici değil).
+      assertErasable(db, userId);
+      db.tx(() => {
+        shredRows(userId, "erased");
+        deps.audit.log(userId, "identity.erase", userId, { method: "crypto-shredding" });
+      });
+      // Defter kaydı ve WAL sıkıştırması bir mikro görevde, yani çağıranın (varsa) eşzamanlı işlemi bittikten SONRA. O işlem geri
+      // alındıysa hesap silinmemiştir: deftere "silindi" yazılmaz.
+      return Promise.resolve().then(() => {
+        if (getRow(userId)?.status !== "erased") return;
+        submitLedger("MEMBER_ERASED", { memberRef: vault.memberRef(userId) });
+        checkpointWal();
+      });
     },
 
     async changePassword(userId, oldPw, newPw, keepToken) {
@@ -816,7 +943,8 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
       } catch (e) {
         throw mapUniqueError(e);
       }
-      // Eski ve yeni takma ad günlüğe yazılmaz: hesap sonradan silinirse eski takma ad kimliğe geri bağlanamasın (KVKK.md §6).
+      throttle.succeeded(throttleKey("nickname", norm)); // yeni ada hesap yokken yapılmış denemeler sayılmaz
+      // Eski ve yeni takma ad günlüğe yazılmaz: hesap sonradan silinirse eski takma ad kimliğe geri bağlanamasın (KVKK.md §4.2).
       deps.audit.log(userId, "identity.nickname_change", userId, { caseOnly: norm === row.nickname_norm });
       deps.notifier.notify(userId, {
         kind: "nickname_changed",
@@ -858,13 +986,26 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
     },
 
     purgeStalePending(maxAgeMs = STALE_PENDING_MS) {
-      const cutoff = clock.now() - maxAgeMs;
-      const stale = db.all<{ id: string }>("SELECT id FROM users WHERE status = 'pending' AND created_at < ?", cutoff);
-      for (const { id } of stale) {
-        shred(id, "rejected");
+      // GERÇEK duvar saati (#276): simüle saat TIME_SCALE ile hızlanır ve yönetici onu ileri alabilir; 180 simüle gün varsayılan
+      // hızda ~3 gerçek gündür. Gerçek kişilerin kimlik verisi demo hızlandırmasıyla geri dönüşsüz imha edilmesin.
+      const now = realNow();
+      const stale: string[] = [];
+      db.tx(() => {
+        for (const { id } of db.all<{ id: string }>("SELECT id FROM users WHERE status = 'pending' ORDER BY created_at ASC, id ASC")) {
+          const since = pendingSince(id);
+          // Gerçek açılış anı bilinmeyen (bu kuraldan önce açılmış) başvuru: süre bakımın onu ilk gördüğü andan başlar (erken imha yok).
+          if (since === null) setPendingSince(id, now);
+          else if (now - since > maxAgeMs) stale.push(id);
+        }
+      });
+      for (const id of stale) {
+        db.tx(() => {
+          shredRows(id, "rejected");
+          deps.audit.log(null, "identity.purge_stale", id, { method: "crypto-shredding" });
+        });
         submitLedger("MEMBER_ERASED", { memberRef: vault.memberRef(id) });
-        deps.audit.log(null, "identity.purge_stale", id, { method: "crypto-shredding" });
       }
+      if (stale.length > 0) checkpointWal();
       return stale.length;
     },
 

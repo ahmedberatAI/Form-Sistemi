@@ -1,6 +1,6 @@
 // Bileşim kökü: veritabanı, saat ve tüm servisleri kurar, HTTP sunucusunu bunlara bağlar.
 import type { FastifyInstance } from "fastify";
-import { ScaledClock, type Clock } from "./core/clock";
+import { ScaledClock, resumeSimTime, type Clock, type SimClockState } from "./core/clock";
 import { assertValidSecrets, type Config } from "./core/config";
 import { verifyKeyFingerprints } from "./core/keycheck";
 import type { CoreContext, IdentityService } from "./core/contracts";
@@ -54,6 +54,11 @@ export interface App {
 
 const CLOCK_META_KEY = "sim_clock";
 const CLOCK_PERSIST_MS = 5_000;
+/**
+ * Çalışırken yazılan saat kaydının kirası (gerçek ms): bir sonraki periyodik kayda dek geçebilecek süre, zamanlayıcı gecikmesine
+ * pay bırakmak için iki katı. Sert kapanıştan sonra saat en çok kira × ölçek kadar ileriden başlar, asla geriden değil (#281).
+ */
+export const CLOCK_LEASE_REAL_MS = 2 * CLOCK_PERSIST_MS;
 const LIFECYCLE_INTERVAL_MS = 1_000;
 const MAINTENANCE_INTERVAL_MS = 10 * 60_000;
 /** Kapanışta bekleyen deftere yazımların işlenmesi için azami bekleme (sonra defter yine de durdurulur). */
@@ -92,25 +97,49 @@ export function startIdentityMaintenance(deps: IdentityMaintenanceDeps, interval
   return t;
 }
 
-interface ClockState {
-  simNow: number;
-  advancedTotal: number;
-}
-
-function loadClockState(db: Db): ClockState | null {
+function loadClockState(db: Db): SimClockState | null {
   const row = db.get<{ value: string }>("SELECT value FROM meta WHERE key = ?", CLOCK_META_KEY);
-  const v = json<Partial<ClockState> | null>(row?.value, null);
+  const v = json<Partial<SimClockState> | null>(row?.value, null);
   if (!v || typeof v.simNow !== "number" || !Number.isFinite(v.simNow)) return null;
   const adv = typeof v.advancedTotal === "number" && Number.isFinite(v.advancedTotal) ? v.advancedTotal : 0;
-  return { simNow: v.simNow, advancedTotal: adv };
+  const lease = typeof v.leaseUntil === "number" && Number.isFinite(v.leaseUntil) ? v.leaseUntil : undefined;
+  return lease === undefined ? { simNow: v.simNow, advancedTotal: adv } : { simNow: v.simNow, advancedTotal: adv, leaseUntil: lease };
 }
 
-function saveClockState(db: Db, s: ClockState): void {
+/** leaseUntil yalnız çalışırken yazılan kayıtlarda bulunur; düzgün kapanış saati tam kaydeder ({simNow, advancedTotal}). */
+function saveClockState(db: Db, s: SimClockState): void {
   db.run(
     "INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
     CLOCK_META_KEY,
-    JSON.stringify({ simNow: s.simNow, advancedTotal: s.advancedTotal }),
+    JSON.stringify(s.leaseUntil === undefined ? { simNow: s.simNow, advancedTotal: s.advancedTotal } : s),
   );
+}
+
+/**
+ * Yalnız simüle saatle yazılan olay zamanı sütunları: "en son kayıt" seçimleri (created_at DESC, rowid DESC) ve olay sıraları
+ * bunlara dayanır. Gelecekteki son tarihler (phase_ends_at, due_at, expires_at) ve gerçek saat kullanabilen kimlik/oturum/denetim
+ * tabloları bilerek dışarıdadır.
+ */
+const RECORDED_TIME_COLUMNS: readonly (readonly [table: string, column: string])[] = [
+  ["phase_events", "at"],
+  ["proposals", "updated_at"],
+  ["messages", "updated_at"],
+  ["ballots", "updated_at"],
+  ["tallies", "created_at"],
+  ["cluster_snapshots", "created_at"],
+  ["graph_runs", "created_at"],
+  ["ai_analyses", "created_at"],
+  ["expert_assignments", "updated_at"],
+  ["expert_reports", "created_at"],
+  ["notifications", "created_at"],
+  ["ledger_outbox", "submitted_at"],
+];
+
+/** Veritabanındaki en son olay zamanı (simüle ms); kayıt yoksa null. Sert kapanış sonrası saatin tabanıdır (#281). */
+export function latestRecordedSimTime(db: Db): number | null {
+  const union = RECORDED_TIME_COLUMNS.map(([t, c]) => `SELECT MAX(${c}) AS m FROM ${t}`).join(" UNION ALL ");
+  const r = db.get<{ m: number | bigint | null }>(`SELECT MAX(m) AS m FROM (${union})`);
+  return r?.m === null || r?.m === undefined ? null : Number(r.m);
 }
 
 export async function createApp(config: Config, opts: CreateAppOptions = {}): Promise<App> {
@@ -142,10 +171,16 @@ export async function createApp(config: Config, opts: CreateAppOptions = {}): Pr
   let scaled: ScaledClock | null = null;
   let dbOpen = true;
 
-  const persistClock = () => {
+  // Çalışırken (periyodik / ileri alma) kira ile, düzgün kapanışta tam kaydedilir. Kira yalnız saati bu süreç kuruyorsa yazılır:
+  // dışarıdan verilen saat (tohum) yalnız kapanışta kaydedilir.
+  let leaseSimMs = 0;
+  const withLease = (s: { simNow: number; advancedTotal: number }): SimClockState =>
+    leaseSimMs > 0 ? { ...s, leaseUntil: s.simNow + leaseSimMs } : s;
+  const persistClock = (final = false) => {
     if (!scaled || !dbOpen) return;
     try {
-      saveClockState(db, scaled.snapshot());
+      const s = scaled.snapshot();
+      saveClockState(db, final ? s : withLease(s));
     } catch {
       /* kapanış sırasında yazılamazsa bir sonraki kalıcılaştırmada denenir */
     }
@@ -158,15 +193,24 @@ export async function createApp(config: Config, opts: CreateAppOptions = {}): Pr
     if (opts.clock instanceof ScaledClock && opts.persistClock !== false) scaled = opts.clock;
   } else {
     const saved = loadClockState(db);
-    // Sunucu kapalıyken simüle zaman ilerlemez: kaldığı yerden sürer. İlk açılışta gerçek saatten başlar.
+    const scale = config.timeScale > 0 ? config.timeScale : 1;
+    leaseSimMs = CLOCK_LEASE_REAL_MS * scale;
+    // Sunucu kapalıyken simüle zaman ilerlemez: kaldığı yerden sürer. İlk açılışta gerçek saatten başlar. Sert kapanıştan sonra
+    // saat geri gitmez: kira üst sınırından ve veritabanındaki en son olay zamanından geride başlamaz (#281).
+    let latest: number | null = null;
+    try {
+      latest = latestRecordedSimTime(db);
+    } catch {
+      /* okunamazsa yalnız kayıtlı durum ve kira kullanılır */
+    }
     scaled = new ScaledClock({
-      scale: config.timeScale > 0 ? config.timeScale : 1,
-      startSim: saved?.simNow ?? Date.now(),
+      scale,
+      startSim: resumeSimTime(saved, latest, Date.now()),
       advancedTotal: saved?.advancedTotal ?? 0,
       onChange: (s) => {
         if (!dbOpen) return;
         try {
-          saveClockState(db, s);
+          saveClockState(db, withLease(s));
         } catch {
           /* yok say */
         }
@@ -174,7 +218,7 @@ export async function createApp(config: Config, opts: CreateAppOptions = {}): Pr
     });
     clock = scaled;
     persistClock();
-    const t = setInterval(persistClock, CLOCK_PERSIST_MS);
+    const t = setInterval(() => persistClock(), CLOCK_PERSIST_MS);
     t.unref();
     timers.push(t);
   }
@@ -241,7 +285,7 @@ export async function createApp(config: Config, opts: CreateAppOptions = {}): Pr
         await step(() => forum.lifecycle.stop());
         await step(() => led.flush(LEDGER_FLUSH_MS).catch(() => undefined));
         await step(() => led.stop());
-        persistClock();
+        persistClock(true);
         dbOpen = false;
         await step(() => db.close());
         releaseLock();
@@ -256,7 +300,7 @@ export async function createApp(config: Config, opts: CreateAppOptions = {}): Pr
     for (const t of timers) clearInterval(t);
     await lifecycle?.stop().catch(() => undefined);
     if (ledger) await ledger.stop().catch(() => undefined);
-    persistClock();
+    persistClock(true);
     dbOpen = false;
     try {
       db.close();
