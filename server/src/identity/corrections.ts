@@ -187,21 +187,29 @@ export function createCorrectionHandlers(d: CorrectionDeps) {
     r.enc_reason ? openRecord(dek, r.user_id, `${RECORD_KIND}-gerekce`, r.id, r.key_version, r.enc_reason) : "";
 
   /** Önerilen TCKN/e-posta başka bir üyede kayıtlı mı? (kör indeksle; düz metne dokunmadan) */
-  function assertUniqueFor(userId: string, changes: ValidCorrection): void {
+  function duplicateKinds(userId: string, changes: ValidCorrection): { kind: "tckn" | "email"; otherId: string }[] {
+    const out: { kind: "tckn" | "email"; otherId: string }[] = [];
     if (changes.tckn !== undefined) {
       const t = db.get<{ user_id: string }>("SELECT user_id FROM identity_vault WHERE tckn_bidx = ? AND user_id <> ?", vault.tcknIndex(changes.tckn), userId);
-      if (t) {
-        audit.log(userId, "identity.duplicate_attempt", t.user_id, { kind: "tckn", via: "correction" });
-        throw d.dupTckn();
-      }
+      if (t) out.push({ kind: "tckn", otherId: t.user_id });
     }
     if (changes.email !== undefined) {
       const e = db.get<{ user_id: string }>("SELECT user_id FROM identity_vault WHERE email_bidx = ? AND user_id <> ?", vault.emailIndex(changes.email), userId);
-      if (e) {
-        audit.log(userId, "identity.duplicate_attempt", e.user_id, { kind: "email", via: "correction" });
-        throw d.dupEmail();
-      }
+      if (e) out.push({ kind: "email", otherId: e.user_id });
     }
+    return out;
+  }
+
+  /**
+   * Yalnız personelin KARAR anında (onay) çağrılır: çakışma 409 duplicate_tckn/duplicate_email. Talep anında çağrılmaz; üyeye dönen
+   * ayrık 409, herhangi bir hesapla (bekleyen dahil) bir e-postanın ya da TCKN'nin üye olup olmadığını sorgulatan bir kâhin olurdu
+   * (KVKK.md §4.4). Talep anındaki çakışma yalnız denetim günlüğüne yazılır.
+   */
+  function assertUniqueFor(userId: string, changes: ValidCorrection): void {
+    const dup = duplicateKinds(userId, changes)[0];
+    if (!dup) return;
+    audit.log(userId, "identity.duplicate_attempt", dup.otherId, { kind: dup.kind, via: "correction" });
+    throw dup.kind === "tckn" ? d.dupTckn() : d.dupEmail();
   }
 
   function notifyMember(userId: string, title: string, body: string): void {
@@ -228,7 +236,8 @@ export function createCorrectionHandlers(d: CorrectionDeps) {
       }
       const proposed: ValidCorrection = {};
       for (const f of fields) (proposed as Record<string, unknown>)[f] = changes[f];
-      assertUniqueFor(userId, proposed);
+      // Çakışma burada REDDEDİLMEZ (üyelik kâhini olmasın); kayıt memuru karar anında 409 duplicate_tckn/duplicate_email alır.
+      const duplicates = duplicateKinds(userId, proposed);
       const id = newId();
       withDek(userId, (dek, kv) => {
         db.run(
@@ -244,6 +253,7 @@ export function createCorrectionHandlers(d: CorrectionDeps) {
         );
       });
       audit.log(userId, "identity.correction_requested", userId, { correctionId: id, fields });
+      for (const dup of duplicates) audit.log(userId, "identity.duplicate_attempt", dup.otherId, { kind: dup.kind, via: "correction", correctionId: id });
       for (const rid of d.registrarIds()) {
         if (rid === userId) continue;
         notifier.notify(rid, {

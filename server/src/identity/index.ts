@@ -8,7 +8,7 @@ import { AppError, badRequest, conflict, forbidden, notFound, unprocessable } fr
 import { newId } from "../core/ids";
 import { memberToken, renderNotificationRows } from "../core/notification-text";
 import { json, type Db, type SqlValue } from "../db";
-import { createLoginThrottle, throttleKey, type LoginThrottleOptions } from "./login-throttle";
+import { createLoginThrottle, REAUTH_LOCKED_MESSAGE, throttleKey, type LoginThrottleOptions } from "./login-throttle";
 import { dummyVerify, hashPassword, INVALID_PASSWORD_HASH, verifyPassword } from "./password";
 import { createTokenSigner, SESSION_TTL_MS } from "./sessions";
 import {
@@ -151,6 +151,9 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
   const vault = createVault(ctx.config.masterKey);
   const signer = createTokenSigner(ctx.config.tokenKey);
   const throttle = createLoginThrottle({ ...deps.loginThrottle, now: realNow });
+  // Şifre teyidi kilidi (şifre/takma ad değişikliği, hesap silme): girişle aynı eşikler, ayrı sayaç, anahtar ÜYE KİMLİĞİ. Çalınmış
+  // bir oturumla şifre kaba kuvvetle bulunup değiştirilemesin (değişiklik diğer oturumları kapatıp hesabı kalıcı ele geçirirdi).
+  const reauth = createLoginThrottle({ ...deps.loginThrottle, now: realNow, lockedMessage: REAUTH_LOCKED_MESSAGE });
   // Silinen/üzerine yazılan kayıtların eski baytları sayfalarda kalmasın (kripto-imhayı destekler).
   try {
     db.exec("PRAGMA secure_delete = ON;");
@@ -167,6 +170,22 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
     return r;
   };
   const meOf = (row: UserRow): Me => toMe(row, loadExpertRow(db, row.id));
+
+  /**
+   * Oturumdaki üyenin mevcut şifresini teyit eder; üye başına deneme kilidine tabidir (15 dakikada 5 başarısızlık → 15 dakika
+   * 429 login_locked + Retry-After). Kilitliyken şifre denetlenmez. Doğru şifre sayacı sıfırlar.
+   */
+  async function confirmPassword(row: UserRow, password: unknown): Promise<boolean> {
+    const key = throttleKey("reauth", row.id);
+    reauth.begin(key);
+    const pw = typeof password === "string" && password.length <= 1024 ? password : "";
+    let ok = false;
+    if (pw) ok = await verifyPassword(row.password_hash, pw);
+    else await dummyVerify("");
+    if (ok) reauth.succeeded(key);
+    else if (reauth.failed(key)) deps.audit.log(row.id, "identity.reauth_locked", row.id);
+    return ok;
+  }
 
   function requireActor(actorId: string, roles: Role[], msg: string): UserRow {
     const a = getRow(actorId);
@@ -629,12 +648,28 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
         if (throttle.failed(key)) deps.audit.log(null, "identity.login_locked", target, { via: byEmail ? "email" : "nickname" });
         throw new AppError(401, "invalid_credentials", LOGIN_FAILED);
       }
-      throttle.succeeded(key);
       const now = clock.now();
       const sid = signer.newSessionId();
-      db.run("INSERT INTO sessions(id, user_id, created_at, expires_at, revoked_at) VALUES (?, ?, ?, ?, NULL)", sid, row.id, now, now + SESSION_TTL_MS);
+      // Koşullu ekleme (TOCTOU): şifre özeti doğrulama BEKLENİRKEN değiştiyse (eşzamanlı şifre değişikliği ya da hesap silme)
+      // eski şifreyle oturum açılmaz. Aksi halde değişiklikten sonra eklenen oturum, değişikliğin yaptığı oturum iptalinden kaçardı.
+      const inserted = db.run(
+        `INSERT INTO sessions(id, user_id, created_at, expires_at, revoked_at)
+         SELECT ?, ?, ?, ?, NULL WHERE EXISTS (SELECT 1 FROM users WHERE id = ? AND password_hash = ? AND status NOT IN ('erased', 'rejected'))`,
+        sid,
+        row.id,
+        now,
+        now + SESSION_TTL_MS,
+        row.id,
+        row.password_hash,
+      ).changes;
+      if (inserted === 0) {
+        deps.audit.log(null, "identity.login_failed", row.id, { reason: "credentials_changed" });
+        if (throttle.failed(key)) deps.audit.log(null, "identity.login_locked", row.id, { via: byEmail ? "email" : "nickname" });
+        throw new AppError(401, "invalid_credentials", LOGIN_FAILED);
+      }
+      throttle.succeeded(key);
       deps.audit.log(row.id, "identity.login", row.id);
-      return { token: signer.sign(sid), user: meOf(row) };
+      return { token: signer.sign(sid), user: meOf(requireRow(row.id)) };
     },
 
     logout(token) {
@@ -887,7 +922,7 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
       const row = requireRow(userId);
       if (isClosed(row)) throw closedAccount();
       const old = typeof oldPw === "string" && oldPw.length <= 1024 ? oldPw : "";
-      if (!old || !(await verifyPassword(row.password_hash, old))) {
+      if (!(await confirmPassword(row, old))) {
         throw new AppError(400, "wrong_password", "Mevcut şifre hatalı.", { oldPassword: "Mevcut şifre hatalı." });
       }
       const next = parsePassword(newPw, "newPassword");
@@ -912,8 +947,7 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
       const row = requireRow(userId);
       if (isClosed(row)) throw closedAccount();
       if (row.status === "suspended") throw forbidden("Askıdaki bir hesabın takma adı değiştirilemez.");
-      const pw = typeof password === "string" && password.length <= 1024 ? password : "";
-      if (!pw || !(await verifyPassword(row.password_hash, pw))) {
+      if (!(await confirmPassword(row, password))) {
         throw new AppError(400, "wrong_password", "Şifre hatalı.", { password: "Şifre hatalı." });
       }
       const nickname = parseNickname(nicknameIn);
@@ -957,11 +991,11 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
 
     async verifyPassword(userId, password) {
       const row = getRow(userId);
-      if (!row || isClosed(row) || typeof password !== "string" || password.length > 1024) {
+      if (!row || isClosed(row)) {
         await dummyVerify(typeof password === "string" ? password.slice(0, 1024) : "");
         return false;
       }
-      return verifyPassword(row.password_hash, password);
+      return confirmPassword(row, password);
     },
 
     refreshAdulthood() {

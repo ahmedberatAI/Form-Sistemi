@@ -1,7 +1,7 @@
 // Taslak ve destekçi toplama evresi: yazar için düzenle/gönder/geri çek; üyeler için destek (K_s ilerleme çubuğu).
 // 'Eylem önce': Destekle düğmesi ilerleme çubuğunun hemen altındadır; K_s formülü ve evre açıklaması 'Kaç destekçi gerekir?'
 // açılırında durur (kapalı gelir, 'Tam' görünümde açık).
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ProposalDetail } from "@forum/shared";
 import { sponsorProposal, submitProposal, withdrawProposal } from "../../api/endpoints";
 import { useAuth } from "../../auth/AuthContext";
@@ -39,13 +39,45 @@ export function WithdrawButton({ proposal: p, onUpdated }: SponsorPanelProps) {
   );
 }
 
+/** Odak kaybolduysa (ör. eylem paneli kalktı) sayfanın h1 başlığına taşır; ekran okuyucu bağlamı kaybetmez. */
+export function focusPageHeading(): void {
+  if (typeof document === "undefined") return;
+  const active = document.activeElement;
+  if (active && active !== document.body) return;
+  const h1 = document.querySelector<HTMLElement>("main h1, h1");
+  if (!h1) return;
+  if (!h1.hasAttribute("tabindex")) h1.setAttribute("tabindex", "-1");
+  h1.focus();
+}
+
 export function SponsorPanel({ proposal: p, onUpdated }: SponsorPanelProps) {
   const auth = useAuth();
   const [editing, setEditing] = useState(false);
   const isAuthor = auth.user?.id === p.authorId;
   const sponsored = !!auth.user && p.sponsors.some((s) => s.userId === auth.user!.id);
 
-  const sponsor = useAction(() => sponsorProposal(p.id), { success: "Desteğiniz kaydedildi ve deftere imza olarak yazıldı.", onSuccess: onUpdated });
+  // 'Destekle' düğmesi destek verilince kalkar: odak belgeye (body) düşmesin diye "desteklediniz" satırına taşınır (WCAG 2.4.3).
+  // Son destekçiyle öneri tartışmaya geçerse bu panel hiç kalmaz; o durumda odak sayfa başlığına gider.
+  const supportedRef = useRef<HTMLParagraphElement>(null);
+  const focusAfterSupport = useRef(false);
+  useEffect(() => {
+    if (!focusAfterSupport.current || !sponsored) return;
+    focusAfterSupport.current = false;
+    supportedRef.current?.focus();
+  }, [sponsored]);
+  useEffect(
+    () => () => {
+      if (focusAfterSupport.current) focusPageHeading();
+    },
+    [],
+  );
+  const sponsor = useAction(() => sponsorProposal(p.id), {
+    success: "Desteğiniz kaydedildi ve deftere imza olarak yazıldı.",
+    onSuccess: (d) => {
+      focusAfterSupport.current = true;
+      onUpdated(d);
+    },
+  });
   const submit = useAction(() => submitProposal(p.id), { success: "Öneri destekçi toplamaya gönderildi.", onSuccess: onUpdated });
 
   if (p.status === "draft") {
@@ -99,7 +131,9 @@ export function SponsorPanel({ proposal: p, onUpdated }: SponsorPanelProps) {
         ) : !auth.can("V") ? (
           <Alert tone="info">Yalnızca doğrulanmış üyeler destek verebilir.</Alert>
         ) : sponsored ? (
-          <p className="small receipt-saved">✔ Bu öneriyi desteklediniz.</p>
+          <p ref={supportedRef} tabIndex={-1} className="small receipt-saved">
+            ✔ Bu öneriyi desteklediniz.
+          </p>
         ) : (
           <div>
             <Button variant="primary" icon="users" loading={sponsor.loading} onClick={() => void sponsor.run()}>

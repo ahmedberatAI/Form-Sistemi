@@ -1,19 +1,26 @@
 // Fastify 5 sunucusunu kurar: eklentiler (CORS, hız sınırı, statik dosyalar), kimlik doğrulama, hata biçimi, rotalar.
 import { existsSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
-import Fastify, { type FastifyInstance, type onRequestHookHandler } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyReply, type onRequestHookHandler } from "fastify";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
 import type { Config, TrustProxy } from "../core/config";
 import { AppError } from "../core/errors";
 import { installAuth } from "./auth";
-import { installErrorHandling, rateLimitedError } from "./errors";
+import { errorBody, fromFrameworkError, installErrorHandling, rateLimitedError } from "./errors";
 import { IDEMPOTENCY_KEY_HEADER, IDEMPOTENT_REPLAYED_HEADER, installIdempotency, type IdempotencyOptions } from "./idempotency";
 import { registerRoutes } from "./routes";
 import type { AppServices, HttpOptions, RateLimitOptions, RouteDeps } from "./types";
 
 export const BODY_LIMIT = 1024 * 1024;
+/**
+ * Yönlendiricinin yol parametresi sınırı (varsayılan 100). Şemalardaki kimlik sınırından (schemas.ts `id` en çok 200) büyük
+ * olmalı: 101-200 karakterlik kimlik şemaya ulaşıp tutarlı yanıt alsın (404/400 validation), daha uzunu tek tip 400 alsın.
+ */
+export const MAX_PARAM_LENGTH = 256;
+/** Her yanıta eklenen çerçeveleme yasağı (eski tarayıcılar için X-Frame-Options, güncelleri için CSP frame-ancestors). */
+export const FRAME_HEADERS = { "x-frame-options": "DENY", "content-security-policy": "frame-ancestors 'none'" } as const;
 /** Kapanışta uçuştaki isteklerin bitmesi için beklenen azami süre; sonra kalan bağlantılar zorla kapatılır. */
 export const HTTP_DRAIN_MS = 3_000;
 /** Kapanış sırasında boşa düşen keep-alive bağlantılarının kapatılma yoklaması. */
@@ -71,6 +78,15 @@ export async function buildServer(services: AppServices, config: Config, opts: B
     logger: opts.logger ? { level: process.env.LOG_LEVEL ?? "warn" } : false,
     bodyLimit: BODY_LIMIT,
     trustProxy: fastifyTrustProxy(config.trustProxy),
+    routerOptions: { maxParamLength: MAX_PARAM_LENGTH },
+    // Yönlendirici hataları (bozuk URL kodlaması, çok uzun parametre) setErrorHandler'a uğramaz: tek tip Türkçe gövde burada.
+    frameworkErrors: (err, _req, res) => {
+      const e = fromFrameworkError(err);
+      const reply = res as unknown as FastifyReply;
+      reply.header("x-content-type-options", "nosniff").header("cache-control", "no-store");
+      for (const [k, v] of Object.entries(FRAME_HEADERS)) reply.header(k, v);
+      void reply.code(e.status).type("application/json; charset=utf-8").send(errorBody(e.code, e.message));
+    },
   });
 
   // Kapanış: yeni bağlantı kabul edilmez, uçuştaki istekler bitene kadar beklenir. İstek bitince bağlantı keep-alive'a düşer ve
@@ -113,6 +129,9 @@ export async function buildServer(services: AppServices, config: Config, opts: B
 
   app.addHook("onSend", async (req, reply, payload) => {
     reply.header("x-content-type-options", "nosniff");
+    // Çerçeveleme (clickjacking) koruması: uygulama ve API hiçbir kökende iframe içinde açılamaz; oturumlu oy/destek/vekâlet
+    // düğmeleri görünmez bir çerçevenin altında tıklatılamaz. Capacitor paketi yerelden yüklendiği için etkilenmez.
+    for (const [k, v] of Object.entries(FRAME_HEADERS)) reply.header(k, v);
     if (req.url.startsWith("/api/") && !reply.hasHeader("cache-control")) reply.header("cache-control", "no-store");
     return payload;
   });

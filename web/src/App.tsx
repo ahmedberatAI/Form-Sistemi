@@ -5,7 +5,7 @@ import { HashRouter, Route, Routes, useLocation } from "react-router-dom";
 import { RequireAuth, RequireRole } from "./auth/guards";
 import { AppLayout } from "./components/layout/AppLayout";
 import { ErrorBoundary } from "./components/system/ErrorBoundary";
-import { EmptyState, LinkButton, Spinner } from "./ui";
+import { EmptyState, LinkButton, PageHeader, Spinner } from "./ui";
 
 const page = (load: () => Promise<{ default: ComponentType }>) => lazy(load);
 
@@ -32,10 +32,12 @@ const TxPage = page(() => import("./pages/TxPage"));
 const OntologyPage = page(() => import("./pages/OntologyPage"));
 const KesfetPage = page(() => import("./pages/KesfetPage"));
 
-function NotFound() {
+/** Bilinmeyen adres: görünür h1 ve belge başlığı "Sayfa bulunamadı · Forum Sistemi" (WCAG 2.4.2; önceki sayfanın adı kalmaz). */
+export function NotFound() {
   return (
     <div className="page">
-      <EmptyState title="Sayfa bulunamadı" icon="warning" action={<LinkButton to="/">Ana sayfaya dön</LinkButton>}>
+      <PageHeader title="Sayfa bulunamadı" />
+      <EmptyState title="Bu adreste bir sayfa yok" icon="warning" action={<LinkButton to="/">Ana sayfaya dön</LinkButton>}>
         <p>Aradığınız adres mevcut değil ya da taşınmış olabilir.</p>
       </EmptyState>
     </div>

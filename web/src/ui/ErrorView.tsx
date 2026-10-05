@@ -2,7 +2,7 @@
 import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ApiError, errorMessage } from "../api/client";
-import { Alert, Button } from "./basic";
+import { Alert, Button, PageHeader } from "./basic";
 
 const CODE_TITLES: Record<string, string> = {
   network: "Bağlantı hatası",
@@ -108,5 +108,19 @@ export function ErrorView({ error, title, onRetry, compact }: ErrorViewProps) {
         </p>
       ) : null}
     </Alert>
+  );
+}
+
+/**
+ * Sayfa düzeyindeki yükleme hatası (öneri, konu, üye sayfası): görünür h1 ve belge başlığı ile (WCAG 2.4.2, 1.3.1). 404'te
+ * "<Konu> bulunamadı", diğer hatalarda "<Konu> yüklenemedi"; ayrıntı ve "Tekrar dene" ErrorView'dadır.
+ */
+export function PageErrorView({ error, onRetry, subject }: { error: unknown; onRetry?: () => void; subject: string }) {
+  const notFound = error instanceof ApiError && error.status === 404;
+  return (
+    <div className="page">
+      <PageHeader title={notFound ? `${subject} bulunamadı` : `${subject} yüklenemedi`} />
+      <ErrorView error={error} onRetry={onRetry} />
+    </div>
   );
 }

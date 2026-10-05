@@ -10,7 +10,7 @@ import { routes } from "../../lib/routes";
 import { useAsync } from "../../lib/useAsync";
 import { Alert, Badge, Button, Card, Checkbox, Details, EmptyState, ErrorView, HashText, Input, KeyValue, Select, Spinner, Table, Time, useConfirm, useToast, UserStatusBadge } from "../../ui";
 import { UserLink } from "../UserLink";
-import { TransitionsList } from "./marks";
+import { TICK_PENDING_NOTE, TransitionsList } from "./marks";
 import "./system.css";
 
 const QUICK_HOURS = [1, 6, 24, 72, 168];
@@ -35,7 +35,8 @@ export function ClockPanel() {
       const res = await advanceClock(h);
       setResult({ title: `Saat ${formatHours(h)} ileri alındı`, res });
       await auth.refreshSystem();
-      toast.success(`Simüle saat ${formatHours(h)} ileri alındı; ${res.transitions.length} evre geçişi.`);
+      if (res.pending) toast.warning(`Simüle saat ${formatHours(h)} ileri alındı; ${res.transitions.length} evre geçişi. ${TICK_PENDING_NOTE}`);
+      else toast.success(`Simüle saat ${formatHours(h)} ileri alındı; ${res.transitions.length} evre geçişi.`);
     } catch (e) {
       toast.error(e);
     } finally {
@@ -49,7 +50,8 @@ export function ClockPanel() {
       const res = await runTick();
       setResult({ title: "Zamanlayıcı çalıştırıldı", res });
       await auth.refreshSystem();
-      toast.success(`Zamanlayıcı çalıştı; ${res.transitions.length} evre geçişi.`);
+      if (res.pending) toast.warning(`Zamanlayıcı çalıştı; ${res.transitions.length} evre geçişi. ${TICK_PENDING_NOTE}`);
+      else toast.success(`Zamanlayıcı çalıştı; ${res.transitions.length} evre geçişi.`);
     } catch (e) {
       toast.error(e);
     } finally {

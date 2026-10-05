@@ -18,7 +18,7 @@ import {
   Button,
   Card,
   EmptyState,
-  ErrorView,
+  PageErrorView,
   KeyValue,
   LinkButton,
   PageHeader,
@@ -49,7 +49,7 @@ export default function UserPage() {
   const { data: p, error, loading, reload, setData } = useAsync(() => getUser(id), [id, auth.user?.id]);
 
   if (loading && !p) return <Spinner block label="Profil yükleniyor…" />;
-  if (error) return <ErrorView error={error} onRetry={reload} />;
+  if (error) return <PageErrorView error={error} onRetry={reload} subject="Üye" />;
   if (!p) return null;
 
   const isSelf = p.viewer?.isSelf ?? auth.user?.id === p.id;

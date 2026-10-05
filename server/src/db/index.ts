@@ -10,6 +10,19 @@ export { migrate, MIGRATIONS, SCHEMA_VERSION, SchemaVersionError, type Migration
 export type SqlValue = string | number | bigint | null | Uint8Array;
 export type Row = Record<string, SqlValue>;
 
+/**
+ * Asgari Node sürümü: Db.tx'in canlılık denetimi `DatabaseSync.isTransaction`'a dayanır. Özellik Node 22.16.0 ve 24.0.0'da geldi;
+ * 22.13–22.15 ve 23.x'te yoktur (undefined) ve her işlem içi deyim "işlem beklenmedik biçimde sonlandı" hatasıyla düşerdi (göçler
+ * bile çalışmazdı). Bu yüzden açılışta anlaşılır bir iletiyle durulur.
+ */
+export function assertSqliteSupport(raw: { readonly isTransaction?: unknown }): void {
+  if (typeof raw.isTransaction !== "boolean") {
+    throw new Error(
+      `Bu sunucu Node.js 22.16 ya da üstü (22.x serisinde) veya Node.js 24+ gerektirir: node:sqlite DatabaseSync.isTransaction bu sürümde yok (çalışan sürüm ${process.version}).`,
+    );
+  }
+}
+
 const isPromiseLike = (v: unknown): v is PromiseLike<unknown> =>
   (typeof v === "object" || typeof v === "function") && v !== null && typeof (v as { then?: unknown }).then === "function";
 
@@ -27,6 +40,12 @@ export class Db {
   constructor(path: string) {
     if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
     this.raw = new DatabaseSync(path);
+    try {
+      assertSqliteSupport(this.raw);
+    } catch (e) {
+      this.raw.close();
+      throw e;
+    }
     this.raw.exec("PRAGMA journal_mode = WAL;");
     this.raw.exec("PRAGMA foreign_keys = ON;");
     this.raw.exec("PRAGMA busy_timeout = 5000;");

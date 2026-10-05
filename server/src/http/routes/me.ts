@@ -1,5 +1,5 @@
 // Hesabım: profil, rızalar, şifre, KVKK (döküm / kripto-imha), vekâletler, bildirimler, görevler.
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, RouteShorthandOptions } from "fastify";
 import type {
   CorrectionRequestInput,
   CorrectionRequestView,
@@ -34,8 +34,13 @@ function categoryIris(ontology: OntologyService): Set<string> {
   return out;
 }
 
-export function registerMeRoutes(app: FastifyInstance, { services }: RouteDeps): void {
+export function registerMeRoutes(app: FastifyInstance, { services, authLimiter }: RouteDeps): void {
   const { identity, forum, graph, ontology, experts, notifier } = services;
+  // Şifre teyidi isteyen ve kimlik verisi sorgulayan uçlar /api/auth/* ile aynı sıkı IP sayacına da tabidir (genel sınıra ek olarak);
+  // ayrıca şifre teyidi üye başına deneme kilidindedir (identity: confirmPassword).
+  // Her rota KENDİ dizisini alır: hız sınırı eklentisi (global sayaç) rota kancası dizisine yerinde ekleme yapar; paylaşılan
+  // authLimiter dizisi verilirse genel sayaç /api/auth/* rotalarına da bulaşırdı.
+  const strict = (): RouteShorthandOptions => ({ onRequest: [...authLimiter] });
   // Yalnız hesap silme kaskadının işlem sınırı için (vekâletler + imha tek işlemde); burada SQL yazılmaz.
   const { db } = services.ctx;
 
@@ -48,7 +53,7 @@ export function registerMeRoutes(app: FastifyInstance, { services }: RouteDeps):
     return forum.community.me(user.id);
   });
 
-  app.post("/api/me/password", async (req): Promise<OkResponse> => {
+  app.post("/api/me/password", strict(), async (req): Promise<OkResponse> => {
     const user = requireUser(req);
     const body = parseBody(changePasswordBody, req.body);
     // Mevcut oturum açık kalır; diğer tüm oturumlar kapatılır.
@@ -57,7 +62,7 @@ export function registerMeRoutes(app: FastifyInstance, { services }: RouteDeps):
   });
 
   // Takma ad değişikliği: şifre teyidi, tekillik + benzerlik denetimi, 30 günde bir, denetim kaydı.
-  app.patch("/api/me/nickname", async (req): Promise<Me> => {
+  app.patch("/api/me/nickname", strict(), async (req): Promise<Me> => {
     const user = requireUser(req);
     const body = parseBody(changeNicknameBody, req.body);
     await identity.changeNickname(user.id, body.nickname, body.password);
@@ -72,7 +77,7 @@ export function registerMeRoutes(app: FastifyInstance, { services }: RouteDeps):
     return out;
   });
 
-  app.post("/api/me/erase", async (req): Promise<OkResponse> => {
+  app.post("/api/me/erase", strict(), async (req): Promise<OkResponse> => {
     const user = requireUser(req);
     const body = parseBody(eraseBody, req.body);
     if (body.confirm.normalize("NFC") !== ERASE_CONFIRMATION) {
@@ -92,9 +97,12 @@ export function registerMeRoutes(app: FastifyInstance, { services }: RouteDeps):
         //    fırlatır — 409'da hiçbir vekâlete dokunulmaz, defter kaydı ve bildirim olmaz. İmhanın defter kaydı da işlem sonrasına
         //    ertelenir (işlem geri alınırsa yazılmaz).
         erased = identity.eraseSelf(user.id);
-        // 2) Aynı işlemde aktif vekâletler geri alınır (kenarlar silinmez); bu kişiye verilmiş olanlar da düşer. Herhangi bir
-        //    adım başarısız olursa imha dahil hepsi birlikte geri alınır.
         graphTouched = true;
+        // 2) Bilirkişi kaydı kapatılır (KVKK §6): bekleyen görevler yedeğe devredilir, kayıt listeden çıkar, yeterlilik beyanı
+        //    imha edilir, EXPERT_IN kenarları iptal edilir.
+        experts.closeForClosedAccount(user.id);
+        // 3) Aynı işlemde aktif vekâletler geri alınır (kenarlar silinmez); bu kişiye verilmiş olanlar da düşer. Herhangi bir
+        //    adım başarısız olursa imha dahil hepsi birlikte geri alınır.
         for (const d of graph.delegations(user.id)) graph.revokeDelegation(d.id, user.id);
         const incoming = graph.delegations().filter((x) => x.to === user.id);
         for (const d of incoming) graph.revokeDelegation(d.id, d.from);
@@ -112,7 +120,7 @@ export function registerMeRoutes(app: FastifyInstance, { services }: RouteDeps):
       throw e;
     }
     await erased;
-    // 3) İşlem sonrası: vekâlet verenlere haber verilir (kişi başına bir bildirim).
+    // 4) İşlem sonrası: vekâlet verenlere haber verilir (kişi başına bir bildirim).
     for (const from of new Set(delegators)) {
       notifier.notify(from, {
         kind: "delegation_revoked",
@@ -125,7 +133,7 @@ export function registerMeRoutes(app: FastifyInstance, { services }: RouteDeps):
   });
 
   // KVKK md. 11/1-d: kimlik verisi düzeltme talebi (kayıt memuru inceler; değerler şifreli saklanır, günlüğe yazılmaz).
-  app.post("/api/me/corrections", async (req): Promise<CorrectionRequestView> => {
+  app.post("/api/me/corrections", strict(), async (req): Promise<CorrectionRequestView> => {
     const user = requireUser(req);
     const body = parseBody(correctionBody, req.body) as unknown as CorrectionRequestInput;
     return identity.requestCorrection(user.id, body);

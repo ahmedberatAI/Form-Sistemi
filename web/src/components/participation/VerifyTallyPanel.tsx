@@ -6,13 +6,13 @@
 // Görsel dil: eylem kartı ince mavi kenarlıdır (tone="action"); hüküm rengi yalnız çalıştırma sonrası Alert'te (yeşil/kırmızı) gelir.
 // Sade dil: 'Neyi denetler?' girişindeki, adım ayrıntılarındaki ve sonuç notundaki teknik terimler sözlük terimidir (Term); düğmeden
 // ÖNCEKİ tek cümle (VERIFY_LEAD) ve kapalı başlıklar düz metin kalır.
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { hashCanonical, OUTCOME_LABELS, revealHash, verifyTally, type BulletinRound, type DecisionResult } from "@forum/shared";
 import { errorMessage } from "../../api/client";
 import { getBulletin } from "../../api/endpoints";
 import { formatNumber } from "../../lib/format";
-import { loadRoundFromLedger, type BoundResult } from "../../lib/ledgerVerify";
+import { loadRoundFromLedger, type BoundResult, type LedgerProgress } from "../../lib/ledgerVerify";
 import { routes } from "../../lib/routes";
 import { describeValidatorDiff, ensurePinnedValidators, type PinnedValidators } from "../../lib/validators";
 import { Alert, Button, Card, Details, HashText, Spinner, Term } from "../../ui";
@@ -33,6 +33,11 @@ interface RoundCheck {
   ok: boolean;
   /** Sayım/açıklama işlemi henüz bir bloğa girmedi (kapanıştan sonraki ~1 blok aralığı). Hata değildir. */
   pending: boolean;
+  /**
+   * Bazı veriler geçici hata (hız sınırı, ağ, 5xx) yüzünden alınamadı: sonuç KESİN DEĞİL. Kurcalama sayılmaz, yeniden sayım eksik
+   * veriyle yapılmaz; kullanıcıya "sonuç alınamadı, yeniden deneyin" gösterilir.
+   */
+  inconclusive: string | null;
   steps: Step[];
   mismatches: string[];
   recomputed: DecisionResult | null;
@@ -44,6 +49,7 @@ const PENDING_TEXT = "Henüz bloğa girmedi; defter işlemleri genellikle bir sa
 function boundStep(label: string, r: BoundResult<unknown> | { state: "missing" }): Step {
   if (r.state === "missing") return { label, ok: false, detail: "Defter işlem özeti yok." };
   if (r.state === "pending") return { label, ok: null, detail: PENDING_TEXT };
+  if (r.state === "unavailable") return { label, ok: null, detail: r.reason };
   if (r.state === "fail") return { label, ok: false, detail: r.reason };
   return {
     label,
@@ -51,15 +57,22 @@ function boundStep(label: string, r: BoundResult<unknown> | { state: "missing" }
     detail: (
       <>
         İçerik işlem <Term id="ozet">özetiyle</Term> eşleşti; blok <Link to={routes.block(r.height)}>#{r.height}</Link>, sıra {r.index + 1};{" "}
-        <Term id="merkle-yolu">Merkle yolu</Term> ve {r.proof.header.commitSigs.length} <Term id="dogrulayici">doğrulayıcı</Term> imzası sabitlenmiş anahtarlarla denetlendi.
+        <Term id="merkle-yolu">Merkle yolu</Term> ve {r.sigCount} <Term id="dogrulayici">doğrulayıcı</Term> imzası sabitlenmiş anahtarlarla denetlendi.
       </>
     ),
   };
 }
 
-async function checkRound(proposalId: string, b: BulletinRound, shown: DecisionResult | undefined, pinned: PinnedValidators): Promise<RoundCheck> {
+async function checkRound(
+  proposalId: string,
+  b: BulletinRound,
+  shown: DecisionResult | undefined,
+  pinned: PinnedValidators,
+  opts: { signal?: AbortSignal; onProgress?: (p: LedgerProgress) => void } = {},
+): Promise<RoundCheck> {
   const steps: Step[] = [];
-  const L = await loadRoundFromLedger(proposalId, b, pinned);
+  const L = await loadRoundFromLedger(proposalId, b, pinned, opts);
+  const inconclusive = L.complete ? null : (L.unavailableReason ?? "Bazı defter kayıtları alınamadı; yeniden deneyin.");
 
   // 1–2) Sayım ve açıklama işlemleri defterden, içerik-özet bağı ve dahil olma kanıtıyla
   steps.push(boundStep("Sayım kaydı (TALLY) defterden doğrulandı", L.tallyCheck));
@@ -69,7 +82,13 @@ async function checkRound(proposalId: string, b: BulletinRound, shown: DecisionR
   steps.push(
     L.commitProblems.length
       ? { label: "Oy taahhütleri defterden doğrulandı", ok: false, detail: L.commitProblems.slice(0, 5).join(" ") }
-      : L.commitsPending
+      : L.commitsUnavailable
+        ? {
+            label: "Oy taahhütleri defterden doğrulandı",
+            ok: null,
+            detail: `${formatNumber(L.commitsUnavailable)} taahhüt işlemi alınamadı (kurcalama değil): ${L.unavailableReason ?? "geçici hata"}`,
+          }
+        : L.commitsPending
         ? { label: "Oy taahhütleri defterden doğrulandı", ok: null, detail: `${L.commitsPending} taahhüt işlemi henüz bloğa girmedi.` }
         : {
             label: "Oy taahhütleri defterden doğrulandı",
@@ -82,16 +101,28 @@ async function checkRound(proposalId: string, b: BulletinRound, shown: DecisionR
   const tallySame = L.tallyCheck.state !== "ok" || hashCanonical(L.tally) === hashCanonical(b.tally);
   const revealSame = L.revealCheck.state !== "ok" || revealHash(L.reveals) === revealHash(b.reveals);
   const bulletinPending = L.tallyCheck.state === "pending" || L.revealCheck.state === "pending" || L.commitsPending > 0;
-  const diffs = [!tallySame && "sayım verisi", !revealSame && "açıklama listesi", !bulletinPending && !L.bulletinCommitmentsMatch && "taahhüt haritası"].filter(Boolean);
+  // Taahhüt haritası yalnız bütün taahhütler kesin olarak doğrulandıysa karşılaştırılır (eksik harita sahte "farklı" verirdi).
+  const diffs = [!tallySame && "sayım verisi", !revealSame && "açıklama listesi", !bulletinPending && !inconclusive && !L.bulletinCommitmentsMatch && "taahhüt haritası"].filter(Boolean);
   steps.push({
     label: "Sunucunun bülteni defterle aynı",
-    ok: diffs.length ? false : bulletinPending ? null : true,
-    detail: diffs.length ? `Bültendeki ${diffs.join(", ")} defterdekinden farklı; sayım defterdeki verilerle yapıldı.` : bulletinPending ? PENDING_TEXT : undefined,
+    ok: diffs.length ? false : bulletinPending || inconclusive ? null : true,
+    detail: diffs.length
+      ? `Bültendeki ${diffs.join(", ")} defterdekinden farklı; sayım defterdeki verilerle yapıldı.`
+      : bulletinPending
+        ? PENDING_TEXT
+        : inconclusive
+          ? `Karşılaştırılamadı: ${inconclusive}`
+          : undefined,
   });
 
-  // 5) Yeniden sayım — yalnızca defterden doğrulanmış verilerle
+  // 5) Yeniden sayım — yalnızca defterden doğrulanmış verilerle. Veriler eksik alındıysa (geçici hata) sayım YAPILMAZ:
+  // eksik taahhüt haritası "taahhüt defterde yok / eşleşmiyor" gibi sahte uyuşmazlıklar üretirdi.
   let mismatches: string[] = [];
   let recomputed: DecisionResult | null = null;
+  if (inconclusive) {
+    steps.push({ label: "KC-1.0 sayımı yeniden yapıldı", ok: null, detail: `Yeniden sayım yapılmadı: ${inconclusive}` });
+    return { round: b.round, ok: steps.every((s) => s.ok !== false), pending: true, inconclusive, steps, mismatches, recomputed, bulletin: b };
+  }
   try {
     const v = verifyTally(L.tally, L.reveals, L.commitments);
     mismatches = v.mismatches;
@@ -120,6 +151,7 @@ async function checkRound(proposalId: string, b: BulletinRound, shown: DecisionR
     round: b.round,
     ok: steps.every((s) => s.ok !== false) && mismatches.length === 0,
     pending: steps.some((s) => s.ok === null),
+    inconclusive: null,
     steps,
     mismatches,
     recomputed,
@@ -127,16 +159,45 @@ async function checkRound(proposalId: string, b: BulletinRound, shown: DecisionR
   };
 }
 
+/** Tur doğrulamasının hükmü: uyuşmazlık → BAŞARISIZ; geçici hata → sonuç alınamadı (kurcalama değil); bloğa girmedi → bekleniyor. */
+export function roundVerdict(c: Pick<RoundCheck, "ok" | "pending" | "inconclusive">): string {
+  if (!c.ok) return "doğrulama BAŞARISIZ";
+  if (c.inconclusive) return "sonuç alınamadı, yeniden deneyin";
+  if (c.pending) return "sayım hesaplandı, defter kaydı bekleniyor";
+  return "sayım doğrulandı";
+}
+
+export function roundTone(c: Pick<RoundCheck, "ok" | "pending" | "inconclusive">): "error" | "warning" | "info" | "success" {
+  if (!c.ok) return "error";
+  if (c.inconclusive) return "warning";
+  return c.pending ? "info" : "success";
+}
+
+/** Çalışırken gösterilen ilerleme metni (hız sınırı beklemesi dahil). */
+export function verifyProgressLabel(p: LedgerProgress | null): string {
+  if (!p || p.total <= 0) return "Bülten indiriliyor ve sayım yeniden yapılıyor…";
+  const base = `Oy taahhütleri defterden doğrulanıyor: ${formatNumber(p.done)}/${formatNumber(p.total)}`;
+  return p.waitingMs > 0 ? `${base} · sunucunun hız sınırı nedeniyle ${Math.ceil(p.waitingMs / 1000)} sn bekleniyor…` : `${base}…`;
+}
+
 export function VerifyTallyPanel({ proposalId, results }: { proposalId: string; results: DecisionResult[] }) {
   const [running, setRunning] = useState(false);
   const [checks, setChecks] = useState<RoundCheck[] | null>(null);
   const [pinNote, setPinNote] = useState<{ tone: "info" | "warning"; text: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<LedgerProgress | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  // Sayfadan çıkılınca süren doğrulama (hız sınırı beklemesi dahil) durur.
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   const run = async () => {
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
     setRunning(true);
     setError(null);
     setChecks(null);
+    setProgress(null);
     try {
       const pin = await ensurePinnedValidators();
       setPinNote(
@@ -151,15 +212,25 @@ export function VerifyTallyPanel({ proposalId, results }: { proposalId: string; 
       for (let attempt = 0; attempt < 4; attempt++) {
         const bulletin = await getBulletin(proposalId);
         out = [];
-        for (const b of bulletin.rounds) out.push(await checkRound(proposalId, b, results.find((r) => r.round === b.round), pin.pinned));
-        if (!out.some((c) => c.pending)) break;
+        for (const b of bulletin.rounds) {
+          const onProgress = (p: LedgerProgress) => {
+            if (!ctrl.signal.aborted) setProgress(p);
+          };
+          out.push(await checkRound(proposalId, b, results.find((r) => r.round === b.round), pin.pinned, { signal: ctrl.signal, onProgress }));
+        }
+        if (ctrl.signal.aborted) return;
+        // Yalnız "bloğa girmedi" beklemesi yeniden denenir; geçici hata (hız sınırı) varsa sunucu yeniden zorlanmaz.
+        if (!out.some((c) => c.pending) || out.some((c) => c.inconclusive)) break;
         await new Promise((r) => setTimeout(r, 1200));
       }
       setChecks(out);
     } catch (e) {
-      setError(errorMessage(e));
+      if (!ctrl.signal.aborted) setError(errorMessage(e));
     } finally {
-      setRunning(false);
+      if (abortRef.current === ctrl) {
+        setRunning(false);
+        setProgress(null);
+      }
     }
   };
 
@@ -182,16 +253,14 @@ export function VerifyTallyPanel({ proposalId, results }: { proposalId: string; 
             hangi oyu verdiği açıklanmaz: oy pusulaları öneriye özel rastgele kimliklerle tutulur.
           </p>
         </Details>
-        {running ? <Spinner showLabel label="Bülten indiriliyor ve sayım yeniden yapılıyor…" /> : null}
+        {running ? <Spinner showLabel label={verifyProgressLabel(progress)} /> : null}
         {error ? <Alert tone="error">{error}</Alert> : null}
         {pinNote ? <Alert tone={pinNote.tone}>{pinNote.text}</Alert> : null}
         {checks && checks.length === 0 ? <Alert tone="info">Henüz kesin sayım yok; bülten oylama kapanınca yayımlanır.</Alert> : null}
         {checks?.map((c) => (
           <section key={c.round} className="stack-sm verify-round" aria-label={`${c.round}. tur doğrulaması`}>
-            <Alert
-              tone={!c.ok ? "error" : c.pending ? "info" : "success"}
-              title={`${c.round === 1 ? "1. tur" : "Yeniden oylama"}: ${!c.ok ? "doğrulama BAŞARISIZ" : c.pending ? "sayım hesaplandı, defter kaydı bekleniyor" : "sayım doğrulandı"}`}
-            >
+            <Alert tone={roundTone(c)} title={`${c.round === 1 ? "1. tur" : "Yeniden oylama"}: ${roundVerdict(c)}`}>
+              {c.ok && c.inconclusive ? <p>{c.inconclusive} Bu bir uyuşmazlık değildir; veriler eksik alındığı için sayım yeniden yapılmadı.</p> : null}
               {c.recomputed ? (
                 <p>
                   Yeniden hesaplanan sonuç: <strong>{OUTCOME_LABELS[c.recomputed.outcome]}</strong> · {formatNumber(c.bulletin.reveals.length)} açıklanan oy (

@@ -1,7 +1,7 @@
 // Oturum, kullanıcı, yetki yardımcıları ve sunucu saati (simüle) senkronu.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { LoginRequest, Me, RegistrationInput, Role, SystemInfo } from "@forum/shared";
-import { ApiError, isSessionRejected, onUnauthorized, setAuthToken, toConnectionError } from "../api/client";
+import { ApiError, isSessionRejected, onServerChange, onUnauthorized, setAuthToken, toConnectionError } from "../api/client";
 import * as api from "../api/endpoints";
 import { syncOntologyWithBylawVersion } from "../lib/categories";
 import { getPref, PREF_KEYS, removePref, setPref } from "../lib/prefs";
@@ -252,6 +252,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSessionExpired(true);
         setUnread(0);
         void applySession(null, null); // bekleyen işleri de boşaltır
+      }),
+    [applySession],
+  );
+
+  // Sunucu adresi oturum açıkken değişti: belirteç client'ta zaten unutuldu; yerel oturum da kapanır (yeni sunucuda yeniden giriş).
+  useEffect(
+    () =>
+      onServerChange(() => {
+        if (!tokenRef.current) return;
+        setUnread(0);
+        setSessionExpired(false);
+        setConnectionError(null);
+        void applySession(null, null);
       }),
     [applySession],
   );

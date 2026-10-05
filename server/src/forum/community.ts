@@ -266,7 +266,8 @@ export function createCommunityService(core: ForumCore): CommunityService {
       const topics = Number(db.get<{ c: number }>("SELECT COUNT(*) AS c FROM topics WHERE status = 'active'")?.c ?? 0);
       const recentEnacted = querySummaries(core, "p.status = 'enacted'", [], "ORDER BY p.updated_at DESC, p.seq DESC LIMIT 5");
       const open = querySummaries(core, `p.status IN ${ACTIVE_SQL}`, [], "ORDER BY COALESCE(p.phase_ends_at, 9e15) ASC, p.seq DESC LIMIT 10");
-      const loser = safe(() => deps.graph.stats().permanentLoser, []);
+      // Yalnız kalıcı kaybeden göstergesi (önbellekli): pano her yoklamada uzlaşı/aracı/sybil hesaplarını tetiklemez.
+      const loser = safe(() => deps.graph.permanentLoser(), []);
       const l = ledgerSummary();
       return {
         counts,

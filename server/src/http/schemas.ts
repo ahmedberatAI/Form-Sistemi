@@ -147,7 +147,9 @@ export const registrationBody = z.record(z.string(), z.unknown());
 export const loginBody = z.object({ login: text(320), password: text(1024) });
 export const consentsBody = z.object({ aiConsent: z.boolean().optional(), politicalConsent: z.boolean().optional() });
 export const changePasswordBody = z.object({ oldPassword: text(1024), newPassword: text(1024) });
-export const changeNicknameBody = z.object({ nickname: text(100), password: text(1024) });
+// Takma adın asıl kuralı (3–32 karakter, izinli karakterler) kimlik modülündedir (parseNickname); buradaki üst sınır yalnız
+// taşıma sınırıdır ve aşıldığında da asıl kuralı söyler ("En fazla 100 karakter" değil).
+export const changeNicknameBody = z.object({ nickname: z.string().max(100, { error: "Takma ad 3–32 karakter olmalıdır." }), password: text(1024) });
 export const eraseBody = z.object({ confirm: text(20), password: text(1024) });
 export const delegateBody = z.object({
   to: id,
@@ -293,7 +295,22 @@ export const lintBody = z.object({ text: text(50_000) });
 
 export const blocksQuery = z.object({ from: qInt(0, Number.MAX_SAFE_INTEGER).optional(), limit: qInt(1, 100).optional() });
 export const nodeQuery = z.object({ node: qText(100).optional() });
-export const txsQuery = z.object({ type: z.enum(LEDGER_TX_TYPES).optional(), proposalId: qText(200).optional(), limit: qInt(1, 500).optional() });
+export const txsQuery = z
+  .object({
+    type: z.enum(LEDGER_TX_TYPES).optional(),
+    proposalId: qText(200).optional(),
+    // Pusula süzgeci ("Oyum kayıtlı mı?" son taahhüt denetimi): yalnız proposalId ile birlikte (öneri dizini taranır, zincir değil).
+    ballotId: qText(200).optional(),
+    round: qInt(1, 2).optional(),
+    limit: qInt(1, 500).optional(),
+  })
+  .superRefine((q, ctx) => {
+    for (const k of ["ballotId", "round"] as const) {
+      if (q[k] !== undefined && q.proposalId === undefined) {
+        ctx.addIssue({ code: "custom", path: [k], message: `${k} süzgeci yalnız proposalId ile birlikte kullanılabilir.` });
+      }
+    }
+  });
 export const tamperBody = z.object({ nodeId: requiredText(100), height: z.number().int().min(1) });
 export const repairBody = z.object({ nodeId: requiredText(100) });
 export const faultBody = z.object({ nodeId: requiredText(100), fault: z.enum(["none", "crash", "byzantine"]) });

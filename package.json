@@ -21,7 +21,7 @@
     "e2e:typecheck": "tsc -p e2e/tsconfig.json"
   },
   "engines": {
-    "node": ">=22.13"
+    "node": "^22.16.0 || >=24"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0"

@@ -14,7 +14,7 @@
                 └───────────────────────────────┬──────────────────────────────────────┘
                                                 │ HTTPS/HTTP  JSON  (Bearer belirteç)
 ┌───────────────────────────────────────────────▼──────────────────────────────────────────────────┐
-│ Sunucu (Node 22+, Fastify 5)                                                                       │
+│ Sunucu (Node 22.16+ ya da 24+, Fastify 5)                                                          │
 │                                                                                                    │
 │  http/ ── kimlik doğrulama, rol (U/V/VV/R/D/A/E), zod, hata biçimi, CORS, hız sınırı, Idempotency-Key   │
 │    │                                                                                               │
@@ -167,6 +167,9 @@ kuralı da taşırlar:
   (yük ve hata iletisi yazılmaz; SQLite kodu `errcode`/`errstr` yazılır). Bir DB işleminin içindeyse hata **yutulmaz**: çağıranın
   işlemi asıl hatayla (ör. disk dolu) geri alınır. `Db`, SQLite'ın işlemi kendiliğinden geri aldığı durumda (disk dolu, G/Ç hatası)
   iç hatayı yakalayıp devam eden kodun sonraki deyimlerinde de asıl hatayı fırlatır; hiçbir yazım işlemin dışına (autocommit) taşmaz.
+  Bu denetim `DatabaseSync.isTransaction`'ı okur. Özellik Node 22.16.0 ve 24.0.0'da geldi; asgari Node sürümü bu yüzden 22.16'dır
+  (23.x desteklenmez). Daha eski sürümde değer tanımsız kalırdı ve şemayı işlem içinde kuran ilk göç düşerdi; bu yüzden `Db` açılışta
+  özelliği denetler ve anlaşılır bir iletiyle durur (`assertSqliteSupport`; [README](../README.md) §1).
 - **Elektrik kesintisi:** doğrulayıcı depoları her blokta fsync yapmaz (`synchronous=NORMAL`); işletim sistemi düzeyinde bir
   kesintide son blok(lar) depolardan kaybolabilir. Giden kutusu satırı depolar diske indirilmeden silinmediğinden işlem kaybolmaz:
   açılışta yeniden gönderilir ve yeni bir bloğa girer (işlem özeti aynıdır; kaybolan bloğun yüksekliği/kanıtı yeniden üretilen blokla

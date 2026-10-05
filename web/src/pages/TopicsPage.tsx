@@ -14,7 +14,7 @@ import { formatNumber, normalizeSearch, topicRef } from "../lib/format";
 import { useDebounced, useQueryState } from "../lib/hooks";
 import { routes } from "../lib/routes";
 import { useAsync } from "../lib/useAsync";
-import { Button, Checkbox, cx, Details, EmptyState, ErrorView, Input, LinkButton, PageHeader, Select, Spinner } from "../ui";
+import { Button, Checkbox, cx, Details, EmptyState, ErrorView, Input, LinkButton, LiveStatus, PageHeader, Select, Spinner } from "../ui";
 
 /** Telefon genişliği mi? (Süz açılırı yalnız burada kullanılır; masaüstünde süzgeçler hep görünür.) */
 function useNarrowScreen(): boolean {
@@ -179,6 +179,8 @@ export default function TopicsPage() {
         <>
           <TopicCounters topics={topics} />
 
+          {/* Arama/kategori sonucu odak değişmeden değişir: ekran okuyucuya duyurulur (WCAG 4.1.3). */}
+          <LiveStatus message={filtering ? (matchCount ? `${matchCount} konu süzgece uyuyor` : "Süzgece uyan konu yok") : ""} />
           <TopicFilters
             narrow={narrow}
             q={q}

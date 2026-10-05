@@ -45,7 +45,7 @@ export function formatRelative(ms: number | null | undefined, now: number): stri
   const min = 60 * sec;
   const hour = 60 * min;
   const day = 24 * hour;
-  if (abs < 45 * sec) return diff < 0 ? "az önce" : "birazdan";
+  if (abs < 45 * sec) return diff <= 0 ? "az önce" : "birazdan";
   if (abs < 45 * min) return rtf.format(Math.round(diff / min), "minute");
   if (abs < 22 * hour) return rtf.format(Math.round(diff / hour), "hour");
   if (abs < 26 * day) {
@@ -83,6 +83,39 @@ export function formatHours(hours: number): string {
 export function formatPercent(x: number | null | undefined, digits = 1): string {
   if (!valid(x)) return "—";
   return new Intl.NumberFormat(LOCALE, { style: "percent", maximumFractionDigits: digits, minimumFractionDigits: 0 }).format(x);
+}
+
+/**
+ * Değeri ve karşılaştırıldığı sınırı BİRLİKTE, karşılaştırmayla GÖRSEL OLARAK TUTARLI yazar (ALGORİTMA §4.2 r2, §12.15; shared
+ * decision.ts fmtPair ile aynı kural — sunucunun "Neden" satırlarıyla aynı sayılar görünür):
+ *  - değer: yuvarlanmış hâli sınırınkiyle aynı görünüp değerler eşit DEĞİLSE hassasiyet artırılır (en çok +3 basamak); yine
+ *    ayırt edilemezse null döner (çağıran kesir yazar). Ör. 0,2979 / 0,30 → "0,298"; %59,96 / %60 → "59,96".
+ *  - sınır: varsayılan hassasiyetle yazılır; gösterilen iki sayının karşılaştırması gerçeğiyle çelişirse (ör. 2/3 → "66,7" iken değer
+ *    "66,68") sınırın hassasiyeti de değerinkine kadar artırılır ("66,67").
+ * `equal`: değer sınıra TAM eşit mi (kesirlerle hesaplanmalı); verilmezse sayıların eşitliği kullanılır. `digits`: değerin basamağı.
+ */
+export function formatVsBound(x: number, bound: number, opts: { digits: number; scale?: number; equal?: boolean }): { value: string; bound: string; digits: number } | null {
+  const scale = opts.scale ?? 1;
+  const equal = opts.equal ?? x === bound;
+  let vd: number | null = null;
+  for (let d = opts.digits; d <= opts.digits + 3; d++) {
+    if (equal || (x * scale).toFixed(d) !== (bound * scale).toFixed(d)) {
+      vd = d;
+      break;
+    }
+  }
+  if (vd === null) return null;
+  let bd = opts.digits;
+  if (!equal) {
+    const sign = x < bound ? -1 : 1;
+    const shownX = Number((x * scale).toFixed(vd));
+    while (bd < vd) {
+      const shownB = Number((bound * scale).toFixed(bd));
+      if ((shownX < shownB ? -1 : shownX > shownB ? 1 : 0) === sign) break;
+      bd++;
+    }
+  }
+  return { value: (x * scale).toFixed(vd).replace(".", ","), bound: (bound * scale).toFixed(bd).replace(".", ","), digits: vd };
 }
 
 /** Sayı: 12345 → "12.345"; digits verilirse ondalık (virgül) */

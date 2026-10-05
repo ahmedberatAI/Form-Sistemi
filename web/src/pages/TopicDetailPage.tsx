@@ -18,14 +18,14 @@ import { formatNumber, topicRef } from "../lib/format";
 import { routes } from "../lib/routes";
 import { parseSectionParam, SECTION_PARAM, useSectionParam } from "../lib/sectionParam";
 import { useAsync } from "../lib/useAsync";
-import { Badge, Card, ClampText, ErrorView, Icon, LinkButton, PageHeader, Spinner, Time } from "../ui";
+import { Badge, Card, ClampText, Icon, LinkButton, PageErrorView, PageHeader, Spinner, Time } from "../ui";
 
 export default function TopicDetailPage() {
   const { id = "" } = useParams();
   const { data: t, error, loading, reload } = useAsync(() => getTopic(id), [id]);
 
   if (loading && !t) return <Spinner block label="Konu yükleniyor…" />;
-  if (error && !t) return <ErrorView error={error} onRetry={reload} />;
+  if (error && !t) return <PageErrorView error={error} onRetry={reload} subject="Konu" />;
   if (!t) return null;
   return <TopicDetailView key={t.id} t={t} />;
 }

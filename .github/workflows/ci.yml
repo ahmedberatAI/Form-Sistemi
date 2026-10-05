@@ -18,11 +18,17 @@ jobs:
   kalite:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # Desteklenen en düşük sürüm (DatabaseSync.isTransaction 22.16.0'da geldi) ve güncel LTS.
+        node: ["22.16", "24"]
+    name: kalite (Node ${{ matrix.node }})
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: ${{ matrix.node }}
           cache: npm
       - name: Bağımlılıkları kur
         run: npm ci

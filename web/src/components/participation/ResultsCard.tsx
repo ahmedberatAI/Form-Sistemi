@@ -8,7 +8,7 @@ import { useId, useState, type ReactNode } from "react";
 import type { ClusterResult, DecisionCheck, DecisionResult, MinorityReport } from "@forum/shared";
 import { clusterLabel } from "@forum/shared";
 import { useDetailLevel } from "../../lib/detailLevel";
-import { formatNumber, formatPercent } from "../../lib/format";
+import { formatNumber, formatPercent, formatVsBound } from "../../lib/format";
 import { getTerm, termForDecisionCheck } from "../../lib/glossary";
 import { Button, Card, cx, Details, HashText, OutcomeBadge, ProgressBar, Table, Term, Time, VoteBadge } from "../../ui";
 import { UserLink } from "../UserLink";
@@ -26,6 +26,33 @@ export interface ResultsCardProps {
 export const MINORITY_PREVIEW = 2;
 
 // ───────────── Saf yardımcılar (birim testli) ─────────────
+
+/**
+ * Küme tablosundaki P_g ve taban φ: sınıra çok yakın değer sınırla AYNI görünmesin (ör. 13/32 → P_g 0,2979 < 0,30 iken tablo
+ * "0,30 | 0,30 | ✘" yazıyordu; şimdi "0,298 | 0,30 | ✘", "Neden" satırıyla aynı). Hassasiyet yalnız gerektiğinde artar; yine ayırt
+ * edilemezse P_g kesirle yazılır.
+ */
+export function clusterPgFloorText(c: Pick<ClusterResult, "pg" | "floor" | "yes" | "no">): { pg: string; floor: string } {
+  if (c.floor === null || !Number.isFinite(c.pg) || !Number.isFinite(c.floor)) return { pg: fmtDecimal(c.pg), floor: c.floor !== null ? fmtDecimal(c.floor) : "—" };
+  const vs = formatVsBound(c.pg, c.floor, { digits: 2 });
+  return vs ? { pg: vs.value, floor: vs.bound } : { pg: `${1 + c.yes}/${2 + c.yes + c.no}`, floor: fmtDecimal(c.floor, 5) };
+}
+
+/**
+ * Onay çubuğunun değer metni ve eşik etiketi: sınıra çok yakın onay eşikle AYNI görünmesin (ör. 1499/2500 = %59,96 iken
+ * "%60 / Eşik ≥ %60" ve kırmızı yazıyordu; şimdi "%59,96 / Eşik: ≥ %60,0"). Ayırt edilebiliyorsa bugünkü biçim (%61,5) korunur.
+ */
+export function approvalTexts(r: Pick<DecisionResult, "approval" | "totals" | "thresholdUsed" | "thresholdStrict">): { value: string; threshold: string } {
+  const t = r.thresholdUsed;
+  const tVal = t.den ? t.num / t.den : 0;
+  const decided = r.totals.yes + r.totals.no;
+  const equal = decided > 0 && r.totals.yes * t.den === t.num * decided;
+  const vs = formatVsBound(r.approval, tVal, { digits: 1, scale: 100, equal });
+  const op = r.thresholdStrict ? ">" : "≥";
+  if (vs && vs.digits === 1) return { value: formatPercent(r.approval), threshold: `${op} ${formatPercent(tVal)}` };
+  if (vs) return { value: `%${vs.value}`, threshold: `${op} %${vs.bound}` };
+  return { value: `${r.totals.yes}/${decided}`, threshold: `${op} ${formatPercent(tVal)} (${t.num}/${t.den})` };
+}
 
 /** Tek satır toplamlar: "57 uygun · 41 katıldı · Kabul 30 · Red 8 · Çekimser 3". */
 export function totalsLine(t: DecisionResult["totals"]): string {
@@ -126,8 +153,8 @@ export function collapsedChecks(views: CheckView[]): DecisionCheck[] {
 export function ResultsCard({ result: r, minorityReports, reconciliationOrigin, myEffectiveVia }: ResultsCardProps) {
   const t = r.thresholdUsed;
   const tVal = t.den ? t.num / t.den : 0;
-  const op = r.thresholdStrict ? ">" : "≥";
   const decided = r.totals.yes + r.totals.no;
+  const approval = approvalTexts(r);
   const tone = r.outcome === "accept" ? "success" : r.outcome === "reject" ? "danger" : "warning";
   const informational = bridgeIsInformational(r, reconciliationOrigin);
 
@@ -158,9 +185,9 @@ export function ResultsCard({ result: r, minorityReports, reconciliationOrigin, 
           <ProgressBar
             label="Onay oranı (kabul / (kabul + red))"
             value={r.approval}
-            valueText={`${formatPercent(r.approval)} (${r.totals.yes}/${decided})`}
+            valueText={`${approval.value} (${r.totals.yes}/${decided})`}
             marker={tVal}
-            markerLabel={`Eşik: ${op} ${formatPercent(tVal)}${r.bridgeApplicable ? "" : " (soğuk başlangıç: nitelikli çoğunluk)"}`}
+            markerLabel={`Eşik: ${approval.threshold}${r.bridgeApplicable ? "" : " (soğuk başlangıç: nitelikli çoğunluk)"}`}
             tone={r.thresholdMet ? "success" : "danger"}
           />
         </div>
@@ -298,8 +325,8 @@ function BridgeSection({ result: r, informational }: { result: DecisionResult; i
             { key: "yes", header: "Kabul", align: "right", render: (c) => formatNumber(c.yes) },
             { key: "no", header: "Red", align: "right", render: (c) => formatNumber(c.no) },
             { key: "abstain", header: "Çekimser", align: "right", render: (c) => formatNumber(c.abstain) },
-            { key: "pg", header: "P_g", align: "right", render: (c) => <strong>{fmtDecimal(c.pg)}</strong> },
-            { key: "floor", header: "Taban φ", align: "right", render: (c) => (c.floor !== null ? fmtDecimal(c.floor) : "—") },
+            { key: "pg", header: "P_g", align: "right", render: (c) => <strong>{clusterPgFloorText(c).pg}</strong> },
+            { key: "floor", header: "Taban φ", align: "right", render: (c) => clusterPgFloorText(c).floor },
             {
               key: "passed",
               header: "Geçti mi?",

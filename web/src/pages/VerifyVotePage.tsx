@@ -10,11 +10,12 @@ import {
   verifyTally,
   voteCommitment,
   type BallotReceipt,
+  type CommittedTxView,
   type VoteChoice,
 } from "@forum/shared";
 import { errorMessage, isApiError } from "../api/client";
 import { getBulletin, getProof, getTx, listTxs } from "../api/endpoints";
-import { loadRoundFromLedger } from "../lib/ledgerVerify";
+import { isTransientError, LEDGER_LIST_LIMIT, LedgerFetcher, loadRoundFromLedger, transientReason } from "../lib/ledgerVerify";
 import { useAuth } from "../auth/AuthContext";
 import { Tick } from "../components/participation/common";
 import { canDownloadFiles, downloadText } from "../lib/download";
@@ -46,7 +47,8 @@ import {
   VoteBadge,
 } from "../ui";
 
-type StepStatus = "idle" | "running" | "ok" | "fail" | "warn" | "pending";
+/** unknown: geçici hata (hız sınırı, ağ, 5xx) ya da eksik liste yüzünden SONUÇ ALINAMADI — başarısız da doğrulandı da sayılmaz. */
+type StepStatus = "idle" | "running" | "ok" | "fail" | "warn" | "pending" | "unknown";
 type StepKey = "pin" | "proof" | "commit" | "latest" | "reveal" | "tally";
 
 interface Step {
@@ -97,6 +99,64 @@ function parseReceipt(text: string): BallotReceipt {
   };
 }
 
+export type LatestCheck =
+  | { status: "ok"; count: number | null; last: CommittedTxView }
+  | { status: "fail"; reason: "unbound"; count: number }
+  | { status: "fail"; reason: "newer"; last: CommittedTxView }
+  | { status: "pending" }
+  | { status: "unknown"; reason: "truncated" | "missing" };
+
+/**
+ * "Bu pusula için defterdeki SON taahhüt bu makbuz mu?" (saf işlev; birim testli). `txs` sunucunun listesidir (en yeni
+ * LEDGER_LIST_LIMIT işlem; sunucu süzgecine güvenilmez, her öğe yeniden süzülür). `own`: makbuz işleminin 2. adımda kanıtla
+ * doğrulanmış yeri (bloğa girmediyse null). Liste kesilmişse (limit dolu) ve makbuzun işlemi listede yoksa "bloğa girmemiş"
+ * DENMEZ: sonuç alınamadı ("truncated"); listede makbuzdan daha yeni bir taahhüt varsa makbuz yine kesin olarak geçersizdir.
+ */
+export function checkLatestCommit(
+  r: Pick<BallotReceipt, "proposalId" | "round" | "ballotId" | "txHash">,
+  txs: CommittedTxView[],
+  own: { height: number; index: number } | null,
+  limit = LEDGER_LIST_LIMIT,
+): LatestCheck {
+  const truncated = txs.length >= limit;
+  const mine = txs
+    .filter((t) => t.type === "VOTE_COMMIT" && t.payload.proposalId === r.proposalId && t.payload.ballotId === r.ballotId && Number(t.payload.round) === r.round)
+    .sort((a, b) => a.height - b.height || a.index - b.index);
+  const unbound = mine.filter((t) => !txMatchesHash(t, t.hash));
+  if (unbound.length) return { status: "fail", reason: "unbound", count: unbound.length };
+  const ownHash = r.txHash ? r.txHash.toLowerCase() : null;
+  const ownAt = mine.find((t) => t.hash === ownHash);
+  const ref = ownAt ? { height: ownAt.height, index: ownAt.index } : own;
+  const last = mine[mine.length - 1];
+  // Makbuzdan daha yeni bir taahhüt listede varsa makbuz geçersizdir (liste kesilmiş olsa da bu kesindir).
+  if (last && last.hash !== ownHash && ref && (last.height > ref.height || (last.height === ref.height && last.index > ref.index))) {
+    return { status: "fail", reason: "newer", last };
+  }
+  // Makbuz listede ve en sonuncu: liste en yeniden geriye kesintisiz olduğundan daha yeni taahhüt yoktur. Sayı yalnız liste tamsa yazılır.
+  if (ownAt && last && last.hash === ownHash) return { status: "ok", count: truncated ? null : mine.length, last };
+  // Makbuzda işlem özeti yoksa: pusulanın defterde taahhüdü varsa o makbuza ait değildir.
+  if (!ownHash) return last ? { status: "fail", reason: "newer", last } : { status: "pending" };
+  // Makbuzun yeri bilinmiyor (2. adımda bloğa girmemişti): liste tamsa işlem henüz bloğa girmemiştir; kesilmişse bilinemez.
+  if (!own) return truncated ? { status: "unknown", reason: "truncated" } : { status: "pending" };
+  // Makbuzun işlemi bloğa girmiş (2. adım) ama listede yok: liste kesilmiş ya da eksik — son taahhüt denetlenemedi.
+  return { status: "unknown", reason: truncated ? "truncated" : "missing" };
+}
+
+/**
+ * Oylama kapanınca 4. adımın kesin sonucu (saf işlev): bütün taahhütler defterden kesin olarak doğrulandıysa (geçici hata, bekleyen
+ * ya da sorunlu işlem yok) pusulanın son taahhüdü makbuzunkiyle aynı mı? Kesin değilse null (4. adım "sonuç alınamadı" kalır).
+ */
+export function latestAfterClose(
+  L: { complete: boolean; commitsPending: number; commitProblems: string[]; commitments: Record<string, string> },
+  ballotId: string,
+  computed: string,
+): "ok" | "fail" | null {
+  if (!L.complete || L.commitsPending > 0 || L.commitProblems.length > 0) return null;
+  const last = L.commitments[ballotId];
+  if (last === undefined) return null;
+  return last === computed ? "ok" : "fail";
+}
+
 function StepIcon({ status }: { status: StepStatus }) {
   if (status === "running") return <span className="spinner spinner-sm" aria-label="çalışıyor" />;
   if (status === "ok") return <Tick ok label="doğrulandı" />;
@@ -106,6 +166,13 @@ function StepIcon({ status }: { status: StepStatus }) {
       <span className="tick tick-warn" title="uyarı">
         <span aria-hidden="true">⚠</span>
         <span className="sr-only">uyarı</span>
+      </span>
+    );
+  if (status === "unknown")
+    return (
+      <span className="tick tick-warn" title="sonuç alınamadı">
+        <span aria-hidden="true">?</span>
+        <span className="sr-only">sonuç alınamadı</span>
       </span>
     );
   if (status === "pending")
@@ -144,6 +211,11 @@ export default function VerifyVotePage() {
     const id = ++runId.current;
     const r: BallotReceipt = tampered ? { ...base, choice: fakeChoice } : base;
     const alive = () => id === runId.current;
+    // Geçici hatada (hız sınırı 429, ağ, 5xx) bekleyip yeniden dener; yine alınamazsa adım "sonuç alınamadı" olur, "başarısız" değil.
+    const fetcher = new LedgerFetcher({ maxTotalMs: 90_000 });
+    let own: { height: number; index: number } | null = null;
+    // 4. adım liste penceresi yüzünden sonuçsuz kaldıysa, oylama kapanınca 5. adımın defterden kurduğu kesin "son taahhüt" ile tamamlanır.
+    let latestUnknown = false;
     setRunning(true);
     setSteps(freshSteps());
     setPinNote(null);
@@ -178,8 +250,10 @@ export default function VerifyVotePage() {
     else if (!pinned) step("proof", "fail", "Sabitlenmiş doğrulayıcı anahtarı olmadan kanıt denetlenemez.");
     else {
       try {
-        const proof = await getProof(r.txHash);
+        const txHash = r.txHash;
+        const proof = await fetcher.call(() => getProof(txHash));
         const v = verifyInclusionProof(proof, pinned.validators, r.txHash);
+        if (v.ok) own = { height: proof.height, index: proof.index };
         step(
           "proof",
           v.ok ? "ok" : "fail",
@@ -195,6 +269,7 @@ export default function VerifyVotePage() {
         );
       } catch (e) {
         if (isApiError(e) && e.status === 404) step("proof", "pending", "İşlem henüz bir bloğa girmemiş olabilir; birkaç saniye sonra yeniden deneyin.");
+        else if (isTransientError(e)) step("proof", "unknown", transientReason(e));
         else step("proof", "fail", errorMessage(e));
       }
     }
@@ -205,7 +280,8 @@ export default function VerifyVotePage() {
     if (!r.txHash) step("commit", "fail", "İşlem özeti olmadan defterdeki taahhüt okunamaz.");
     else {
       try {
-        const tx = await getTx(r.txHash);
+        const txHash = r.txHash;
+        const tx = await fetcher.call(() => getTx(txHash));
         const pl = tx.payload as { proposalId?: string; round?: number; ballotId?: string; commitment?: string };
         const problems: string[] = [];
         // Sunucunun verdiği içerik gerçekten bu işlem özetine mi ait? (İçerik değiştirilmişse özet tutmaz.)
@@ -227,41 +303,59 @@ export default function VerifyVotePage() {
           </>,
         );
       } catch (e) {
-        step("commit", "fail", errorMessage(e));
+        step("commit", isTransientError(e) ? "unknown" : "fail", isTransientError(e) ? transientReason(e) : errorMessage(e));
       }
     }
 
     // 4) Son taahhüt mü?
     step("latest", "running");
     try {
-      const txs = await listTxs({ type: "VOTE_COMMIT", proposalId: r.proposalId, limit: 500 });
-      const mine = txs
-        .filter((t) => t.payload.ballotId === r.ballotId && Number(t.payload.round) === r.round)
-        .sort((a, b) => a.height - b.height || a.index - b.index);
-      const last = mine[mine.length - 1];
-      const unbound = mine.filter((t) => !txMatchesHash(t, t.hash));
-      if (unbound.length) step("latest", "fail", `${unbound.length} taahhüt işleminin içeriği özetiyle eşleşmiyor; liste güvenilir değil.`);
-      else if (!last) step("latest", r.txHash ? "pending" : "fail", "Bu oy pusulası için defterde henüz bloğa girmiş taahhüt yok.");
-      else if (last.hash === r.txHash) step("latest", "ok", mine.length > 1 ? `Bu pusula için ${mine.length} taahhüt var (oy değiştirilmiş); geçerli olan en son taahhüt bu makbuzunki.` : "Bu pusula için tek taahhüt var.");
-      else
+      // ballotId/round süzgeci sunucu destekliyorsa listeyi bu pusulaya daraltır (desteklemiyorsa yok sayılır); liste her durumda
+      // istemcide yeniden süzülür ve kesilmişse (limit dolu) "bloğa girmemiş" denmez.
+      const txs = await fetcher.call(() =>
+        listTxs({ type: "VOTE_COMMIT", proposalId: r.proposalId, limit: LEDGER_LIST_LIMIT, ballotId: r.ballotId, round: r.round }),
+      );
+      const c = checkLatestCommit(r, txs, own);
+      latestUnknown = c.status === "unknown";
+      if (c.status === "fail" && c.reason === "unbound") step("latest", "fail", `${c.count} taahhüt işleminin içeriği özetiyle eşleşmiyor; liste güvenilir değil.`);
+      else if (c.status === "fail")
         step(
           "latest",
           "fail",
           <>
             Bu makbuz geçersiz — <strong>daha yeni oyunuz var</strong>. Aynı pusula için daha sonra yazılmış bir taahhüt mevcut (
-            <HashText hash={last.hash} chars={10} to={routes.tx(last.hash)} copy={false} />
+            <HashText hash={c.last.hash} chars={10} to={routes.tx(c.last.hash)} copy={false} />
             ); sayımda yalnızca en son oy geçerlidir.
           </>,
         );
+      else if (c.status === "ok")
+        step(
+          "latest",
+          "ok",
+          c.count === null
+            ? "Bu pusula için makbuzdan daha yeni taahhüt yok; geçerli olan en son taahhüt bu makbuzunki."
+            : c.count > 1
+              ? `Bu pusula için ${c.count} taahhüt var (oy değiştirilmiş); geçerli olan en son taahhüt bu makbuzunki.`
+              : "Bu pusula için tek taahhüt var.",
+        );
+      else if (c.status === "pending") step("latest", r.txHash ? "pending" : "fail", "Bu oy pusulası için defterde henüz bloğa girmiş taahhüt yok.");
+      else
+        step(
+          "latest",
+          "unknown",
+          c.reason === "truncated"
+            ? `Son taahhüt denetlenemedi: defter listesi bu öneri için yalnız en yeni ${LEDGER_LIST_LIMIT} taahhüdü veriyor ve makbuzunuzun taahhüdü (bloğa girdiği 2. adımda doğrulandı) bu listenin dışında kaldı. Listede daha yeni bir taahhüdünüz yok; oylama kapanınca 5. adım geçerli oyunuzu kesin olarak denetler.`
+            : "Son taahhüt denetlenemedi: makbuzunuzun taahhüdü bloğa girmiş (2. adım) ama sunucunun taahhüt listesinde yok; liste eksik. Yeniden deneyin; oylama kapanınca 5. adım geçerli oyunuzu kesin olarak denetler.",
+        );
     } catch (e) {
-      step("latest", "fail", errorMessage(e));
+      step("latest", isTransientError(e) ? "unknown" : "fail", isTransientError(e) ? transientReason(e) : errorMessage(e));
     }
 
     // 5) Açıklama ve 6) sayım
     step("reveal", "running");
     step("tally", "running");
     try {
-      const bulletin = await getBulletin(r.proposalId);
+      const bulletin = await fetcher.call(() => getBulletin(r.proposalId));
       const round = bulletin.rounds.find((x) => x.round === r.round);
       if (!round) {
         step("reveal", "pending", "Oylama henüz kapanmadı: oylar oylama bitince toplu olarak açıklanır (BALLOT_REVEAL). Sonra yeniden doğrulayın.");
@@ -271,13 +365,30 @@ export default function VerifyVotePage() {
         step("tally", "fail", "Sabitlenmiş doğrulayıcı anahtarı olmadan sayım defterden doğrulanamaz.");
       } else {
         // Açıklama, sayım ve taahhütler sunucunun bülteninden değil, defterden bağlı olarak alınır.
-        const L = await loadRoundFromLedger(r.proposalId, round, pinned);
+        const L = await loadRoundFromLedger(r.proposalId, round, pinned, { maxTotalMs: 90_000 });
+        const settled = latestUnknown ? latestAfterClose(L, r.ballotId, computed) : null;
+        if (settled) {
+          if (settled === "ok") step("latest", "ok", "Oylama kapandı: bu pusulanın defterdeki bütün taahhütleri doğrulandı; geçerli olan en son taahhüt bu makbuzunki.");
+          else
+            step(
+              "latest",
+              "fail",
+              <>
+                Bu makbuz geçersiz — <strong>daha yeni oyunuz var</strong>: oylama kapandıktan sonra defterden kurulan son taahhüt bu makbuzunkinden farklı; sayımda
+                yalnızca en son oy geçerlidir.
+              </>,
+            );
+        }
         if (L.revealCheck.state === "pending") step("reveal", "pending", "Açıklama işlemi henüz bloğa girmedi; birkaç saniye sonra yeniden deneyin.");
+        else if (L.revealCheck.state === "unavailable") step("reveal", "unknown", L.revealCheck.reason);
         else if (L.revealCheck.state !== "ok") step("reveal", "fail", L.revealCheck.state === "fail" ? L.revealCheck.reason : "Açıklama işlemi defterde yok.");
         else {
           const rev = L.reveals.find((x) => x.ballotId === r.ballotId);
           if (!rev) step("reveal", "fail", "Bu oy pusulası defterdeki açıklanan oylar arasında yok.");
-          else {
+          else if (L.commitsUnavailable > 0 && rev.choice === r.choice && rev.salt === r.salt) {
+            // Seçim ve tuz eşleşiyor ama taahhütlerin bir kısmı geçici hata yüzünden alınamadı: son taahhüt karşılaştırması kesin değil.
+            step("reveal", "unknown", `Açıklanan oy makbuzla aynı; ancak ${L.unavailableReason ?? "bazı taahhüt işlemleri alınamadı"}`);
+          } else {
             const ok = rev.choice === r.choice && rev.salt === r.salt && L.commitments[r.ballotId] === computed;
             step(
               "reveal",
@@ -296,9 +407,12 @@ export default function VerifyVotePage() {
           }
         }
         if (L.tallyCheck.state === "pending" || L.commitsPending > 0) step("tally", "pending", "Sayım ya da taahhüt işlemleri henüz bloğa girmedi; birkaç saniye sonra yeniden deneyin.");
-        else if (L.tallyCheck.state !== "ok") step("tally", "fail", L.tallyCheck.state === "fail" ? L.tallyCheck.reason : "Sayım işlemi defterde yok.");
+        else if (L.tallyCheck.state === "fail" || L.tallyCheck.state === "missing") step("tally", "fail", L.tallyCheck.state === "fail" ? L.tallyCheck.reason : "Sayım işlemi defterde yok.");
         else if (L.commitProblems.length) step("tally", "fail", L.commitProblems.slice(0, 3).join(" "));
-        else {
+        else if (!L.complete || L.tallyCheck.state !== "ok") {
+          // Eksik veriyle sayım yapılmaz: eksik taahhüt haritası sahte uyuşmazlık üretirdi.
+          step("tally", "unknown", `Yeniden sayım yapılmadı: ${L.unavailableReason ?? "bazı defter kayıtları alınamadı"}`);
+        } else {
           try {
             const v = verifyTally(L.tally, L.reveals, L.commitments);
             step(
@@ -320,8 +434,10 @@ export default function VerifyVotePage() {
         }
       }
     } catch (e) {
-      step("reveal", "fail", errorMessage(e));
-      step("tally", "fail", errorMessage(e));
+      const st: StepStatus = isTransientError(e) ? "unknown" : "fail";
+      const msg = isTransientError(e) ? transientReason(e) : errorMessage(e);
+      step("reveal", st, msg);
+      step("tally", st, msg);
     }
     if (alive()) setRunning(false);
   };
@@ -370,6 +486,7 @@ export default function VerifyVotePage() {
 
   const done = !running && steps.some((s) => s.status !== "idle");
   const failed = steps.some((s) => s.status === "fail");
+  const unknown = steps.some((s) => s.status === "unknown");
   const pending = steps.some((s) => s.status === "pending");
   const listJson = JSON.stringify(list, null, 2);
 
@@ -419,7 +536,7 @@ export default function VerifyVotePage() {
                         <div className="row small">
                           <VoteBadge choice={r.choice} />
                           <span>{r.round === 2 ? "yeniden oylama" : "1. tur"}</span>
-                          <Time at={r.castAt} mode="both" className="muted" />
+                          <Time at={r.castAt} mode="both" className="muted" past />
                           {latest ? <Badge tone="success">geçerli (en son)</Badge> : <Badge tone="neutral">eski — oy değiştirildi</Badge>}
                         </div>
                       </div>
@@ -527,6 +644,11 @@ export default function VerifyVotePage() {
                   {tamper
                     ? "Makbuzdaki seçim değiştirildiğinde taahhüt artık defterdekiyle eşleşmez: kimse makbuzunuzu ya da defterdeki oyunuzu fark edilmeden değiştiremez."
                     : "En az bir adım başarısız oldu. Ayrıntıları yukarıda görebilirsiniz; eski bir makbuzsa geçerli olan en son makbuzunuzu doğrulayın."}
+                </Alert>
+              ) : unknown ? (
+                <Alert tone="warning" title="Doğrulama tamamlanamadı">
+                  En az bir adımın sonucu alınamadı (ayrıntılar yukarıda). Bu bir uyuşmazlık değildir; ancak oyunuzun geçerli ve sayıma girmiş olduğu henüz
+                  kesin olarak doğrulanmadı. Biraz sonra (son taahhüt adımı için oylama kapandıktan sonra) yeniden doğrulayın.
                 </Alert>
               ) : pending ? (
                 <Alert tone="info" title="Şimdilik doğrulandı">

@@ -252,8 +252,18 @@ export const normIri = (iri: string): string => expandIri(String(iri).trim());
 
 // ───────────── Yetki ─────────────
 
-export function hasRole(actor: { roles: readonly Role[] } | null | undefined, ...roles: Role[]): boolean {
-  return !!actor && roles.some((r) => actor.roles.includes(r));
+/**
+ * Personel yetkisi (R, D, A): verilen rollerden birine sahip VE kimliği doğrulanmış (etkin) hesap. API.md: personel rolleri yalnız
+ * doğrulanmış hesapta geçerlidir; bekleyen ya da askıdaki bir hesaba (eski veride) rol verilmiş olsa bile kullanılamaz
+ * (http/auth.ts requireRole ile aynı kural).
+ */
+export function hasRole(actor: { roles: readonly Role[]; status: string } | null | undefined, ...roles: Role[]): boolean {
+  return !!actor && actor.status === "verified" && roles.some((r) => actor.roles.includes(r));
+}
+
+/** Rol listesinde personel rolü var ama hesap etkin değil mi? (403 gerekçesi "inactive" için) */
+export function hasInactiveRole(actor: { roles: readonly Role[]; status: string } | null | undefined, ...roles: Role[]): boolean {
+  return !!actor && actor.status !== "verified" && roles.some((r) => actor.roles.includes(r));
 }
 
 /** Doğrulanmış ve etkin (askıda/silinmiş olmayan) üye şartı. */

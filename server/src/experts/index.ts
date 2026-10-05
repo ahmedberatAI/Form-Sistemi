@@ -152,6 +152,9 @@ interface StoredLint {
 
 const ASSESSMENTS: readonly ExpertAssessment[] = ["feasible", "infeasible", "uncertain"];
 const PENDING_SQL = "('invited','accepted')";
+/** Kapanmış hesap durumları (KVKK silme ya da başvuru reddi): bilirkişi kaydı görünmez, değiştirilemez, kuraya girmez. */
+const CLOSED_USER_SQL = "('erased','rejected')";
+const isClosedUser = (status: string | undefined): boolean => status === "erased" || status === "rejected";
 const MAX_DOMAINS = 10;
 const MAX_PANEL = 15;
 /** Azınlık güvenceli soruya verilecek yanıtın asgari uzunluğu (soru da en az 10 karakterdir). */
@@ -230,6 +233,30 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
     const r = expertRow(userId);
     if (!r) throw notFound("Bilirkişi kaydı");
     return r;
+  };
+
+  /** Hesabı kapanmış üyenin (kapatılmış) bilirkişi kaydı yeniden açılamaz, onaylanamaz, yaptırıma konu olamaz. */
+  const assertAccountOpen = (userId: string): void => {
+    if (isClosedUser(userRow(userId)?.status)) {
+      throw conflict("invalid_state", "Hesabı silinmiş ya da başvurusu reddedilmiş bir üyenin bilirkişi kaydı değiştirilemez.");
+    }
+  };
+
+  /**
+   * Hesabı kapanan üyenin bilirkişi kaydını kapatır (KVKK §6 "Bilirkişi kaydı"): bekleyen görevler yedeğe devredilir (yaptırımdaki
+   * "replaced" akışı), kayıt listeden çıkarılır, serbest metin yeterlilik beyanı ve yaptırım notu imha edilir, alanlar boşaltılır,
+   * EXPERT_IN kenarları iptal edilir. Verilmiş raporlar (kamusal kayıt) değişmez; yazarları "Silinmiş üye #…" görünür.
+   * Çağıran kendi db.tx'i içinde çağırabilir (iç işlem iç içe güvenlidir). Yedeğe devredilen görev sayısını döndürür.
+   */
+  const closeRecord = (userId: string, e: ExpertRow): number => {
+    let replaced = 0;
+    db.tx(() => {
+      replaced = replacePending(userId);
+      db.run("UPDATE experts SET status = 'removed', domains = '[]', credentials = '', sanction_note = NULL WHERE user_id = ?", userId);
+      audit.log(null, "expert.close_on_account_closed", `user:${userId}`, { previousStatus: e.status, replacedAssignments: replaced });
+      syncExpertEdges(userId, []);
+    });
+    return replaced;
   };
 
   const domainsOf = (r: Pick<ExpertRow, "domains">): string[] => json<string[]>(r.domains, []);
@@ -324,6 +351,25 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
       if (!out.includes(iri)) out.push(iri);
     }
     return out;
+  };
+
+  /** Yönetmelikte (ontolojide) tanımlı, kök olmayan bir kategori mi? Bilinmeyen IRI, serbest URL ve kök sınıflar değildir. */
+  const isKnownCategory = (iri: string): boolean => {
+    if (ROOT_CATEGORIES.has(iri)) return false;
+    try {
+      return ontology.isSubCategoryOf(iri, fy("Kategori"));
+    } catch {
+      return false;
+    }
+  };
+
+  /** Uzmanlık alanları yönetmelikteki kategorilerden olmalı (öneri kategorileri ve vekâlet kapsamıyla aynı kural). */
+  const assertKnownDomains = (doms: string[]): void => {
+    const unknown = doms.filter((d) => !isKnownCategory(d));
+    if (unknown.length === 0) return;
+    const shown = unknown.slice(0, 3).map((d) => compactIri(d).slice(0, 80));
+    const msg = `Bilinmeyen uzmanlık alanı: ${shown.join(", ")}${unknown.length > 3 ? ` ve ${unknown.length - 3} alan daha` : ""}. Uzmanlık alanları yönetmelikte tanımlı kategorilerden seçilmelidir.`;
+    throw badRequest("unknown_domain", msg, { domains: msg });
   };
 
   const panelRow = (id: string) => db.get<PanelRow>("SELECT * FROM expert_panels WHERE id = ?", id);
@@ -596,6 +642,7 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
       const doms = normalizeDomains(domains);
       if (doms.length === 0) throw badRequest("domains_required", "En az bir uzmanlık alanı seçmelisiniz.");
       if (doms.length > MAX_DOMAINS) throw badRequest("too_many_domains", `En fazla ${MAX_DOMAINS} uzmanlık alanı seçilebilir.`);
+      assertKnownDomains(doms);
       const cred = typeof credentials === "string" ? credentials.trim() : "";
       const credLim = TEXT_LIMITS.expertCredentials;
       if (cred.length < credLim.min || cred.length > credLim.max) {
@@ -648,10 +695,13 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
         throw badRequest("invalid_decision", "Karar 'approve' (onay) ya da 'reject' (ret) olmalıdır.");
       }
       const e = requireExpert(userId);
+      assertAccountOpen(userId);
       if (e.status !== "applied") throw conflict("not_pending", "Bu başvuru karar bekleyen durumda değil.");
       const now = clock.now();
       const text = typeof note === "string" && note.trim() ? note.trim() : null;
       const approve = decision === "approve";
+      // Bu kural gelmeden önce yapılmış başvurularda da: tanımsız alanlı bilirkişi hiçbir kurayla eşleşemez, listede de yanıltır.
+      if (approve) assertKnownDomains(domainsOf(e));
       db.tx(() => {
         if (approve) {
           db.run(
@@ -682,6 +732,7 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
       const text = typeof note === "string" ? note.trim() : "";
       if (!text) throw badRequest("note_required", "Yaptırım için gerekçe yazılmalıdır.");
       const e = requireExpert(userId);
+      assertAccountOpen(userId);
       let replaced = 0;
       db.tx(() => {
         let title = "";
@@ -727,9 +778,9 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
     },
 
     list(filter = {}, viewer = null) {
-      let rows = filter.status
-        ? db.all<ExpertRow>("SELECT * FROM experts WHERE status = ?", filter.status)
-        : db.all<ExpertRow>("SELECT * FROM experts");
+      // Hesabı kapanmış üyelerin kayıtları hiçbir listede yer almaz (KVKK §6; eski verideki kapatılmamış kayıtlar için de).
+      const open = `SELECT e.* FROM experts e JOIN users u ON u.id = e.user_id WHERE u.status NOT IN ${CLOSED_USER_SQL}`;
+      let rows = filter.status ? db.all<ExpertRow>(`${open} AND e.status = ?`, filter.status) : db.all<ExpertRow>(open);
       if (filter.domain) {
         const d = expandIri(filter.domain);
         rows = rows.filter((r) => domainsOf(r).some((x) => sub(x, d)));
@@ -741,7 +792,12 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
 
     get(userId, viewer = null) {
       const r = expertRow(userId);
-      return r ? toInfo(r, viewer) : null;
+      return r && !isClosedUser(userRow(userId)?.status) ? toInfo(r, viewer) : null;
+    },
+
+    closeForClosedAccount(userId) {
+      const e = expertRow(userId);
+      return e ? closeRecord(userId, e) : 0;
     },
 
     addQuestion(proposalId, userId, body, minorityGuaranteed = false) {
@@ -1138,6 +1194,17 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
     },
 
     markOverdue(now) {
+      // Hesabı kapanmış bilirkişinin bekleyen görevi (bu kural gelmeden önce silinmiş hesaplar): görev yedeğe devredilir, süre
+      // dolana kadar panel eksik beklemez. Yedek kurası deftere yazdığından açılışta değil, zamanlayıcının bu çağrısında yapılır.
+      for (const { expert_id } of db.all<{ expert_id: string }>(
+        `SELECT DISTINCT a.expert_id FROM expert_assignments a JOIN users u ON u.id = a.expert_id
+         WHERE a.status IN ${PENDING_SQL} AND u.status IN ${CLOSED_USER_SQL} ORDER BY a.expert_id`,
+      )) {
+        db.tx(() => {
+          const n = replacePending(expert_id);
+          audit.log(null, "expert.close_on_account_closed", `user:${expert_id}`, { replacedAssignments: n });
+        });
+      }
       const rows = db.all<AssignmentRow>(
         `SELECT * FROM expert_assignments WHERE status IN ${PENDING_SQL} AND due_at < ? ORDER BY due_at, rowid`,
         now,
@@ -1165,6 +1232,18 @@ export function createExpertService(ctx: CoreContext, deps: ExpertDeps): ExpertS
         .map((a) => ({ assignmentId: a.id, proposalId: a.proposal_id, status: a.status, dueAt: a.due_at }));
     },
   };
+
+  // Eski veri onarımı (yalnız SQL ve graf; defter yok): bu kural gelmeden önce hesabı kapanmış üyelerin bilirkişi kayıtları kapatılır.
+  for (const { user_id } of db.all<{ user_id: string }>(
+    `SELECT e.user_id FROM experts e JOIN users u ON u.id = e.user_id
+     WHERE u.status IN ${CLOSED_USER_SQL} AND (e.status <> 'removed' OR e.credentials <> '' OR e.domains <> '[]' OR e.sanction_note IS NOT NULL)`,
+  )) {
+    db.tx(() => {
+      db.run("UPDATE experts SET status = 'removed', domains = '[]', credentials = '', sanction_note = NULL WHERE user_id = ?", user_id);
+      audit.log(null, "expert.close_on_account_closed", `user:${user_id}`, { repair: true });
+      syncExpertEdges(user_id, []);
+    });
+  }
 
   return service;
 }

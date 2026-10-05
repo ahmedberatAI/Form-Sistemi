@@ -44,7 +44,8 @@ export function toPublicUser(
   row: Pick<UserRow, "id" | "nickname" | "status" | "roles" | "reputation" | "created_at">,
   expert?: ExpertRowLike | null,
 ): PublicUser {
-  const active = expert?.status === "active";
+  // Hesabı kapanmış (silinmiş/reddedilmiş) üye hiçbir rolde görünmez; bilirkişi kaydı kapatılmamış eski veride de.
+  const active = expert?.status === "active" && row.status !== "erased" && row.status !== "rejected";
   return {
     id: row.id,
     nickname: row.nickname,

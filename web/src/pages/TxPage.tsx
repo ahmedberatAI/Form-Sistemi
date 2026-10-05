@@ -13,7 +13,7 @@ import { formatDateTime } from "../lib/format";
 import { checkTxPage, normalizeTxHash } from "../lib/ledgerVerify";
 import { routes } from "../lib/routes";
 import { useAsync } from "../lib/useAsync";
-import { Alert, Card, CopyButton, ErrorView, HashText, KeyValue, PageHeader, Spinner } from "../ui";
+import { Alert, Card, CopyButton, ErrorView, HashText, KeyValue, PageHeader, ScrollPre, Spinner } from "../ui";
 
 function safe<T>(fn: () => T, fallback: T): T {
   try {
@@ -128,7 +128,7 @@ export default function TxPage() {
           </Card>
 
           <Card title="Yük (payload)" actions={<CopyButton text={payloadJson} label="JSON kopyala" />}>
-            <pre className="sy-pre">{payloadJson}</pre>
+            <ScrollPre label="İşlem yükü (JSON)">{payloadJson}</ScrollPre>
             <p className="small muted mt-0">Defter yüklerinde kişisel veri ve ham metin bulunmaz; yalnızca özetler, taahhütler ve kimliksiz sayılar yer alır.</p>
           </Card>
 

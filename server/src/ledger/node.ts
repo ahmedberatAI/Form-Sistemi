@@ -321,23 +321,32 @@ export class ValidatorNode {
     return b && tx ? toCommitted(b, tx, loc.index) : null;
   }
 
-  findTxs(filter: { type?: LedgerTxType; proposalId?: string; limit?: number }): CommittedTx[] {
+  findTxs(filter: { type?: LedgerTxType; proposalId?: string; ballotId?: string; round?: number; limit?: number }): CommittedTx[] {
     const limit = filter.limit && filter.limit > 0 ? filter.limit : Infinity;
     const out: CommittedTx[] = [];
+    // Yük süzgeci (ballotId/round): eşleşmeyen işlem sınıra sayılmaz.
+    const payloadOk = (tx: { payload: unknown }): boolean => {
+      if (filter.ballotId === undefined && filter.round === undefined) return true;
+      const p = tx.payload as { ballotId?: unknown; round?: unknown } | null;
+      if (!p || typeof p !== "object") return false;
+      if (filter.ballotId !== undefined && p.ballotId !== filter.ballotId) return false;
+      if (filter.round !== undefined && Number(p.round) !== filter.round) return false;
+      return true;
+    };
     const hashes = filter.proposalId !== undefined ? (this.byProposal.get(filter.proposalId) ?? []) : filter.type ? (this.byType.get(filter.type) ?? []) : null;
     if (hashes) {
       for (let i = hashes.length - 1; i >= 0 && out.length < limit; i--) {
         const loc = this.txIndex.get(hashes[i]);
         const b = loc && this.store.get(loc.height);
         const tx = b && b.txs[loc.index];
-        if (!b || !tx || (filter.type && tx.type !== filter.type)) continue;
+        if (!b || !tx || (filter.type && tx.type !== filter.type) || !payloadOk(tx)) continue;
         out.push(toCommitted(b, tx, loc.index));
       }
       return out;
     }
     for (let hh = this.height(); hh >= 1 && out.length < limit; hh--) {
       const b = this.store.get(hh)!;
-      for (let i = b.txs.length - 1; i >= 0 && out.length < limit; i--) out.push(toCommitted(b, b.txs[i], i));
+      for (let i = b.txs.length - 1; i >= 0 && out.length < limit; i--) if (payloadOk(b.txs[i])) out.push(toCommitted(b, b.txs[i], i));
     }
     return out;
   }
@@ -368,28 +377,42 @@ export class ValidatorNode {
     return true;
   }
 
-  /** Tam doğrulama: bağlantı, blok özeti, Merkle kökü, işlem özetleri ve imzaları, ≥ 2f+1 precommit imzası. */
-  verifyFull(): ChainVerification {
+  /**
+   * Doğrulama önbelleğini en çok `maxBlocks` blok ilerletir (zincir değişmediyse O(1)). Önbellek kısmi olabilir (yükseklik < uç):
+   * sonraki çağrı kaldığı yerden sürer. Hem tam doğrulama (sınırsız) hem arka plan ısıtması (parça parça) bunu kullanır.
+   */
+  private advanceVerification(maxBlocks: number): { n: number; errors: { height: number; error: string }[]; done: boolean } {
     const n = this.store.height();
     const tipHash = n > 0 ? this.store.get(n)!.header.hash : "";
     const c = this.verifyCache;
     let errors: { height: number; error: string }[] = [];
     let from = 1;
     if (c && c.generation === this.verifyGeneration) {
-      if (c.height === n && c.tipHash === tipHash) {
-        errors = c.errors; // zincir değişmedi: O(1)
-        from = n + 1;
-      } else if (c.height < n && (c.height === 0 || this.store.get(c.height)?.header.hash === c.tipHash)) {
-        errors = c.errors.slice(); // yalnız büyüdü: eski bloklar değişmedi, yeni blokları doğrula
+      if (c.height === n && c.tipHash === tipHash) return { n, errors: c.errors, done: true }; // zincir değişmedi: O(1)
+      if (c.height < n && (c.height === 0 || this.store.get(c.height)?.header.hash === c.tipHash)) {
+        errors = c.errors.slice(); // yalnız büyüdü (ya da önceki doğrulama yarımdı): eski bloklar değişmedi, kalanları doğrula
         from = c.height + 1;
       }
     }
-    for (let hh = from; hh <= n; hh++) {
+    const to = Math.min(n, from - 1 + maxBlocks);
+    for (let hh = from; hh <= to; hh++) {
       this.blockVerifications++;
       for (const error of blockErrors(this.store.get(hh)!, hh, this.prevInfo(hh), this.params)) errors.push({ height: hh, error });
     }
-    this.verifyCache = { generation: this.verifyGeneration, height: n, tipHash, errors };
+    const reachedHash = to === n ? tipHash : to > 0 ? this.store.get(to)!.header.hash : "";
+    this.verifyCache = { generation: this.verifyGeneration, height: to, tipHash: reachedHash, errors };
+    return { n, errors, done: to === n };
+  }
+
+  /** Tam doğrulama: bağlantı, blok özeti, Merkle kökü, işlem özetleri ve imzaları, ≥ 2f+1 precommit imzası. */
+  verifyFull(): ChainVerification {
+    const { n, errors } = this.advanceVerification(Number.POSITIVE_INFINITY);
     return { nodeId: this.id, ok: errors.length === 0, checkedBlocks: n, errors: errors.map((e) => ({ ...e })) };
+  }
+
+  /** Arka plan ısıtması: en çok `maxBlocks` bloğu doğrulayıp önbelleğe ekler; zincirin tamamı doğrulandıysa true. */
+  verifyStep(maxBlocks: number): boolean {
+    return this.advanceVerification(Math.max(1, Math.floor(maxBlocks))).done;
   }
 
   // ───────────── Demo: kurcalama ve onarım ─────────────

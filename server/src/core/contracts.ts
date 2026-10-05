@@ -71,7 +71,11 @@ export interface LedgerService {
   /** Havuzdaki her şey işlenene kadar bekler (testler ve tohumlama için). */
   flush(timeoutMs?: number): Promise<void>;
   getTx(txHash: string): CommittedTx | null;
-  findTxs(filter: { type?: LedgerTxType; proposalId?: string; limit?: number }): CommittedTx[];
+  /**
+   * En yeniden eskiye işlemler. `ballotId` / `round` verilirse yük alanına göre süzülür ("Oyum kayıtlı mı?" son taahhüt denetimi:
+   * yalnız bu pusulanın taahhütleri; liste kesilmez). Çağıran bunları `proposalId` ile birlikte verir (öneri dizini üzerinden taranır).
+   */
+  findTxs(filter: { type?: LedgerTxType; proposalId?: string; ballotId?: string; round?: number; limit?: number }): CommittedTx[];
   getBlock(height: number, nodeId?: string): BlockView | null;
   listBlocks(opts: { from?: number; limit?: number }): BlockView[];
   /** En son işlenmiş (kanonik) blok; zincir boşsa genesis. */
@@ -204,6 +208,11 @@ export interface GraphService {
   lockstep(proposalId: string): { groups: string[][] };
   stats(): GraphStats;
   /**
+   * Yalnız kalıcı kaybeden göstergesi (stats().permanentLoser ile aynı değer), önbellekli: ana sayfa panosu bunu kullanır;
+   * uzlaşı (Louvain), aracı ve sybil hesaplarını tetiklemez.
+   */
+  permanentLoser(): GraphStats["permanentLoser"];
+  /**
    * Graf görselleştirme verisi. Görünürlük politikası hizmetin KENDİSİNDE uygulanır ve varsayılan olarak KAPALIDIR:
    *  - AGREES (oy gizliliği) hiçbir koşulda verilmez;
    *  - RELATED_TO (aile/iş/hane yakınlık beyanı) yalnız `includePrivate === true` iken verilir. Çağıran bunu YALNIZ yetkili
@@ -212,6 +221,7 @@ export interface GraphService {
    *    (cluster/community null, x/y yok); `viewerId` verilmezse hiçbir düğümde bulunmaz.
    */
   visualization(opts: {
+    /** İstenen kenar türleri: verilmezse varsayılan (FOLLOWS, VOUCHES, DELEGATES_TO); BOŞ dizi → hiç kenar. */
     includeEdgeTypes?: EdgeType[];
     limit?: number;
     /** Özel nitelikli (RELATED_TO) kenarları da ver; varsayılan false. */
@@ -504,6 +514,12 @@ export interface ExpertService {
   /** Süresi geçen atamaları işaretler, itibarı günceller. */
   markOverdue(now: number): number;
   assignmentsFor(expertId: string): { assignmentId: string; proposalId: string; status: string; dueAt: number }[];
+  /**
+   * Hesabı kapanan (KVKK silme) üyenin bilirkişi kaydını kapatır: bekleyen görevler yedeğe devredilir, kayıt "removed" olur,
+   * yeterlilik beyanı ve yaptırım notu imha edilir, alanlar ve EXPERT_IN kenarları kaldırılır. Kayıt yoksa bir şey yapmaz.
+   * Hesap silme rotası bunu imha ile AYNI db.tx içinde çağırır. Yedeğe devredilen görev sayısını döndürür.
+   */
+  closeForClosedAccount(userId: string): number;
 }
 
 // ═════════════════════════ Ortak bağlam ═════════════════════════

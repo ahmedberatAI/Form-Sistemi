@@ -11,7 +11,7 @@ import type {
   VoteChoice,
 } from "./types";
 import { hashCanonical, voteCommitment } from "./crypto";
-import { ceilMul, fracAtLeast, fracGreater, rat, ratAdd, ratMax, ratMin, ratToNumber, ratToPercent } from "./rational";
+import { ceilMul, fracAtLeast, fracGreater, rat, ratAdd, ratMax, ratMin, ratToNumber } from "./rational";
 import { clusterLabel } from "./labels";
 
 export const ALGO_VERSION = "KC-1.0";
@@ -87,39 +87,53 @@ function ratGe(a: Rational, b: Rational): boolean {
   return a.num * b.den >= b.num * a.den;
 }
 
-function fmtRat(r: Rational): string {
-  return (ratToNumber(r)).toFixed(2).replace(".", ",");
-}
-
 function fmtPct(x: number): string {
   return "%" + (x * 100).toFixed(1).replace(".", ",");
 }
 
 /**
- * Değeri, karşılaştırıldığı sınırla GÖRSEL OLARAK TUTARLI yazar: yuvarlanmış hâlleri aynı görünüyor ama
- * değerler eşit değilse hassasiyet artırılır (en çok +3 basamak), yine ayırt edilemezse kesir yazılır.
- * Böylece "P=0,30 < 0,30 ✘" gibi çelişkili satırlar oluşmaz.
+ * Değeri ve karşılaştırıldığı sınırı BİRLİKTE, karşılaştırmayla GÖRSEL OLARAK TUTARLI yazar (ALGORITMA §12.15):
+ *  - değer: yuvarlanmış hâli sınırınkiyle aynı görünüyor ama değerler eşit değilse hassasiyet artırılır (en çok +3 basamak);
+ *    yine ayırt edilemezse null döner (çağıran kesir yazar);
+ *  - sınır: varsayılan hassasiyetle yazılır; gösterilen iki sayının karşılaştırması gerçek karşılaştırmayla çelişiyorsa
+ *    (ör. 2/3 → "66,7" iken değer "66,68": 66,68 < 66,7 görünür ama değer ≥ 2/3) sınırın hassasiyeti de değerinkine kadar artırılır
+ *    ("%66,68 ≥ %66,67").
+ * Böylece "P=0,30 < 0,30 ✘", "%66,68 ≥ %66,7 ✔" ya da "%50,00 ≥ %50,0 ✘" gibi çelişkili satırlar oluşmaz.
  */
-function fmtVs(x: number, bound: number, equal: boolean, digits: number, scale: number): string | null {
+function fmtPair(x: number, bound: number, equal: boolean, digits: number, scale: number): { value: string | null; bound: string } {
+  let vd: number | null = null;
   for (let d = digits; d <= digits + 3; d++) {
-    const xs = (x * scale).toFixed(d);
-    if (equal || xs !== (bound * scale).toFixed(d)) return xs.replace(".", ",");
+    if (equal || (x * scale).toFixed(d) !== (bound * scale).toFixed(d)) {
+      vd = d;
+      break;
+    }
   }
-  return null;
+  let bd = digits;
+  if (vd !== null && !equal) {
+    const sign = x < bound ? -1 : 1;
+    const shownX = Number((x * scale).toFixed(vd));
+    while (bd < vd) {
+      const shownB = Number((bound * scale).toFixed(bd));
+      if ((shownX < shownB ? -1 : shownX > shownB ? 1 : 0) === sign) break;
+      bd++;
+    }
+  }
+  return { value: vd === null ? null : (x * scale).toFixed(vd).replace(".", ","), bound: (bound * scale).toFixed(bd).replace(".", ",") };
 }
 
-/** Laplace desteği P_g, taban ile tutarlı gösterim (varsayılan 2 ondalık). */
-function fmtRatVs(r: Rational, bound: Rational): string {
+/** Laplace desteği P_g ve taban, tutarlı gösterim (varsayılan 2 ondalık). */
+function fmtRatVs(r: Rational, bound: Rational): { value: string; bound: string } {
   const equal = r.num * bound.den === bound.num * r.den;
-  return fmtVs(ratToNumber(r), ratToNumber(bound), equal, 2, 1) ?? `${r.num}/${r.den}`;
+  const p = fmtPair(ratToNumber(r), ratToNumber(bound), equal, 2, 1);
+  return { value: p.value ?? `${r.num}/${r.den}`, bound: p.bound };
 }
 
-/** Onay oranı Y/(Y+N), eşik ile tutarlı gösterim (varsayılan %, 1 ondalık). */
-function fmtApprovalVs(yes: number, total: number, bound: Rational): string {
+/** Onay oranı Y/(Y+N) ve eşik, tutarlı gösterim (varsayılan %, 1 ondalık). */
+function fmtApprovalVs(yes: number, total: number, bound: Rational): { value: string; bound: string } {
   const a = total > 0 ? yes / total : 0;
   const equal = total > 0 && yes * bound.den === bound.num * total;
-  const s = fmtVs(a, ratToNumber(bound), equal, 1, 100);
-  return s === null ? `${yes}/${total}` : "%" + s;
+  const p = fmtPair(a, ratToNumber(bound), equal, 1, 100);
+  return { value: p.value === null ? `${yes}/${total}` : "%" + p.value, bound: "%" + p.bound };
 }
 
 /**
@@ -229,12 +243,13 @@ export function decide(input: DecisionInput): DecisionResult {
       detail: "Yeterli görüş verisi yok; köprü testi yerine nitelikli çoğunluk arandı.",
     });
   }
+  const shownApproval = fmtApprovalVs(Y, Y + N, threshold);
   checks.push({
     key: "threshold",
     label: "Onay oranı",
     passed: thresholdMet,
-    value: `${fmtApprovalVs(Y, Y + N, threshold)} (${Y} kabul / ${N} red)`,
-    required: `${strict ? ">" : "≥"} ${ratToPercent(threshold)}`,
+    value: `${shownApproval.value} (${Y} kabul / ${N} red)`,
+    required: `${strict ? ">" : "≥"} ${shownApproval.bound}`,
     detail: "Çekimser oylar katılıma sayılır, onay oranına sayılmaz.",
   });
 
@@ -281,6 +296,7 @@ export function decide(input: DecisionInput): DecisionResult {
       if (!cr.significant) continue;
       const pg = laplaceSupport(cr.yes, cr.no);
       const passes = ratGe(pg, p.clusterFloor);
+      const shown = fmtRatVs(pg, p.clusterFloor);
       const formula = `P = (1+${cr.yes})/(2+${cr.yes}+${cr.no})`;
       let label = `${cr.label} desteği (köprü testi)`;
       let passed = cr.passed === true;
@@ -288,13 +304,13 @@ export function decide(input: DecisionInput): DecisionResult {
       if (!bridgeUsedInRule) {
         label = `${cr.label} desteği (bilgi — bu turda uygulanmaz)`;
         passed = true;
-        detail = `${formula} ${passes ? "≥" : "<"} ${fmtRat(p.clusterFloor)}. İtiraz sonrası yeniden oylamada küme tabanları uygulanmaz, yalnızca gösterilir.`;
+        detail = `${formula} ${passes ? "≥" : "<"} ${shown.bound}. İtiraz sonrası yeniden oylamada küme tabanları uygulanmaz, yalnızca gösterilir.`;
       } else if (exempt.has(cr.clusterId)) {
         passed = true;
         // Dürüst gösterim: muafiyetin sonucu değiştirip değiştirmediği de yazılır.
         detail =
           `Küme yeterince katılmadı (en az ${p.minVotesPerCluster} kabul/red oyu toplanamadı); uzatmadan sonra nötr sayıldı ve köprü tabanından muaf tutuldu. ` +
-          `Bilgi: ${formula} ${passes ? "≥" : "<"} ${fmtRat(p.clusterFloor)}${passes ? "." : "; muafiyet olmasaydı bu grup tabanın altında kalırdı."}`;
+          `Bilgi: ${formula} ${passes ? "≥" : "<"} ${shown.bound}${passes ? "." : "; muafiyet olmasaydı bu grup tabanın altında kalırdı."}`;
       } else if (cr.yes + cr.no < p.minVotesPerCluster) {
         detail = `Küme yeterince katılmadı; oylama bir kez uzatılır. ${formula}`;
       }
@@ -302,8 +318,8 @@ export function decide(input: DecisionInput): DecisionResult {
         key: `bridge:${cr.clusterId}`,
         label,
         passed,
-        value: `P=${fmtRatVs(pg, p.clusterFloor)} (${cr.yes} kabul / ${cr.no} red)`,
-        required: `≥ ${fmtRat(p.clusterFloor)}`,
+        value: `P=${shown.value} (${cr.yes} kabul / ${cr.no} red)`,
+        required: `≥ ${shown.bound}`,
         detail,
       });
     }
@@ -316,14 +332,15 @@ export function decide(input: DecisionInput): DecisionResult {
     const c = perCluster[input.authorClusterId] ?? { yes: 0, no: 0, abstain: 0 };
     const pa = laplaceSupport(c.yes, c.no);
     authorOk = ratGe(pa, p.authorClusterFloor);
+    const shown = fmtRatVs(pa, p.authorClusterFloor);
     checks.push({
       key: "author_cluster",
       // Grup adı etikette anılmaz: yazarın görüş grubu özel nitelikli veridir (KVKK.md §4.3). authorClusterId yalnız
       // yeniden sayım için TALLY'de durur (zorunlu istisna).
       label: "Mesaj yazarının kendi görüş grubu",
       passed: authorOk,
-      value: `P=${fmtRatVs(pa, p.authorClusterFloor)} (${c.yes} kabul / ${c.no} red)`,
-      required: `≥ ${fmtRat(p.authorClusterFloor)}`,
+      value: `P=${shown.value} (${c.yes} kabul / ${c.no} red)`,
+      required: `≥ ${shown.bound}`,
       detail: "Silme kararı, yazarın kendi görüş grubunun çoğunluğu karşı çıkıyorsa geçemez.",
     });
   }
@@ -371,7 +388,7 @@ export function decide(input: DecisionInput): DecisionResult {
   } else if (input.round === 1) {
     if (!thresholdMet) {
       outcome = "reject";
-      reason = `Onay oranı (${fmtApprovalVs(Y, Y + N, threshold)}) gerekli eşiğin (${strict ? ">" : "≥"} ${ratToPercent(threshold)}) altında kaldı.`;
+      reason = `Onay oranı (${shownApproval.value}) gerekli eşiğin (${strict ? ">" : "≥"} ${shownApproval.bound}) altında kaldı.`;
     } else if (bridgeMet === false) {
       outcome = "contested";
       const failing = clusters.filter((c) => c.passed === false).map((c) => c.label);
@@ -380,7 +397,7 @@ export function decide(input: DecisionInput): DecisionResult {
     } else {
       outcome = "accept";
       reason = !bridgeApplicable
-        ? `Nitelikli çoğunluk (${fmtApprovalVs(Y, Y + N, threshold)} ≥ ${ratToPercent(threshold)}) sağlandı (soğuk başlangıç).`
+        ? `Nitelikli çoğunluk (${shownApproval.value} ≥ ${shownApproval.bound}) sağlandı (soğuk başlangıç).`
         : neutralNames.length === 0
           ? `Genel onay (${fmtPct(approval)}) ve tüm anlamlı görüş gruplarında köprü desteği sağlandı.`
           : neutralNames.length >= significant.length
@@ -391,19 +408,20 @@ export function decide(input: DecisionInput): DecisionResult {
     const rv = input.revote!;
     if (rv.origin === "contested") {
       overrideMet = fracAtLeast(Y, Y + N, p.overrideThreshold);
+      const shown = fmtApprovalVs(Y, Y + N, p.overrideThreshold);
       checks.push({
         key: "override",
         label: "Aşma eşiği (yeniden oylama)",
         passed: overrideMet,
-        value: fmtApprovalVs(Y, Y + N, p.overrideThreshold),
-        required: `≥ ${ratToPercent(p.overrideThreshold)}`,
+        value: shown.value,
+        required: `≥ ${shown.bound}`,
         detail: "Köprü testi yeniden sağlanamazsa nitelikli çoğunluk tabanı aşabilir; azınlığın gücü erteleyicidir.",
       });
       const pass = (thresholdMet && bridgeMet !== false) || overrideMet;
       outcome = pass ? "accept" : "reject";
       reason = pass
         ? overrideMet && !(thresholdMet && bridgeMet !== false)
-          ? `Yeniden oylamada aşma eşiği (${ratToPercent(p.overrideThreshold)}) sağlandı.`
+          ? `Yeniden oylamada aşma eşiği (${shown.bound}) sağlandı.`
           : neutralNames.length === 0
             ? "Yeniden oylamada genel onay ve köprü desteği sağlandı."
             : `Yeniden oylamada genel onay sağlandı; köprü desteği yalnız yeterince katılan anlamlı gruplarda arandı (${neutralNames.join(", ")} nötr sayıldı).`
@@ -411,20 +429,21 @@ export function decide(input: DecisionInput): DecisionResult {
     } else {
       const rho = rv.strongObjection ? ratMax(p.revoteThreshold, rat(2, 3)) : p.revoteThreshold;
       const met = fracAtLeast(Y, Y + N, rho);
+      const shown = fmtApprovalVs(Y, Y + N, rho);
       checks.push({
         key: "revote_threshold",
         label: "Yeniden oylama eşiği (itiraz sonrası)",
         passed: met,
-        value: fmtApprovalVs(Y, Y + N, rho),
-        required: `≥ ${ratToPercent(rho)}`,
+        value: shown.value,
+        required: `≥ ${shown.bound}`,
         detail: rv.strongObjection
           ? "İtiraz, ilgili kümenin üyelerinin en az 2/3'ünce imzalandığı için eşik 2/3'e yükseltildi."
           : "Küme tabanları bu turda uygulanmaz, yalnızca gösterilir.",
       });
       outcome = met ? "accept" : "reject";
       reason = met
-        ? `İtiraz sonrası yeniden oylamada ${ratToPercent(rho)} eşiği sağlandı.`
-        : `İtiraz sonrası yeniden oylamada ${ratToPercent(rho)} eşiği sağlanamadı.`;
+        ? `İtiraz sonrası yeniden oylamada ${shown.bound} eşiği sağlandı.`
+        : `İtiraz sonrası yeniden oylamada ${shown.bound} eşiği sağlanamadı.`;
     }
   }
 
@@ -613,6 +632,11 @@ export function decisionInputFromTally(tally: TallyPayload, reveals: RevealEntry
 /**
  * Defterdeki TALLY + BALLOT_REVEAL'den sonucu bağımsızca yeniden hesaplar.
  * Ayrıca (commitments verilmişse) her açıklanan doğrudan oyun, defterdeki SON VOTE_COMMIT ile eşleştiğini denetler.
+ *
+ * Yapısal denetimler (ALGORITMA.md §11, §12): açıklanan pusula sayısı uygun seçmen sayısını (|E|) aşamaz; defterde taahhüdü
+ * (VOTE_COMMIT) olan bir pusula vekâletle (`via` ≠ "direct") açıklanamaz — doğrudan oy her zaman önceliklidir (§5.1) ve sunucu
+ * yalnız pusulası olmayan seçmen için vekâlet açıklaması üretir. Bu denetim olmasa sahte bir bülten, taahhütlü bir oyu yalnız
+ * `via` etiketini değiştirerek taahhüt karşılaştırmasının dışına çıkarıp seçimini değiştirebilirdi.
  */
 export function verifyTally(
   tally: TallyPayload,
@@ -626,6 +650,9 @@ export function verifyTally(
     ids.add(r.ballotId);
   }
   const unique = reveals.filter((r, i) => reveals.findIndex((x) => x.ballotId === r.ballotId) === i);
+  if (typeof tally.eligibleCount === "number" && unique.length > tally.eligibleCount) {
+    mismatches.push(`Açıklanan oy sayısı (${unique.length}) uygun seçmen sayısını (${tally.eligibleCount}) aşıyor`);
+  }
   let recomputed: DecisionResult;
   let recomputeError: string | null = null;
   try {
@@ -649,7 +676,12 @@ export function verifyTally(
 
   if (commitments) {
     for (const r of unique) {
-      if (r.via !== "direct") continue;
+      if (r.via !== "direct") {
+        if (Object.prototype.hasOwnProperty.call(commitments, r.ballotId)) {
+          mismatches.push(`Defterde taahhüdü olan pusula vekâletle açıklanmış (doğrudan oy önceliklidir): ${r.ballotId.slice(0, 12)}…`);
+        }
+        continue;
+      }
       const c = commitments[r.ballotId];
       if (!c) {
         mismatches.push(`Doğrudan oyun taahhüdü defterde yok: ${r.ballotId.slice(0, 12)}…`);

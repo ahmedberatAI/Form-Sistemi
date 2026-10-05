@@ -177,7 +177,7 @@ rol yalnız **doğrulanmış** hesapta sayılır (bkz. yukarıda);
 | `useDebounced(value, ms)` | Canlı ön denetim / arama için. |
 | `useQueryState(key, default)` | URL sorgu parametresine bağlı durum (ör. sekme): `const [tab, setTab] = useQueryState("sekme", "acik")`. Aynı olayda birden çok anahtar güncellenebilir; güncellemeler birbirini ezmez. |
 | `useInterval(fn, delay \| null)` (`lib/hooks`) | `setInterval` sarmalayıcısı; **şu an hiçbir bileşen kullanmıyor** (yoklama `useAsync({pollMs})` ve AuthContext zamanlayıcılarıyla yapılır). |
-| `useDocumentTitle(title)` (`ui`) | `PageHeader` zaten ayarlar. |
+| `useDocumentTitle(title)` (`ui`) | `PageHeader` zaten ayarlar. Bileşen sökülünce başlık "Forum Sistemi"ne döner (başlıksız ekranda önceki sayfanın adı kalmaz). |
 
 ## lib yardımcıları
 
@@ -223,7 +223,10 @@ rol yalnız **doğrulanmış** hesapta sayılır (bkz. yukarıda);
 
 | Bileşen | Prop'lar |
 |---|---|
-| `Button` | `variant?: "primary"\|"secondary"\|"danger"\|"ghost"` (vars. secondary), `size?: "sm"\|"md"`, `loading?`, `block?`, `icon?: IconName` + tüm `<button>` prop'ları (`type` vars. "button") |
+| `Button` | `variant?: "primary"\|"secondary"\|"danger"\|"ghost"` (vars. secondary), `size?: "sm"\|"md"`, `loading?`, `block?`, `icon?: IconName` + tüm `<button>` prop'ları (`type` vars. "button"). `loading` iken düğme yerel `disabled` OLMAZ (odak belgeye düşerdi): `aria-disabled` + `aria-busy`, tıklama ve Enter ile örtük form gönderimi yok sayılır. Eylem düğmeyi kaldırıyorsa odağı bilerek anlamlı bir öğeye taşıyın (ör. VotePanel makbuz satırı, SponsorPanel "desteklediniz" satırı). |
+| `LiveStatus` | `message`, `delayMs?` (vars. 500): görünmez, sürekli DOM'da duran `role="status"` bölgesi; odak değişmeden değişen sonuçları (arama "sonuç yok", liste sayısı) ekran okuyucuya duyurur (WCAG 4.1.3). Koşullu çizilen boş duruma rol vermek yerine bunu kullanın. |
+| `ScrollPre` | `label`, `children`: kaydırılabilir `<pre class="sy-pre">` (işlem yükü, Turtle dökümü); `tabIndex=0` + `role="region"` + ad ile klavyeyle kaydırılabilir (WCAG 2.1.1). |
+| `PageErrorView` | `error`, `onRetry?`, `subject` ("Öneri", "Konu", "Üye"): sayfa düzeyi yükleme hatası; görünür h1 "<subject> bulunamadı/yüklenemedi" + `ErrorView`. |
 | `LinkButton` | `to` + `variant`, `size`, `block`, `icon` (react-router `Link`) |
 | `Card` | `title?`, `subtitle?`, `actions?`, `footer?`, `tone?: "default"\|"muted"\|"action"\|"warning"\|"danger"\|"success"\|"accent"` (`action` = ince mavi kenar, kullanıcıdan eylem bekleyen panel; `accent` YALNIZ YZ), `headingLevel?: 2\|3\|4`, `id?`. Katlanabilir: `collapsible?` (başlık `aria-expanded` düğmesi olur; `title` düz metin), `defaultOpen?` (verilmezse sade kipte kapalı, tam kipte açık), `openInFull?`, `summary?` (başlığın dışında tek satır hüküm, kapalıyken görünür), `summaryTone?`, `anchor?` (`?bolum=` çapası). Gövde DOM'da kalır (`hidden`). e2e'nin içine baktığı kartlar katlanmaz. |
 | `Badge` | `tone?: "neutral"\|"info"\|"success"\|"warning"\|"danger"\|"accent"`, `icon?`, `title?` |
@@ -339,7 +342,7 @@ Keşfet'in yedi bileşeni ve yedi adımının her bağlantısı, erişim yollar�
 - **Bileşen sınıfları** (bileşenler kendi sınıflarını verir; elle de kullanılabilir): `.card`, `.btn .btn-primary …`, `.badge .badge-success …`,
   `.chip`, `.alert .alert-warning …`, `.empty`, `.table-wrap .table`, `.kv`, `.stat`, `.tabs`, `.input`, `.form-section` (`<fieldset>` + `<legend>`),
   `.form-grid` (mobilde 1, ≥ 640 px'de 2 sütun), `.form-actions`, `.consent-box`, `.ai-block`, `.hash`, `.diff`, `.countdown`.
-- **Renk değişkenleri** (özel bileşenler için): `--bg --surface --surface-2 --surface-3 --border --border-strong --text --text-muted --primary --primary-soft
+- **Renk değişkenleri** (özel bileşenler için): `--bg --surface --surface-2 --surface-3 --border --border-strong --input-border --text --text-muted --primary --primary-soft
   --success(-soft) --warning(-soft) --danger(-soft) --info(-soft) --accent(-soft) --radius --radius-sm --shadow`. Koyu tema bu değişkenleri değiştirir;
   sabit renk kullanmayın.
 
@@ -385,8 +388,9 @@ Bekleyen hesap, oturum süresi dolması ve bağlantı hatası şeritleri otomati
 Gezinme öğesi `topNav: false` ise (Keşfet ve doğrula sayfası) masaüstü üst gezinmede yoktur; 'Daha fazla' sayfasında 'Keşfet ve doğrula' grubunun sonunda ve alt bilgide bağlantısı vardır. 'Ana sayfa' bağlantısında görev sayısı rozeti (`lib/taskStore`).
 Masaüstü üst gezinmede 'Katılım' ile 'Keşfet ve doğrula' grupları arasında görsel ayraç (`span.nav-divider`, aria-hidden) vardır; öğe ve etiketler aynıdır. 'Daha fazla' sayfasının
 en altındaki 'Sistem durumu' bloğu (`SystemStatus`, veri `auth.system`; satırların biçimi `nav.ts › systemRows`) masaüstü alt bilgisinin mobildeki karşılığıdır: her sayfadan 1 dokunuşla defter,
-YZ kipi, simüle saat, yönetmelik ve istemci sürümü. Sabit başlık yüksekliği `--sticky-h` (= `--header-h` + masaüstünde gezinme satırı `--nav-h`); `?bolum=` hedefleri
-`scroll-margin-top: calc(var(--sticky-h) + 12px)` ile bunun altında kalmaz (yeni kaydırma hedefi eklerken aynı kuralı kullanın).
+YZ kipi, simüle saat, yönetmelik ve istemci sürümü. Sabit başlık yüksekliği `--sticky-h` (= `--header-h` + masaüstünde gezinme satırı `--nav-h`); `html` üzerindeki
+`scroll-padding-top` (ve alt gezinmenin göründüğü < 900 px'de `scroll-padding-bottom`) klavye odağının ve `?bolum=` hedeflerinin yapışkan çubukların altında kalmamasını
+sağlar (WCAG 2.4.11). Kaydırma hedefleri yalnız `scroll-margin-top: 12px` nefes payı ekler; üst çubuğun yüksekliğini yeniden eklemeyin (çift pay olur).
 
 | Yol | Sayfa | Koruma |
 |---|---|---|

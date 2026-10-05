@@ -474,6 +474,10 @@ export interface GraphQuery {
 export interface LedgerTxListQuery {
   type?: LedgerTxType;
   proposalId?: string;
+  /** Yalnız bu pusulanın işlemleri (yük alanı `ballotId`); `proposalId` ile birlikte verilir. */
+  ballotId?: string;
+  /** Yalnız bu turun işlemleri (yük alanı `round`); `proposalId` ile birlikte verilir. */
+  round?: number;
   limit?: number;
 }
 
@@ -520,6 +524,11 @@ export interface ClockAdvanceRequest {
 export interface TickResponse {
   transitions: { proposalId: string; seq: number; from: ProposalStatus; to: ProposalStatus; reason: string }[];
   now: number;
+  /**
+   * true: isteğin süre bütçesi (yaklaşık 20 sn) doldu ve vadesi gelmiş geçişler henüz bitmedi; kalanlar zamanlayıcıyla (ya da yeni
+   * bir "tick" isteğiyle) sürer. Yalnız gerektiğinde bulunur.
+   */
+  pending?: boolean;
 }
 
 // ───────────── Genel ─────────────

@@ -66,7 +66,8 @@ export function publicUsers(core: ForumCore, rows: PublicUserRow[]): PublicUser[
   );
   return rows.map((r) => {
     const e = experts.get(r.id);
-    const active = e?.status === "active";
+    // Hesabı kapanmış üye bilirkişi görünmez (bkz. identity/users.ts toPublicUser).
+    const active = e?.status === "active" && r.status !== "erased" && r.status !== "rejected";
     return {
       id: r.id,
       nickname: r.nickname,

@@ -64,8 +64,8 @@ export function registerLedgerRoutes(app: FastifyInstance, { services }: RouteDe
   });
 
   app.get("/api/ledger/txs", async (req): Promise<CommittedTxView[]> => {
-    const { type, proposalId, limit } = parseQuery(txsQuery, req.query);
-    return ledger.findTxs({ type, proposalId, limit: limit ?? 50 });
+    const { type, proposalId, ballotId, round, limit } = parseQuery(txsQuery, req.query);
+    return ledger.findTxs({ type, proposalId, ballotId, round, limit: limit ?? 50 });
   });
 
   app.get("/api/ledger/txs/:hash", async (req): Promise<CommittedTxView> => {

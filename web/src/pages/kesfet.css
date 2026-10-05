@@ -9,7 +9,7 @@
 
 .kesfet {
   /* ?bolum= ile gelinen sözlük terimi sabit başlığın altında kalmasın (bölümler ve Details için styles.css'te aynı kural var) */
-  --kesfet-scroll-margin: calc(var(--sticky-h) + env(safe-area-inset-top, 0px) + 12px);
+  --kesfet-scroll-margin: 12px; /* üst çubuğun payı html scroll-padding-top'ta (styles.css) */
 }
 
 /* 'Bu sayfada' kısa yolları: tek satır, sarmalı (360 px'de taşmaz) */

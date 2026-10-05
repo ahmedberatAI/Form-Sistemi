@@ -91,10 +91,20 @@ export function Tick({ ok, label, className }: { ok: boolean | null | undefined;
 /** Tartışmadaki mesajın DOM kimliği (HashRouter kullandığımız için çapa yerine kaydırma yapılır). */
 export const messageAnchorId = (id: string) => `mesaj-${id}`;
 
-/** Mesaja kaydırır ve kısa süre vurgular. Bulunamazsa false. */
+/**
+ * Mesajı görünür yapma isteği: uzun tartışma sayfalanır (ilk ROOT_PAGE_SIZE ileti dizisi); istenen mesaj henüz çizilmediyse
+ * Discussion bu olayı yakalar, mesajın dizisine kadar açar ve olayı preventDefault ile "üstlendim" diye işaretler.
+ */
+export const REVEAL_MESSAGE_EVENT = "forum:reveal-message";
+
+/** Mesaja kaydırır ve kısa süre vurgular. Henüz çizilmemiş (sayfalanmış) mesaj önce açılır. Bulunamazsa false. */
 export function scrollToMessage(id: string): boolean {
   const el = document.getElementById(messageAnchorId(id));
-  if (!el) return false;
+  if (!el) {
+    const handled = !window.dispatchEvent(new CustomEvent(REVEAL_MESSAGE_EVENT, { detail: { id }, cancelable: true }));
+    if (handled) window.setTimeout(() => void scrollToMessage(id), 120);
+    return handled;
+  }
   el.scrollIntoView({ behavior: "smooth", block: "center" });
   el.classList.add("msg-flash");
   window.setTimeout(() => el.classList.remove("msg-flash"), 2200);

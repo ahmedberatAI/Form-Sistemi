@@ -19,6 +19,7 @@ import {
 } from "../api/endpoints";
 import { useAuth } from "../auth/AuthContext";
 import { KvkkNotice } from "../components/KvkkNotice";
+import { nicknameError } from "../components/RegistrationForm";
 import { UserLink } from "../components/UserLink";
 import { DomainChips } from "../components/community/DomainChips";
 import { DelegationForm, OutgoingDelegations, useScopeLabel } from "../components/community/delegation";
@@ -678,7 +679,9 @@ function NicknameCard({ me }: { me: Me }) {
     e.preventDefault();
     const next = nickname.normalize("NFKC").trim();
     const errs: Record<string, string> = {};
-    if (next.length < 3 || next.length > 32) errs.nickname = "Takma ad 3–32 karakter olmalıdır.";
+    // Kayıt formuyla aynı kural (sunucudaki nicknameSchema): uzunluk, izinli karakterler, en az bir harf ya da rakam.
+    const ruleError = nicknameError(next);
+    if (ruleError) errs.nickname = ruleError;
     else if (next === me.nickname) errs.nickname = "Yeni takma ad mevcut takma adınızla aynı.";
     if (!password) errs.password = "Şifrenizi yazın.";
     setErrors(errs);

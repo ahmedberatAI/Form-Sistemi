@@ -15,7 +15,10 @@ export function rateLimitedError(ttlMs: number): AppError {
   return new AppError(429, "rate_limited", `Çok fazla istek gönderdiniz. Lütfen ${sec} saniye sonra tekrar deneyin.`, { retryAfterSeconds: sec });
 }
 
-/** Fastify'ın kendi (içerik türü, gövde boyutu vb.) hatalarını Türkçe tek tip hataya çevirir. */
+/**
+ * Fastify'ın kendi (içerik türü, gövde boyutu vb.) hatalarını Türkçe tek tip hataya çevirir. 405 dalı yoktur: yönlendirici kayıtlı
+ * bir yola desteklenmeyen yöntemle gelen isteği eşleşmeyen yol sayar ve 404 not_found verir (docs/API.md "Hata kodları").
+ */
 function fromFastifyError(err: FastifyError): AppError | null {
   const status = typeof err.statusCode === "number" ? err.statusCode : 0;
   if (status < 400 || status >= 500) return null;
@@ -43,8 +46,6 @@ function fromFastifyError(err: FastifyError): AppError | null {
       return new AppError(403, "forbidden", "Bu işlem için yetkiniz yok.");
     case 404:
       return new AppError(404, "not_found", "İstenen kaynak bulunamadı.");
-    case 405:
-      return new AppError(405, "method_not_allowed", "Bu yöntem bu adreste desteklenmiyor.");
     case 413:
       return new AppError(413, "payload_too_large", "İstek gövdesi çok büyük (en fazla 1 MB).");
     case 415:
@@ -53,6 +54,21 @@ function fromFastifyError(err: FastifyError): AppError | null {
       return rateLimitedError(60_000);
     default:
       return new AppError(status, "bad_request", "İstek işlenemedi.");
+  }
+}
+
+/**
+ * Yönlendirici (find-my-way) hataları setErrorHandler'a uğramaz; Fastify bunları `frameworkErrors` seçeneğine verir. Hepsi
+ * belgelenen tek tip gövdeye çevrilir: bozuk yüzde kodlaması ve sınırı aşan yol parametresi 400 validation, gerisi 500.
+ */
+export function fromFrameworkError(err: FastifyError): AppError {
+  switch (err.code) {
+    case "FST_ERR_BAD_URL":
+      return new AppError(400, "validation", "Geçersiz URL: adres bozuk bir yüzde kodlaması (%) içeriyor.");
+    case "FST_ERR_MAX_PARAM_LENGTH":
+      return new AppError(400, "validation", "Geçersiz URL: adresteki bir parametre (kimlik) çok uzun.");
+    default:
+      return new AppError(500, "internal", INTERNAL_MESSAGE);
   }
 }
 

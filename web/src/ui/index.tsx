@@ -10,6 +10,9 @@ export {
   Spinner,
   Alert,
   EmptyState,
+  LiveStatus,
+  ScrollPre,
+  APP_TITLE,
   ProgressBar,
   PageHeader,
   Section,
@@ -76,7 +79,7 @@ export { AiLabel } from "./AiLabel";
 export type { AiLabelProps } from "./AiLabel";
 export { HashText, CopyButton, copyToClipboard } from "./HashText";
 export type { HashTextProps, CopyButtonProps } from "./HashText";
-export { ErrorView, describeDetails } from "./ErrorView";
+export { ErrorView, PageErrorView, describeDetails } from "./ErrorView";
 export type { ErrorViewProps } from "./ErrorView";
 export { DiffView } from "./DiffView";
 export type { DiffViewProps } from "./DiffView";

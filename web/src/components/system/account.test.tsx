@@ -245,9 +245,10 @@ describe("VoteRightCard", () => {
     expect(namesOf(pending, "button")).toEqual(["Siyasi görüş rızası ver"]);
   });
 
-  it("rıza isteği sürerken düğme kilitli (aria-busy)", () => {
+  it("rıza isteği sürerken düğme kilitli (aria-busy + aria-disabled); yerel disabled yok, odak düğmede kalır (WCAG 2.4.3)", () => {
     const html = render(<VoteRightCard me={me({ politicalConsent: false })} busy />);
-    expect(html).toMatch(/<button[^>]*disabled=""[^>]*aria-busy="true"/);
+    expect(html).toMatch(/<button[^>]*aria-busy="true"[^>]*aria-disabled="true"/);
+    expect(html).not.toMatch(/<button[^>]*\sdisabled=""/);
   });
 
   it("düğme adı e2e'nin aradığı dizeleri içermez", () => {

@@ -83,3 +83,57 @@ export function composerIsOpen(o: { mode: ComposerMode; hasText: boolean; choice
   if (o.hasText) return true;
   return o.choice ?? o.defaultOpen;
 }
+
+// ───────────────────────── Uzun tartışma: kararlı nesneler ve sayfalama ─────────────────────────
+
+/** Uzun tartışmada ilk çizilen ileti dizisi (kök mesaj) sayısı; fazlası "Daha fazla göster" ile açılır. */
+export const ROOT_PAGE_SIZE = 50;
+
+export interface MessageCache {
+  key: string;
+  byId: Map<string, { sig: string; m: MessageView }>;
+  last: MessageView[] | null;
+}
+
+export const newMessageCache = (key: string): MessageCache => ({ key, byId: new Map(), last: null });
+
+/**
+ * Yoklamada DEĞİŞMEYEN mesajın önceki nesnesini korur (memo'lu MessageItem yeniden çizilmez). Hiçbir mesaj değişmediyse önceki
+ * dizinin kendisi döner (dizi kimliği aynı: üst bileşene "mesajlar değişti" bildirilmez). Saf değil: önbelleği günceller.
+ */
+export function stabilizeMessages(cache: MessageCache, next: readonly MessageView[]): MessageView[] {
+  let changed = cache.last === null || cache.last.length !== next.length;
+  const seen = new Set<string>();
+  const out = next.map((m, i) => {
+    seen.add(m.id);
+    const sig = JSON.stringify(m);
+    const prev = cache.byId.get(m.id);
+    if (prev && prev.sig === sig) {
+      if (!changed && cache.last![i] !== prev.m) changed = true;
+      return prev.m;
+    }
+    changed = true;
+    cache.byId.set(m.id, { sig, m });
+    return m;
+  });
+  for (const id of cache.byId.keys()) if (!seen.has(id)) cache.byId.delete(id);
+  if (!changed && cache.last) return cache.last;
+  cache.last = out;
+  return out;
+}
+
+/** Mesajın bağlı olduğu kök mesajın (ileti dizisinin) `roots` içindeki sırası; mesaj yoksa -1. */
+export function rootIndexOf(id: string, roots: readonly Pick<MessageView, "id">[], byId: ReadonlyMap<string, Pick<MessageView, "parentId">>): number {
+  let cur = id;
+  for (let guard = 0; guard < 10_000; guard++) {
+    const parent = byId.get(cur)?.parentId;
+    if (!parent || !byId.has(parent)) break;
+    cur = parent;
+  }
+  return roots.findIndex((r) => r.id === cur);
+}
+
+/** Gösterilecek kök sayısı: sayfa sınırı; derin bağlantı (?mesaj=) ya da alıntı hedefinin dizisini de içerecek kadar genişler. */
+export function visibleRootCount(total: number, limit: number, mustIncludeIndex = -1): number {
+  return Math.min(total, Math.max(limit, mustIncludeIndex + 1));
+}

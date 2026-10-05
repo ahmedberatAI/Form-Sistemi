@@ -145,7 +145,14 @@ describe("kimlik verisi düzeltme talebi", () => {
     e = await expectAppError(() => identity.requestCorrection(userId, { changes: {}, reason: "Herhangi bir şey yazıyorum." }), 400, "validation");
     expect(e.details).toHaveProperty("changes");
     await expectAppError(() => identity.requestCorrection(userId, { changes: { firstName: "Ayşe" }, reason: "Adım zaten bu, deneme." }), 400, "validation");
-    await expectAppError(() => identity.requestCorrection(userId, { changes: { email: otherEmail }, reason: "E-posta adresimi güncellemek istiyorum." }), 409, "duplicate_email");
+    // Yinelenen e-posta talep anında REDDEDİLMEZ (üyeye dönen 409 bir üyelik kâhini olurdu, KVKK.md §4.4): talep açılır, çakışma
+    // yalnız denetim günlüğüne yazılır ve kayıt memuru karar anında 409 duplicate_email alır (kasa değişmez).
+    const dup = identity.requestCorrection(userId, { changes: { email: otherEmail }, reason: "E-posta adresimi güncellemek istiyorum." });
+    expect(dup.status).toBe("pending");
+    expect(s.ctx.db.get("SELECT 1 FROM audit_log WHERE action = 'identity.duplicate_attempt' AND actor_id = ?", userId)).toBeTruthy();
+    identity.reviewCorrection(registrarId, dup.id, "Üyenin bilgi düzeltme talebi");
+    await expectAppError(() => identity.decideCorrection(registrarId, dup.id, "approve"), 409, "duplicate_email");
+    expect(identity.withdrawCorrection(userId, dup.id).status).toBe("withdrawn");
 
     const req = identity.requestCorrection(userId, { changes: { lastName: "Kaya" }, reason: "Soyadım mahkeme kararıyla değişti." });
     await expectAppError(() => identity.requestCorrection(userId, { changes: { lastName: "Arslan" }, reason: "İkinci bir talep açmaya çalışıyorum." }), 409, "correction_pending");

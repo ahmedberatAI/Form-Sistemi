@@ -141,6 +141,22 @@ const CASES: [keyof FormState, string, string][] = [
   ["password", "12345678", "harfsiz"],
   ["password", `a1${rep("x", 126)}`, "128"],
   ["password", `a1${rep("x", 127)}`, "129"],
+  // Test döngüsü tur 1: yalnız noktalama/ayraçtan oluşan ad, takma ad ve adres alanları (sunucudaki "en az bir harf/rakam" kuralı).
+  ["firstName", "-", "yalnız tire"],
+  ["firstName", ". .", "yalnız nokta ve boşluk"],
+  ["firstName", "́́", "yalnız birleştirici işaret"],
+  ["lastName", "'", "yalnız kesme işareti"],
+  ["lastName", "Ö-z", "harf + tire"],
+  ["nickname", "...", "yalnız nokta"],
+  ["nickname", "-_-", "yalnız ayraç"],
+  ["nickname", "_a_", "ayraç + tek harf"],
+  ["nickname", "_1_", "ayraç + tek rakam"],
+  ["il", "..", "il yalnız nokta"],
+  ["ilce", "--", "ilçe yalnız tire"],
+  ["mahalle", "  ..  ", "mahalle yalnız nokta"],
+  ["acikAdres", ".....", "açık adres yalnız nokta"],
+  ["acikAdres", "No 12", "açık adres harf + rakam"],
+  ["il", "06", "il yalnız rakam (plaka)"],
 ];
 
 describe("kayıt formu ↔ sunucu kuralları: aynı girdi için aynı alanlar reddedilir", () => {
@@ -216,5 +232,25 @@ describe("hata iletileri (kullanıcıya gösterilen)", () => {
     expect(msg("acikAdres", { acikAdres: "" })).toBe("Açık adres zorunludur.");
     expect(msg("email", { email: `${rep("x", 250)}@b.co` })).toBe("E-posta adresi çok uzun.");
     expect(msg("email", { email: "a@b" })).toBe("Geçerli bir e-posta adresi girin.");
+  });
+
+  it("yalnız noktalama/ayraçtan oluşan ad, takma ad ve adres sunucuyla aynı iletiyle reddedilir", () => {
+    expect(msg("firstName", { firstName: "-" })).toBe("Ad en az bir harf içermelidir.");
+    expect(msg("lastName", { lastName: "'" })).toBe("Soyad en az bir harf içermelidir.");
+    expect(msg("nickname", { nickname: "..." })).toBe("Takma ad en az bir harf ya da rakam içermelidir.");
+    expect(msg("il", { il: ".." })).toBe("İl en az bir harf ya da rakam içermelidir.");
+    expect(msg("acikAdres", { acikAdres: "....." })).toBe("Açık adres en az bir harf ya da rakam içermelidir.");
+    // Sunucu aynı iletileri verir (details alan → ileti).
+    const server = (over: Partial<FormState>): Record<string, string> => {
+      try {
+        parseRegistration(rawInput({ ...base, ...over }), NOW);
+        return {};
+      } catch (e) {
+        return (e as { details?: Record<string, string> }).details ?? {};
+      }
+    };
+    expect(server({ firstName: "-" }).firstName).toBe("Ad en az bir harf içermelidir.");
+    expect(server({ nickname: "..." }).nickname).toBe("Takma ad en az bir harf ya da rakam içermelidir.");
+    expect(server({ il: ".." })["address.il"]).toBe("İl en az bir harf ya da rakam içermelidir.");
   });
 });

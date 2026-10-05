@@ -156,6 +156,39 @@ export class InProcessLedger implements LedgerService {
     for (const n of this.nodes) n.start(this.transport);
     for (const p of this.pending.values()) this.deliver(p.tx);
     this.scheduleTick();
+    // Diskten yüklenen zincir: tam doğrulama önbelleği bellektedir ve yeniden başlatmada boştur. Kimliksiz GET /api/ledger/verify'ın
+    // ilk (soğuk) çağrısı tüm imzaları olay döngüsünde doğrulayıp sunucuyu dondurmasın diye önbellek arka planda, olay döngüsüne
+    // düzenli olarak yol vererek ısıtılır. Isıtma bitmeden gelen istek yalnız kalan blokları doğrular.
+    if (this.nodes.some((n) => n.height() > 0)) {
+      const token = { cancelled: false };
+      this.warmup = token;
+      void this.warmVerification(token);
+    }
+  }
+
+  /** Arka plan ısıtmasının bir dilimde olay döngüsünü en çok bu kadar tutması (ms). */
+  private static readonly WARM_SLICE_MS = 10;
+  private warmup: { cancelled: boolean } | null = null;
+
+  private async warmVerification(token: { cancelled: boolean }): Promise<void> {
+    const yieldLoop = () => new Promise<void>((r) => setImmediate(r));
+    await yieldLoop(); // açılışın geri kalanı önce bitsin
+    for (const n of this.nodes) {
+      for (;;) {
+        if (token.cancelled) return;
+        const deadline = performance.now() + InProcessLedger.WARM_SLICE_MS;
+        let done = false;
+        try {
+          do done = n.verifyStep(1);
+          while (!done && performance.now() < deadline);
+        } catch {
+          return; // depo kapandı ya da okunamıyor: ısıtma yalnız bir iyileştirmedir
+        }
+        if (done) break;
+        await yieldLoop();
+      }
+    }
+    if (this.warmup === token) this.warmup = null;
   }
 
   /**
@@ -249,6 +282,10 @@ export class InProcessLedger implements LedgerService {
   }
 
   async stop(): Promise<void> {
+    if (this.warmup) {
+      this.warmup.cancelled = true;
+      this.warmup = null;
+    }
     if (this.stopped) return;
     this.running = false;
     this.stopped = true;
@@ -511,7 +548,7 @@ export class InProcessLedger implements LedgerService {
     return this.canonical().committedTx(txHash);
   }
 
-  findTxs(filter: { type?: LedgerTxType; proposalId?: string; limit?: number }): CommittedTx[] {
+  findTxs(filter: { type?: LedgerTxType; proposalId?: string; ballotId?: string; round?: number; limit?: number }): CommittedTx[] {
     return this.canonical().findTxs(filter);
   }
 

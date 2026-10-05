@@ -14,6 +14,16 @@ const fallbackError: z.core.$ZodErrorMap = (iss) => {
 
 const NICKNAME_RE = /^[A-Za-z0-9çğıöşüÇĞİÖŞÜâîûÂÎÛ._-]{3,32}$/;
 const NAME_RE = /^[\p{L}\p{M}' .-]+$/u;
+/** Ad/soyad en az bir harf içerir ("-", "'", ". ." ya da yalnız birleştirici işaretlerden oluşamaz). */
+const HAS_LETTER = /\p{L}/u;
+/** Takma ad ve adres alanları en az bir harf ya da rakam içerir (yalnız ayraç/noktalama olamaz). */
+const HAS_LETTER_OR_DIGIT = /[\p{L}\p{N}]/u;
+
+/**
+ * Metin alanının tür iletisi: değer hiç verilmemişse (undefined/null) "<alan> zorunludur.", verilmiş ama metin değilse
+ * "<alan> metin olmalıdır." (dolu alana "zorunludur" denmesin; şema düzeyi ileti fallbackError'daki ayrımı ezer).
+ */
+const stringOf = (label: string) => z.string({ error: (iss) => (iss.input === undefined || iss.input === null ? `${label} zorunludur.` : `${label} metin olmalıdır.`) });
 
 export function normalizeNicknameDisplay(nickname: string): string {
   return nickname.normalize("NFKC").trim();
@@ -49,15 +59,13 @@ export function isValidIsoDate(s: string): boolean {
   return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d;
 }
 
-export const passwordSchema = z
-  .string({ error: "Şifre zorunludur." })
+export const passwordSchema = stringOf("Şifre")
   .min(8, { error: "Şifre en az 8 karakter olmalıdır." })
   .max(128, { error: "Şifre en fazla 128 karakter olabilir." })
   .refine((s) => /\p{L}/u.test(s) && /\p{N}/u.test(s), { error: "Şifre en az bir harf ve bir rakam içermelidir." });
 
 const requiredText = (label: string, min: number, max: number) =>
-  z
-    .string({ error: `${label} zorunludur.` })
+  stringOf(label)
     .transform((s) => s.normalize("NFKC").trim().replace(/\s+/g, " "))
     .pipe(
       z
@@ -68,33 +76,45 @@ const requiredText = (label: string, min: number, max: number) =>
     );
 
 const personName = (label: string) =>
-  requiredText(label, 1, 64).refine((s) => NAME_RE.test(s), { error: `${label} yalnızca harf, boşluk, kesme işareti ve tire içerebilir.` });
+  requiredText(label, 1, 64)
+    .refine((s) => NAME_RE.test(s), { error: `${label} yalnızca harf, boşluk, kesme işareti ve tire içerebilir.`, abort: true })
+    .refine((s) => HAS_LETTER.test(s), { error: `${label} en az bir harf içermelidir.` });
+
+/** Adres alanı: uzunluk kuralına ek olarak en az bir harf ya da rakam ("..", "--" gibi yalnız noktalama değil). */
+const addressText = (label: string, min: number, max: number) =>
+  requiredText(label, min, max).refine((s) => HAS_LETTER_OR_DIGIT.test(s), { error: `${label} en az bir harf ya da rakam içermelidir.` });
 
 export const addressSchema = z.object(
   {
-    il: requiredText("İl", 2, 64),
-    ilce: requiredText("İlçe", 2, 64),
-    mahalle: requiredText("Mahalle", 2, 128),
-    acikAdres: requiredText("Açık adres", 5, 500),
+    il: addressText("İl", 2, 64),
+    ilce: addressText("İlçe", 2, 64),
+    mahalle: addressText("Mahalle", 2, 128),
+    acikAdres: addressText("Açık adres", 5, 500),
     postaKodu: z
-      .string()
+      .string({ error: "Posta kodu metin olmalıdır." })
       .transform((s) => s.trim())
       .refine((s) => s === "" || /^\d{5}$/.test(s), { error: "Posta kodu 5 haneli olmalıdır." })
       .optional()
       .transform((s) => (s ? s : undefined)),
   },
-  { error: "Adres bilgileri zorunludur." },
+  {
+    error: (iss) =>
+      iss.input === undefined || iss.input === null
+        ? "Adres bilgileri zorunludur."
+        : "Adres bilgileri il, ilçe, mahalle ve açık adres alanlarını içeren bir nesne olmalıdır.",
+  },
 );
 
 /** Takma ad kuralı (kayıt ve takma ad değişikliği aynı kuralı kullanır). */
-const nicknameSchema = z
-  .string({ error: "Takma ad zorunludur." })
+const nicknameSchema = stringOf("Takma ad")
   .transform(normalizeNicknameDisplay)
   .refine((s) => s.length >= 3 && s.length <= 32, { error: "Takma ad 3–32 karakter olmalıdır." })
   .refine((s) => NICKNAME_RE.test(s), {
     error: "Takma ad yalnızca harf (Türkçe harfler dahil), rakam, nokta, alt çizgi ve tire içerebilir.",
     abort: true,
-  });
+  })
+  // Yalnız ayraçtan ("...", "-_-") oluşan ad: benzerlik iskeleti boşa iner ve sonraki tüm ayraçlı adları "benzer" sayar.
+  .refine((s) => HAS_LETTER_OR_DIGIT.test(s), { error: "Takma ad en az bir harf ya da rakam içermelidir." });
 
 /** Takma ad değişikliği girdisi: kayıt formuyla aynı kural; görüntülenecek (NFKC, kırpılmış) biçimi döndürür. */
 export function parseNickname(raw: unknown, field = "nickname"): string {
@@ -110,22 +130,18 @@ export function registrationSchema(now: number) {
     password: passwordSchema,
     firstName: personName("Ad"),
     lastName: personName("Soyad"),
-    tckn: z
-      .string({ error: "T.C. kimlik numarası zorunludur." })
+    tckn: stringOf("T.C. kimlik numarası")
       .transform((s) => s.trim())
       .refine((s) => /^\d{11}$/.test(s) && isValidTckn(s), { error: "Geçersiz T.C. kimlik numarası." }),
-    birthDate: z
-      .string({ error: "Doğum tarihi zorunludur." })
+    birthDate: stringOf("Doğum tarihi")
       .transform((s) => s.trim())
       .refine(isValidIsoDate, { error: "Doğum tarihi YYYY-AA-GG biçiminde geçerli bir tarih olmalıdır.", abort: true })
       .refine((s) => s < today, { error: "Doğum tarihi geçmişte olmalıdır." })
       .refine((s) => s >= "1900-01-01", { error: "Doğum tarihi geçersiz." }),
-    email: z
-      .string({ error: "E-posta zorunludur." })
+    email: stringOf("E-posta")
       .transform((s) => s.normalize("NFKC").trim())
       .pipe(z.email({ error: "Geçerli bir e-posta adresi girin." }).max(254, { error: "E-posta adresi çok uzun." })),
-    phone: z
-      .string({ error: "Telefon zorunludur." })
+    phone: stringOf("Telefon")
       .refine((s) => normalizePhone(s) !== null, { error: "Telefon numarası 05XX XXX XX XX ya da +90 ile başlayan biçimde olmalıdır.", abort: true })
       .transform((s) => normalizePhone(s) as string),
     address: addressSchema,

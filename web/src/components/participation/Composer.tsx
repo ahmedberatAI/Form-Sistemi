@@ -30,6 +30,18 @@ const STANCE_HINTS: Record<Stance, string> = {
 
 const RISK_TEXT = ["Sorun görülmedi", "Düşük risk", "Orta risk", "Yüksek risk"];
 
+/**
+ * Ön denetim bitince ekran okuyucuya duyurulan kısa özet (WCAG 4.1.3 Durum iletileri): sonuç odak değişmeden belirdiği için
+ * formdaki kalıcı role="status" bölgesine yazılır. Denetim yoksa boş.
+ */
+export function precheckAnnouncement(check: Pick<MessagePrecheckResponse, "risk" | "pii" | "labels"> | null): string {
+  if (!check) return "";
+  const risk = (RISK_TEXT[check.risk] ?? `Risk ${check.risk}`).toLocaleLowerCase("tr-TR");
+  const pii = check.pii.length ? `${check.pii.length} olası kişisel veri ifadesi bulundu` : "kişisel veri bulunmadı";
+  const labels = check.labels.length ? `, ${check.labels.length} içerik uyarısı` : "";
+  return `Ön denetim bitti: ${risk}${labels}; ${pii}. Bu denetim yalnızca uyarıdır.`;
+}
+
 export interface ComposerProps {
   threadType: ThreadType;
   threadId: string;
@@ -217,6 +229,9 @@ export function Composer({ threadType, threadId, mode = "new", parent, message, 
           {error}
         </Alert>
       ) : null}
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {precheckAnnouncement(check)}
+      </div>
       {check ? (
         <AiLabel label={check.aiLabel} offline={check.offline} className="composer-check">
           <div className="stack-sm">

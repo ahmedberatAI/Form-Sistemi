@@ -2,7 +2,7 @@
 import { aiLabel, contentHash, type HiddenMessageResponse, type MessagePrecheckResponse, type MessageVersionView, type MessageView, type PostMessageRequest, type ThreadType } from "@forum/shared";
 import { z } from "zod";
 import type { AuthUser, ModerationResult } from "../core/contracts";
-import { badRequest, conflict, forbidden, notFound, unprocessable } from "../core/errors";
+import { AppError, badRequest, conflict, forbidden, notFound, unprocessable } from "../core/errors";
 import type { MessageService, Viewer } from "../core/forum-contracts";
 import { newId, newSalt } from "../core/ids";
 import { memberToken } from "../core/notification-text";
@@ -11,6 +11,7 @@ import {
   checkLength,
   fieldError,
   groundIsUrgent,
+  hasInactiveRole,
   hasRole,
   jsonList,
   parseInput,
@@ -23,6 +24,9 @@ import {
   type MessageRow,
 } from "./util";
 import { messageViews } from "./views";
+
+/** Rolü olan ama etkin olmayan (bekleyen/askıdaki) hesap: http/auth.ts requireRole ile aynı 403 ve gerekçe. */
+const staffInactive = () => new AppError(403, "forbidden", "Hesabınız etkin değil; yetkili işlem yapamazsınız.", { reason: "inactive" });
 
 const postSchema = z.object({
   body: z.string().max(20000),
@@ -217,6 +221,7 @@ export function createMessageService(core: ForumCore): MessageService {
       const hidden = m.visibility === "hidden" || m.visibility === "sealed";
       if (m.thread_type === "proposal") thread("proposal", m.thread_id, viewer, false);
       if (hidden) {
+        if (hasInactiveRole(viewer, "auditor", "admin")) throw staffInactive();
         if (!hasRole(viewer, "auditor", "admin")) throw forbidden("Gizlenmiş mesajın sürümlerini yalnızca denetçi görebilir.");
         logHiddenAccess(viewer!.id, m, "versions");
       }
@@ -263,6 +268,7 @@ export function createMessageService(core: ForumCore): MessageService {
     },
 
     readHidden(actor: AuthUser, messageId: string): HiddenMessageResponse {
+      if (hasInactiveRole(actor, "auditor", "admin")) throw staffInactive();
       if (!hasRole(actor, "auditor", "admin")) throw forbidden("Gizlenmiş metni yalnızca denetçi okuyabilir.");
       const m = requireRow(messageId);
       if (m.visibility !== "hidden" && m.visibility !== "sealed") throw conflict("invalid_state", "Bu mesaj gizlenmemiş; normal görünümden okunabilir.");

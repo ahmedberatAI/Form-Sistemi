@@ -263,8 +263,10 @@ describe("hesap uçları", () => {
   it('POST /api/me/erase: "SİL" yoksa 400; yanlış şifre 400; doğruysa vekâletler geri alınır ve kripto-imha', async () => {
     const revoke = vi.fn();
     const eraseSelf = vi.fn(async () => undefined);
+    const closeExpert = vi.fn(() => 0);
     const s = stubServices({
       identity: { verifyPassword: async (_u, pw) => pw === "doğru-şifre", eraseSelf },
+      experts: { closeForClosedAccount: closeExpert },
       graph: {
         delegations: (userId?: string) =>
           [
@@ -283,9 +285,12 @@ describe("hesap uçları", () => {
     expect(wrong.statusCode).toBe(400);
     expect(wrong.json().error.code).toBe("wrong_password");
     expect(eraseSelf).not.toHaveBeenCalled();
+    expect(closeExpert).not.toHaveBeenCalled();
     // Ayrışık (NFD) yazılmış "SİL" de NFC'de eşleşir.
     const ok = await app.inject({ method: "POST", url: "/api/me/erase", headers: s.auth(member), payload: { confirm: "SİL", password: "doğru-şifre" } });
     expect(ok.statusCode).toBe(200);
+    // Bilirkişi kaydı aynı işlemde kapatılır (KVKK §6).
+    expect(closeExpert.mock.calls).toEqual([["u-uye"]]);
     expect(revoke.mock.calls).toEqual([
       ["d1", "u-uye"],
       ["d2", "u-y"],

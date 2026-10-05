@@ -93,7 +93,9 @@ Doğrulama (2 Ekim 2026, ikinci tur sonrası):
 
 Kısmi kalanlar:
 - #23: `/api/experts/lint` için ek yetki ve eşzamanlı Claude çağrısı sınırı yok.
-- #29: Açık metin trafiği ve sunucu adresi değişince belirteç silme demo için bırakıldı.
+- #29: Açık metin trafiği demo için bırakıldı. Sunucu adresi değişince belirteç silme sonradan eklendi (test döngüsü tur 1):
+  Ayarlar önce eski sunucuda oturumu kapatır, sonra adresi değiştirir; `client.setServerUrl` de bellekteki ve cihazdaki belirteci
+  unutur, `AuthContext` oturumu kapatır. Eski sunucunun belirteci yeni adrese hiç gönderilmez.
 
 ## 3c. Üçüncü tur düzeltmeler (17 sorun)
 
@@ -210,6 +212,49 @@ Doğrulama (5 Ekim 2026, inceleme düzeltmeleri sonrası):
 | Tip denetimi (shared, server, web, e2e) | temiz |
 | Derleme (web) | temiz |
 | e2e | 68/68 (~10 dk) |
+
+## 3e. Test döngüsü tur 1: canlı sunucuda doğrulanmış kusurlar (5 Ekim 2026)
+
+Tohumlanmış geçici veriyle çalışan gerçek sunucular, büyük yapay veri ve tarayıcı taramalarıyla bulunan, yeniden üretilerek doğrulanmış
+kusurlar. Her düzeltme kök nedeninden yapıldı ve bir regresyon testiyle bağlandı; e2e regresyonları `e2e/tests/08-tur1-regresyon.spec.ts`.
+
+| Alan | Kusur | Düzeltme |
+|---|---|---|
+| KVKK | Hesabını silen bilirkişi "etkin bilirkişi" listeleniyor, yeterlilik beyanı düz metin kalıyor, kabul ettiği görev asılı kalıyordu | Silme işleminde aynı `db.tx` içinde kayıt kapanır (`removed`, beyan ve yaptırım notu imha, alanlar `[]`, bekleyen görev yedeğe, `EXPERT_IN` iptal); listeler ve profil kapanmış hesabı süzer; eski veri açılışta onarılır (KVKK §6) |
+| Yetki | Rolü olan ama doğrulanmamış hesap gizli mesajın sürümlerini okuyabiliyordu | `forum/util.ts` `hasRole` doğrulanmış hesap ister; 403 `inactive` |
+| Doğrulama | Bilirkişi alanı olarak keyfî URL/IRI; kapanmış hesaba takip/kefalet/yakınlık; alt konuda eksik `parentTopicId` 404; yalnız noktalama ad/takma ad/adres; dolu alana "zorunludur" | 400 `unknown_domain`; 409 `invalid_state`; 400 `validation` + alan; harf/rakam şartı (sunucu, kayıt formu ve Profil aynı kural); "… metin olmalıdır" |
+| HTTP | Bozuk URL ve uzun parametre Fastify'ın İngilizce gövdesiyle dönüyordu; çerçeveleme koruması yoktu; boş `types=` varsayılan kenarları veriyordu | `frameworkErrors` → tek tip 400 `validation`, `maxParamLength` 256; her yanıtta `X-Frame-Options: DENY` + CSP `frame-ancestors 'none'`; boş liste hiç kenar (istemci de `types=` gönderir) |
+| Güvenlik | Şifre teyidi isteyen uçlar kilitsizdi; şifre değişikliğiyle yarışan giriş iptalden kaçıyordu; tek kullanıcı Idempotency deposunu doldurup başkalarının çift kayıt korumasını düşürebiliyordu; düzeltme talebi üyelik kâhiniydi; Ayarlar'da adres değişince eski belirteç yeni adrese gidiyordu | Üye başına şifre teyidi kilidi (429 `login_locked`); koşullu oturum ekleme; gövde bırakma + kullanıcı başına 4 MB kota; çakışma karar anına taşındı; önce eski sunucuda çıkış, istemci belirteci unutur |
+| Doğruluk | `verifyTally` taahhütlü oyun "vekâletle" yeniden etiketlenmesini ve \|E\|'yi aşan açıklamayı yakalamıyordu; "Oyum kayıtlı mı?" yalnız en yeni 500 taahhüde bakıyordu; tarayıcıdaki sayım doğrulaması hız sınırında sahte "BAŞARISIZ" veriyordu | Yapısal denetimler shared `verifyTally`'de (ALGORITMA §12.23; sunucu, tohum ve tarayıcı aynı işlev); `GET /api/ledger/txs` `ballotId`/`round` süzgeci; blok blok doğrulama, 429/ağ/5xx geçici ("sonuç alınamadı") |
+| Gösterim | Sınıra yakın değer sınıra eşit görünüyordu ("%66,68 ≥ %66,7", "0,30 \| 0,30 ✘"); değişen oy "6 dakika sonra" görünüyordu | Değer ve sınır aynı hassasiyette (sunucu metni ve sonuç kartı); göreli zaman sunucu saatiyle |
+| Başarım | Soğuk `GET /api/ledger/verify` sunucuyu saniyelerce donduruyordu; pano her yoklamada graf istatistiklerini hesaplıyordu; toplu evre geçişi olay döngüsünü kilitliyordu; 2000 mesajlı tartışma yavaş telefonda kullanılamıyordu | Yerel Ed25519 + açılışta arka planda ısınma; önbellekli `permanentLoser`; 10 ms dilimlerle yol verme ve yönetici isteğinde 20 sn bütçe (`pending: true`, arayüzde uyarı); bellekte tutulan ileti nesneleri ve ilk 50 ileti dizisi |
+| Erişilebilirlik | 'Yaşanmadı' evre etiketi ve numarası < 4,5:1; odak yapışkan çubukların altında; sekme panelinde odak çerçevesi yok; yüklenen düğmede odak kayboluyor; durum iletileri duyurulmuyor; alan kenarı < 3:1; bulunamadı sayfasında başlık/h1 yok; kategori hatası bağlı değil; kaydırılabilir yük kutusu odaklanamıyor | Opaklık yok (numara için boş nokta + kesikli çerçeve); `scroll-padding`; `:focus-visible` çerçevesi; `aria-disabled` + bilinçli odak taşıma; `role=status` bölgeleri; `--input-border`; başlık ve h1; `aria-describedby`; `ScrollPre` |
+| Belge ve dağıtım | API.md'de 405 ve `details` iddiaları koda uymuyordu; asgari Node sürümü yanlıştı (22.13–22.15'te `isTransaction` yok); `gradlew` çalıştırılabilir değildi | API.md düzeltildi ve sözleşme testiyle bağlandı; `engines` `^22.16.0 \|\| >=24`, açılışta anlaşılır ileti, CI matrisinde 22.16; `gradlew` 100755 |
+
+Doğrulama (5 Ekim 2026, test döngüsü tur 1 sonrası):
+
+| Kontrol | Sonuç |
+|---|---|
+| Tip denetimi (shared, server, web, e2e) | temiz |
+| Sunucu testleri | 110 dosya, 1094/1094 |
+| Web birim testleri | 54 dosya, 896/896 |
+| Derleme (web) | temiz |
+| e2e | 75/75 (9,8 dk; 8 dosya, yenisi `08-tur1-regresyon`) |
+
+Kalanlar (bilinçli ya da ayrı iş):
+
+- **Kayıtta üyelik sorgulanabilirliği.** `POST /api/auth/register` yinelenen TCKN/e-postayı 409 ile bildirmeye devam eder (KVKK §8.5'te
+  bilinen sınır). Genel bir ileti yetmez; başvuruyu her durumda kabul edip çakışmayı kayıt memuruna işaretlemek kör indeks tekilliğini,
+  ana anahtar dönüşümünü, e-postayla girişi ve kayıt formunu değiştirir: ürün kararı bekliyor. Düzeltme talebi ucu artık kâhin değildir.
+- **Defter okuma bütçesi.** Tarayıcıdaki doğrulama istekleri taahhüt sayısıyla değil blok sayısıyla büyür; 500'lük listenin dışındaki eski
+  taahhütler, doğrulanmış bir bloğu paylaşmıyorsa yine işlem başına bir istek tutar. Toplu kanıt ucu ya da salt okunur defter GET'leri
+  için ayrı hız kovası ayrı iş olarak bırakıldı.
+- **Mesaj listesi sayfalaması.** Sunucuda `messages.list()` hâlâ tüm diziyi döndürür (istemci ilk 50 ileti dizisini çizer); imleçli
+  sayfalama ayrı iş.
+- **Graf istatistikleri.** `/api/graph/stats` ve görselleştirme soğuk önbellekte uzlaşı grafını (Louvain) eşzamanlı hesaplar; panodan
+  ayrıldı, işçi iş parçacığına taşımak ayrı iş. `vote_open` bildirimleri seçmen başına satırdır (şema değişikliği gerektirir).
+- **CORS ön uçuşu.** Ön uçuş başlıkları olmayan `OPTIONS` isteği `@fastify/cors`'un düz metin 400'ünü alır (tek tip gövde değil).
+- Daha önce alınmış yalnız ayraçlı takma adlar (`...`) olduğu gibi kalır; sahibi Profil'den değiştirebilir.
 
 ## 4. Bilinçli olarak ertelenenler
 

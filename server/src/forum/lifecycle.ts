@@ -199,6 +199,19 @@ export function failedProposalIds(ts: readonly Transition[]): string[] {
   return ((ts as { failed?: string[] }).failed ?? []).slice();
 }
 
+/** Tick süre bütçesi dolduğu için bu turda işlenmeyen öneri kaldı mı? (bir sonraki tick sürdürür) */
+export function tickDeferred(ts: readonly Transition[]): boolean {
+  return (ts as { deferred?: boolean }).deferred === true;
+}
+
+/**
+ * Bir tick'in olay döngüsünü kesintisiz tutabileceği en uzun dilim (ms). Vadesi gelen öneriler sırayla işlenir; her biri seçmen
+ * sayısıyla orantılı iş yapar (oylama açılışında seçmen listesi ve bildirimler). Dilim dolunca diğer HTTP isteklerine yol verilir:
+ * toplu geçişler (yönetici "ileri al" ya da kesinti sonrası yetişme) sunucuyu dakikalarca dondurmaz.
+ */
+export const TICK_SLICE_MS = 10;
+const yieldToLoop = (): Promise<void> => new Promise((r) => setImmediate(r));
+
 function withFailed(out: Transition[], failed: string[]): Transition[] {
   // Numaralanamaz: mevcut tüketiciler (toEqual, spread, JSON) diziyi eskisi gibi görür.
   Object.defineProperty(out, "failed", { value: failed, enumerable: false });
@@ -768,12 +781,28 @@ export function createLifecycle(core: ForumCore, parts: LifecycleParts): Lifecyc
     }
   }
 
-  async function runTick(): Promise<Transition[]> {
+  /** budgetMs: bu tick'in en uzun süresi; dolunca kalan öneriler sonraki tick'e kalır (sonuç tickDeferred ile işaretlenir). */
+  async function runTick(budgetMs?: number): Promise<Transition[]> {
+    const started = performance.now();
+    const deadline = budgetMs === undefined ? Number.POSITIVE_INFINITY : started + Math.max(0, budgetMs);
+    let sliceStart = started;
     maintenance(core.now());
     const ids = db.all<{ id: string }>(`SELECT id FROM proposals WHERE status IN ${ACTIVE_SQL} ORDER BY seq ASC`).map((r) => r.id);
     const out: Transition[] = [];
     const failed: string[] = [];
+    let processed = 0;
+    let deferred = false;
     for (const id of ids) {
+      if (performance.now() - sliceStart >= TICK_SLICE_MS) {
+        await yieldToLoop();
+        sliceStart = performance.now();
+      }
+      // En az bir öneri işlenir (ilerleme garantisi); bütçe dolunca kalanlar bir sonraki tick'e kalır.
+      if (processed > 0 && performance.now() >= deadline) {
+        deferred = true;
+        break;
+      }
+      processed++;
       const f = stepFailures.get(id);
       if (f && core.now() < f.nextAt) {
         failed.push(id); // geri çekilme penceresinde: yeniden denenmez, ama hâlâ başarısız sayılır
@@ -791,7 +820,9 @@ export function createLifecycle(core: ForumCore, parts: LifecycleParts): Lifecyc
     const active = new Set(ids);
     for (const id of [...stepFailures.keys()]) if (!active.has(id)) stepFailures.delete(id);
     for (const id of [...drawFailures.keys()]) if (!active.has(id)) drawFailures.delete(id);
-    return withFailed(out, failed);
+    const res = withFailed(out, failed);
+    if (deferred) Object.defineProperty(res, "deferred", { value: true, enumerable: false });
+    return res;
   }
 
   const engine: LifecycleEngine = {
@@ -815,8 +846,8 @@ export function createLifecycle(core: ForumCore, parts: LifecycleParts): Lifecyc
       // Uçuştaki tick/poke bitene kadar beklenir (zincir hiçbir zaman reddedilmez): kapanışta defter/DB bunlardan önce kapanmasın.
       return chain.then(() => undefined);
     },
-    tick(): Promise<Transition[]> {
-      return enqueue(runTick);
+    tick(opts?: { budgetMs?: number }): Promise<Transition[]> {
+      return enqueue(() => runTick(opts?.budgetMs));
     },
     poke(proposalId: string): Promise<Transition[]> {
       return enqueue(async () => {

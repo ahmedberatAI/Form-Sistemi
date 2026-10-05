@@ -21,7 +21,10 @@ Sistemin bileşenleri:
 
 ## 1. Kurulum ve çalıştırma
 
-**Gereksinimler:** Node.js ≥ 22.13 (yerleşik `node:sqlite`; yerel derleme gerekmez), npm ≥ 10. Docker gerekmez.
+**Gereksinimler:** Node.js 22.16 ya da üstü (22.x serisinde) veya Node.js 24+ (yerleşik `node:sqlite`; yerel derleme gerekmez),
+npm ≥ 10. Docker gerekmez. Veritabanı katmanı işlem durumunu `DatabaseSync.isTransaction` ile okur. Bu özellik Node 22.16.0 ve
+24.0.0'da geldi; 22.13–22.15'te ve 23.x'te yoktur. Bu sürümlerde tohum ve sunucu ilk açılışta "Bu sunucu Node.js 22.16 ya da üstü
+… gerektirir" iletisiyle durur (`package.json` `engines`: `^22.16.0 || >=24`). Sürümünüzü `node -v` ile denetleyin.
 
 ```bash
 npm install                          # kökte (workspaces: shared, server, web)
@@ -54,7 +57,7 @@ npm run dev:web                      # yalnız Vite, port 5173 (/api → VITE_AP
 
 ```bash
 npm run typecheck                    # shared + server + web
-npm test                             # sunucu (100 dosya, 1038) + web (45 dosya, 804) testleri
+npm test                             # sunucu (110 dosya, 1094) + web (54 dosya, 896) testleri
 npm run sim -w server                # Monte Carlo simülasyonu → docs/SIMULASYON.md
 ```
 
@@ -62,7 +65,7 @@ npm run sim -w server                # Monte Carlo simülasyonu → docs/SIMULAS
 
 ```bash
 npx playwright install chromium      # bir kez: test tarayıcısı
-npm run e2e                          # Playwright, 7 senaryo dosyası, 68 test (≈10 dk)
+npm run e2e                          # Playwright, 8 senaryo dosyası, 75 test (≈11 dk)
 npm run e2e:typecheck                # e2e/ kaynaklarının tip denetimi
 ```
 
@@ -73,7 +76,9 @@ kapatır (Windows'ta `taskkill /T /F`). 4000'deki sunucunuza ve `server/data`'ya
 taraması, kayıttan kesin sayıma oylama akışı, silme talebi, itiraz/uzlaşma, defter kurcalama ve düğüm çökmesi, sade arayüz
 sözleşmeleri (Sıradaki adım, 'Bu sayfada', derin bağlantılar, 'Tam' görünüm, kontrast; Faz 3: sözlük penceresi, Keşfet ve
 gösterim rehberi, görev sayısı rozeti, bildirimler, yeni öneri formu, Profil/Ayarlar/Konular), hesap güvenliği (hesap başına giriş kilidi
-429, hesap silme kaskadı, `Idempotency-Key`) ([TEST_RAPORU §3](docs/TEST_RAPORU.md)). Seçenekler: `E2E_PORT` (taban port), `E2E_BUILD=1|0` (web'i her zaman derle / yalnız `web/dist` yoksa derle),
+429, hesap silme kaskadı, `Idempotency-Key`) ve test döngüsü regresyonları (çerçeveleme koruması, silinen bilirkişinin kaydı, boş graf
+süzgeci, "Oyum kayıtlı mı?" pusula süzgeci, sunucu adresi değişince belirteç, kayıt formu kuralları, şifre teyidi kilidi)
+([TEST_RAPORU §3](docs/TEST_RAPORU.md)). Seçenekler: `E2E_PORT` (taban port), `E2E_BUILD=1|0` (web'i her zaman derle / yalnız `web/dist` yoksa derle),
 `E2E_KEEP=1` (geçici klasörü ve sunucu günlüklerini bırak). Rapor: `e2e/playwright-report/index.html`.
 
 ### Simüle saat
@@ -205,6 +210,8 @@ cd android && ./gradlew assembleDebug          # Windows: gradlew.bat assembleDe
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
+- `gradlew` depoda çalıştırılabilir (100755) olarak işlenmiştir. Çalıştırma biti kaybolmuş bir kopyada (ör. zip'ten açılmış)
+  macOS/Linux "Permission denied" verirse `chmod +x gradlew` ya da `sh ./gradlew assembleDebug` kullanın.
 - Gereksinimler: JDK 21 (Android Studio'nun `jbr`'si) ve Android SDK (platform 34–36). Windows'ta:
   `export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr"`.
 - Emülatör: `Pixel_7_API_34`. Sunucu bilgisayarda `npm start` ile çalışırken uygulama `10.0.2.2:4000`'e bağlanır.
@@ -296,7 +303,7 @@ shared/  karar fonksiyonu (decide / evaluateObjection / verifyTally) · kripto �
 | `shared/src/` | Ortak tipler, API sözleşmesi, karar fonksiyonu, kriptografi, ontoloji IRI'leri |
 | `server/src/` | Modüller: `core`, `db`, `ledger`, `ontology`, `governance`, `graph`, `identity`, `ai`, `experts`, `forum`, `http`, `seed` |
 | `server/ontology/` | `fy-schema.ttl`, `yonetmelik.ttl`, `yonetmelik-sekiller.ttl`, `yonetmelik-kurallar.n3` |
-| `server/test/` | Modül bazında testler (100 dosya, 1038 test; [TEST_RAPORU §2](docs/TEST_RAPORU.md)) |
+| `server/test/` | Modül bazında testler (110 dosya, 1094 test; [TEST_RAPORU §2](docs/TEST_RAPORU.md)) |
 | `server/scripts/simulate.ts` | Simülasyon betiği |
 | `web/src/` | `api`, `auth`, `ui`, `lib`, `components`, `pages`; altyapı kılavuzu `web/src/README.md` |
 | `web/android/` | Capacitor Android projesi |

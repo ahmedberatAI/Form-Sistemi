@@ -78,7 +78,12 @@ export function CategoryPicker({ value, onChange, label = "Kategoriler", hint, e
   const anyExpert = visible.some((c) => c.requiresExpert);
 
   const picker = (
-    <fieldset className={cx("cat-picker", error && "field-invalid", collapsible && "cat-picker-inner")} disabled={disabled} aria-describedby={hint ? id + "-hint" : undefined}>
+    // İpucu ve hata grubun açıklamasıdır (RadioGroup ile aynı desen): kullanıcı gruba sonradan girdiğinde hata da okunur (WCAG 1.3.1, 3.3.1).
+    <fieldset
+      className={cx("cat-picker", error && "field-invalid", collapsible && "cat-picker-inner")}
+      disabled={disabled}
+      aria-describedby={[hint ? id + "-hint" : null, error ? id + "-err" : null].filter(Boolean).join(" ") || undefined}
+    >
       {/* Açılırda görünür ad özet satırıdır; grubun adı ekran okuyucu için legend'da kalır. */}
       <legend className={collapsible ? "sr-only" : "field-label"}>
         {label}
@@ -132,7 +137,15 @@ export function CategoryPicker({ value, onChange, label = "Kategoriler", hint, e
             const cid = `${id}-c${i}`;
             return (
               <li key={c.iri} className={cx("cat-item", sel && "cat-selected")} style={{ paddingInlineStart: `${c.depth * 1.1 + 0.25}rem` }}>
-                <input type="checkbox" id={cid} checked={sel} onChange={() => toggle(c.iri)} disabled={!sel && full} />
+                <input
+                  type="checkbox"
+                  id={cid}
+                  checked={sel}
+                  onChange={() => toggle(c.iri)}
+                  disabled={!sel && full}
+                  aria-invalid={error ? true : undefined}
+                  aria-describedby={error ? id + "-err" : undefined}
+                />
                 <label htmlFor={cid}>
                   {c.label}
                   {c.requiresExpert ? (
@@ -156,7 +169,7 @@ export function CategoryPicker({ value, onChange, label = "Kategoriler", hint, e
 
       {full ? <div className="field-hint">En fazla {max} kategori seçebilirsiniz.</div> : null}
       {error ? (
-        <div className="field-error" role="alert">
+        <div className="field-error" id={id + "-err"} role="alert">
           {error}
         </div>
       ) : null}

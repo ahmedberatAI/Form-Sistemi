@@ -3,7 +3,7 @@
 // (components/system/accountLogic.ts › SETTINGS_ANCHORS); PinNotice 'Ayarlar › Gelişmiş' bağlantısı oraya gider.
 import { useEffect, useState, type FormEvent } from "react";
 import { SURUM } from "@forum/shared";
-import { defaultServerUrl, getSavedServerUrl, getServerUrl, NATIVE_DEFAULT_SERVER, normalizeServerUrl, pingServer, setServerUrl } from "../api/client";
+import { defaultServerUrl, getSavedServerUrl, getServerUrl, NATIVE_DEFAULT_SERVER, normalizeServerUrl, pingServer, sameServer, setServerUrl } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { aboutSummary, pinsSummary, platformLabel, SETTINGS_ANCHORS } from "../components/system/accountLogic";
 import "../components/system/account.css";
@@ -15,6 +15,23 @@ import { exportReceipts, listReceipts } from "../lib/receipts";
 import { useSectionParam } from "../lib/sectionParam";
 import { listPinnedValidators, resetPinnedValidators, type PinnedValidators } from "../lib/validators";
 import { Alert, Button, Card, CopyButton, Input, KeyValue, PageHeader, RadioGroup, Section, Table, Term, useConfirm, useToast } from "../ui";
+
+/**
+ * Sunucu adresini değiştirir (saf akış; birim testli). Etkin sunucu DEĞİŞECEKSE ve oturum açıksa ÖNCE eski sunucuda çıkış yapılır
+ * (adres değişmeden: belirteç orada geçersizleşir ve yeni adrese hiç gitmez), SONRA adres değişir. Aynı sunucuysa oturuma dokunulmaz.
+ */
+export async function changeServer(
+  next: string | null,
+  deps: { current: () => Promise<string>; defaultUrl: string; hasSession: boolean; logout: () => Promise<void>; set: (url: string | null) => Promise<void> },
+): Promise<{ changed: boolean; loggedOut: boolean }> {
+  const changed = !sameServer(await deps.current(), next ? normalizeServerUrl(next) : deps.defaultUrl);
+  const loggedOut = changed && deps.hasSession;
+  if (loggedOut) await deps.logout();
+  await deps.set(next);
+  return { changed, loggedOut };
+}
+
+export const SERVER_CHANGED_LOGGED_OUT = "Sunucu adresi değişti; güvenliğiniz için oturumunuz kapatıldı. Yeni sunucuda yeniden giriş yapın.";
 
 function ServerCard() {
   const auth = useAuth();
@@ -55,6 +72,17 @@ function ServerCard() {
     setTesting(false);
   };
 
+  /**
+   * Adresi değiştirir. Etkin sunucu DEĞİŞECEKSE ve oturum açıksa önce eski sunucuda oturum kapatılır (adres değişmeden; belirteç
+   * orada geçersizleşir), sonra adres değişir: eski sunucunun belirteci yeni adrese hiç gönderilmez. Kullanıcıya yeni sunucuda
+   * yeniden giriş yapması söylenir. Adres aynı kalıyorsa oturuma dokunulmaz.
+   */
+  const applyServer = async (next: string | null) => {
+    const res = await changeServer(next, { current: getServerUrl, defaultUrl: def, hasSession: !!auth.token, logout: auth.logout, set: setServerUrl });
+    setActive(await getServerUrl());
+    return res;
+  };
+
   const save = async (e?: FormEvent) => {
     e?.preventDefault();
     const err = validate(value);
@@ -62,13 +90,12 @@ function ServerCard() {
     if (err) return;
     setSaving(true);
     try {
-      await setServerUrl(value.trim() || null);
-      const now = await getServerUrl();
-      setActive(now);
+      const { loggedOut } = await applyServer(value.trim() || null);
       setValue(value.trim() ? normalizeServerUrl(value) : "");
-      toast.success("Sunucu adresi kaydedildi.");
+      if (loggedOut) toast.info(SERVER_CHANGED_LOGGED_OUT);
+      else toast.success("Sunucu adresi kaydedildi.");
       await auth.refreshSystem();
-      if (auth.token) await auth.refresh().catch(() => undefined);
+      if (!loggedOut && auth.token) await auth.refresh().catch(() => undefined);
     } finally {
       setSaving(false);
     }
@@ -78,9 +105,8 @@ function ServerCard() {
     setValue("");
     setError(undefined);
     setTest(null);
-    await setServerUrl(null);
-    setActive(await getServerUrl());
-    toast.info("Varsayılan sunucu adresine dönüldü.");
+    const { loggedOut } = await applyServer(null);
+    toast.info(loggedOut ? SERVER_CHANGED_LOGGED_OUT : "Varsayılan sunucu adresine dönüldü.");
     await auth.refreshSystem();
   };
 

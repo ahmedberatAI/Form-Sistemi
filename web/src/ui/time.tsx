@@ -2,6 +2,7 @@
 import { useEffect, useRef } from "react";
 import { formatDateTime, formatDuration, formatRelative } from "../lib/format";
 import { useNow } from "../lib/hooks";
+import { useServerNow } from "../auth/AuthContext";
 import { cx } from "./basic";
 import { Icon } from "./Icon";
 
@@ -10,14 +11,28 @@ export interface TimeProps {
   /** relative: "3 dakika önce" (mutlak zaman title'da) · absolute: "1 Ekim 2026 14:05" · both: "1 Eki 2026 14:05 (3 dakika önce)" */
   mode?: "relative" | "absolute" | "both";
   className?: string;
+  /**
+   * Geçmişte olmuş bir olay (verilen oy, yazılan mesaj): zamanı hiçbir zaman gelecekte gösterilmez. İstemcinin sunucu saati
+   * tahmini (simüle saat × TIME_SCALE) birkaç saniye geride kalsa da "birazdan" / "N dakika sonra" yerine "az önce" yazılır.
+   */
+  past?: boolean;
 }
 
-export function Time({ at, mode = "relative", className }: TimeProps) {
-  const now = useNow(30_000);
+/** Göreli/mutlak zaman metni (saf işlev; birim testli). `past`: olay zamanı şimdiden ileride görünmez. */
+export function timeText(at: number, now: number, mode: NonNullable<TimeProps["mode"]> = "relative", past = false): string {
+  const rel = formatRelative(past ? Math.min(at, now) : at, now);
+  return mode === "absolute" ? formatDateTime(at) : mode === "both" ? `${formatDateTime(at, true)} (${rel})` : rel;
+}
+
+export function Time({ at, mode = "relative", className, past }: TimeProps) {
+  // 30 sn'lik tik göreli metni kendiliğinden ilerletir; ama `at` değişince (ör. oy değiştirildi) bayat tikle karşılaştırılırsa yeni zaman
+  // gelecekte görünürdü ("6 dakika sonra"). Çizim anındaki sunucu saati tikten her zaman daha günceldir.
+  const tick = useNow(30_000);
+  const serverNow = useServerNow();
   if (at == null || !Number.isFinite(at)) return <span className={cx("time", className)}>—</span>;
+  const now = Math.max(tick, serverNow());
   const abs = formatDateTime(at);
-  const rel = formatRelative(at, now);
-  const text = mode === "absolute" ? abs : mode === "both" ? `${formatDateTime(at, true)} (${rel})` : rel;
+  const text = timeText(at, now, mode, past);
   return (
     <time className={cx("time", className)} dateTime={new Date(at).toISOString()} title={abs}>
       {text}

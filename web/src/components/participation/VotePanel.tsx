@@ -4,7 +4,7 @@
 // yeniden oylama eşiği → açıklama. Makbuz hash'leri ile gizli oy ve vekâlet açıklaması adlandırılmış açılırlarda durur.
 // Görsel dil: eylem paneli ince mavi kenarlıdır (tone="action"); katılım çubuğu mavidir (mor yalnız yapay zekâ içindir).
 import { Link, useLocation } from "react-router-dom";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { VOTE_LABELS, type BallotReceipt, type ProposalDetail, type VoteChoice } from "@forum/shared";
 import { vote } from "../../api/endpoints";
 import { useAuth } from "../../auth/AuthContext";
@@ -44,6 +44,15 @@ export function VotePanel({ proposal: p, setProposal, reload }: VotePanelProps) 
   const current = p.myBallot;
   const local = useAsync(() => listReceipts(p.id), [p.id, current?.receipt.commitment, auth.user?.id]);
   const hasLocal = !!current && (local.data ?? []).some((r) => r.commitment === current.receipt.commitment);
+  // Oy verilince 'Oyumu ver' düğmesi devre dışı kalır (seçim = geçerli oy) ya da adı değişir: odak belgeye (body) düşmesin diye
+  // yeni geçerli oyu bildiren makbuz satırına taşınır (WCAG 2.4.3); ekran okuyucu satırı ("Geçerli oyunuz: …") okur.
+  const receiptRef = useRef<HTMLParagraphElement>(null);
+  const focusReceipt = useRef(false);
+  useEffect(() => {
+    if (!focusReceipt.current || !current) return;
+    focusReceipt.current = false;
+    receiptRef.current?.focus();
+  }, [current]);
 
   const cast = useAction(
     async (c: VoteChoice) => {
@@ -54,6 +63,7 @@ export function VotePanel({ proposal: p, setProposal, reload }: VotePanelProps) 
     {
       success: (r: BallotReceipt) => `Oyunuz (${VOTE_LABELS[r.choice]}) kaydedildi; makbuz bu cihaza kaydedildi.`,
       onSuccess: (r) => {
+        focusReceipt.current = true;
         setProposal((prev) => (prev ? { ...prev, myBallot: { choice: r.choice, receipt: r } } : prev));
         void local.reload();
         reload();
@@ -116,8 +126,8 @@ export function VotePanel({ proposal: p, setProposal, reload }: VotePanelProps) 
         {/* Makbuz satırı (geçerli oy, cihaz kaydı, doğrulama bağlantısı) Details DIŞINDA kalır; yalnız hash'ler ve açıklama açılırda. */}
         {current ? (
           <div className="receipt-box stack-sm">
-            <p>
-              Geçerli oyunuz: <VoteBadge choice={current.choice} /> <span className="small muted">· <Time at={current.receipt.castAt} mode="both" /></span>
+            <p ref={receiptRef} tabIndex={-1} className="receipt-current">
+              Geçerli oyunuz: <VoteBadge choice={current.choice} /> <span className="small muted">· <Time at={current.receipt.castAt} mode="both" past /></span>
             </p>
             <div className="row">
               {hasLocal ? (

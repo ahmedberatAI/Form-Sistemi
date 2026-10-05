@@ -195,6 +195,19 @@ export function createGraphService(ctx: CoreContext, deps: { ledger: LedgerServi
     return u;
   }
 
+  /**
+   * Takip, kefalet ve yakınlık beyanı hedefi: kapanmış (silinmiş ya da reddedilmiş) hesap ilişki hedefi olamaz (vekâletteki
+   * delegate_not_verified kuralının karşılığı). Doğrulama bekleyen hesap hedef olabilir (bekleyen başvuruya kefil olmak anlamlıdır).
+   * Geri alma (unfollow/unvouch/unrelate) bu denetimden muaftır: kapanmış hesaba kalmış kenarlar temizlenebilsin.
+   */
+  function requireOpenTarget(id: string): UserRow {
+    const u = requireUser(id);
+    if (u.status === "erased" || u.status === "rejected") {
+      throw conflict("invalid_state", "Silinmiş ya da reddedilmiş (kapanmış) bir hesapla takip, kefalet ya da yakınlık ilişkisi kurulamaz.");
+    }
+    return u;
+  }
+
   function verifiedUsers(): UserRow[] {
     return db.all<UserRow>("SELECT id, nickname, status, roles, verified_at, created_at FROM users WHERE status = 'verified' ORDER BY id");
   }
@@ -510,18 +523,17 @@ export function createGraphService(ctx: CoreContext, deps: { ledger: LedgerServi
    * Önbellek anahtarı yalnızca agreementInput()'un okuduğu veriye bağlıdır: kesin sayımı olan turların ve
    * yürürlüğe girmiş/reddedilmiş önerilerin oyları. Oylama süren bir öneriye atılan oy anahtarı değiştirmez
    * (aksi halde her oy sonraki panel isteğinde O(P·V²) yeniden hesaplamayı tetikler).
+   *
+   * Anahtar oy tablosunu TARAMAZ (her pano/graf isteğinde tüm oyların taranması büyük veride yüzlerce ms tutuyordu): kapanmış bir
+   * turun oyları değişmez, bu yüzden girdi kümesi yalnız sayımlar (yeni kesin sayım) ve öneri kapanışlarıyla (enacted/rejected)
+   * değişir. İkisinin sayısı ve son değişikliği ucuz bir imzadır.
    */
   function agreementDataKey(): string {
-    const b = db.get<{ c: number; m: number }>(
-      `SELECT COUNT(*) AS c, COALESCE(MAX(b.updated_at), 0) AS m FROM ballots b
-       WHERE EXISTS (SELECT 1 FROM tallies t WHERE t.proposal_id = b.proposal_id AND t.round = b.round AND COALESCE(json_extract(t.result, '$.outcome'), '') <> 'needs_more_votes')
-          OR b.proposal_id IN (SELECT id FROM proposals WHERE status IN ('enacted', 'rejected'))`,
-    );
-    const t = db.get<{ c: number; m: number }>("SELECT COUNT(*) AS c, COALESCE(MAX(created_at), 0) AS m FROM tallies");
+    const t = db.get<{ c: number; m: number; r: number }>("SELECT COUNT(*) AS c, COALESCE(MAX(created_at), 0) AS m, COALESCE(MAX(rowid), 0) AS r FROM tallies");
     const p = db.get<{ c: number; m: number }>(
       "SELECT COUNT(*) AS c, COALESCE(MAX(updated_at), 0) AS m FROM proposals WHERE status IN ('enacted', 'rejected')",
     );
-    return `${b?.c}|${b?.m}|${t?.c}|${t?.m}|${p?.c}|${p?.m}`;
+    return `${t?.c}|${t?.m}|${t?.r}|${p?.c}|${p?.m}`;
   }
 
   function agreementCommunities(seed: string): CommunityResult {
@@ -581,7 +593,18 @@ export function createGraphService(ctx: CoreContext, deps: { ledger: LedgerServi
 
   // ───────────── Kalıcı kaybeden göstergesi ─────────────
 
+  /**
+   * Kalıcı kaybeden göstergesi, ucuz bir anahtarla önbellekte: son küme anlık görüntüsü + sayımlar (yeni sayım ya da yeni anlık
+   * görüntü gelince yeniden hesaplanır). Kesin sayımı olan turların oyları değişmez. Ana sayfa panosu bunu her yoklamada çağırır.
+   */
   function permanentLoser(): GraphStats["permanentLoser"] {
+    const snapId = db.get<{ id: string }>("SELECT id FROM cluster_snapshots ORDER BY created_at DESC, rowid DESC LIMIT 1")?.id ?? "";
+    const t = db.get<{ c: number; r: number }>("SELECT COUNT(*) AS c, COALESCE(MAX(rowid), 0) AS r FROM tallies");
+    const value = memoize("permanentLoser", `${snapId}|${t?.c}|${t?.r}`, computePermanentLoser);
+    return value.map((x) => ({ ...x }));
+  }
+
+  function computePermanentLoser(): GraphStats["permanentLoser"] {
     const snap = latestSnapshot();
     if (!snap) return [];
     const assignments = json<Record<string, string>>(snap.assignments, {});
@@ -694,7 +717,7 @@ export function createGraphService(ctx: CoreContext, deps: { ledger: LedgerServi
       const b = bareUser(targetUserId);
       if (a === b) throw badRequest("self_follow", "Kendinizi takip edemezsiniz.");
       requireUser(a);
-      requireUser(b);
+      requireOpenTarget(b);
       const existing = activeEdges(userKey(a), userKey(b), "FOLLOWS");
       if (existing.length > 0) return view(existing[0]);
       return view(write(() => insertEdge({ src: userKey(a), dst: userKey(b), type: "FOLLOWS", weight: 1, scope: null, rank: null, meta: null })));
@@ -712,7 +735,7 @@ export function createGraphService(ctx: CoreContext, deps: { ledger: LedgerServi
       if (a === b) throw badRequest("self_vouch", "Kendinize kefil olamazsınız.");
       if (!Object.hasOwn(VOUCH_WEIGHTS, level)) throw badRequest("invalid_vouch_level", "Geçersiz kefalet düzeyi.");
       requireUser(a);
-      requireUser(b);
+      requireOpenTarget(b);
       const existing = activeEdges(userKey(a), userKey(b), "VOUCHES");
       if (existing.length === 1 && json<{ level?: string }>(existing[0].meta, {}).level === level) return view(existing[0]);
       return view(
@@ -729,7 +752,7 @@ export function createGraphService(ctx: CoreContext, deps: { ledger: LedgerServi
       if (a === b) throw badRequest("self_relation", "Kendinizle yakınlık beyan edemezsiniz.");
       if (!RELATION_KINDS.includes(kind)) throw badRequest("invalid_relation", "Geçersiz yakınlık türü.");
       requireUser(a);
-      requireUser(b);
+      requireOpenTarget(b);
       const existing = [...activeEdges(userKey(a), userKey(b), "RELATED_TO"), ...activeEdges(userKey(b), userKey(a), "RELATED_TO")].find(
         (r) => json<{ kind?: string }>(r.meta, {}).kind === kind,
       );
@@ -820,6 +843,8 @@ export function createGraphService(ctx: CoreContext, deps: { ledger: LedgerServi
     },
 
     agreementCommunities,
+
+    permanentLoser,
 
     pagerank(): Record<string, number> {
       return { ...computePagerank() };
@@ -935,7 +960,9 @@ export function createGraphService(ctx: CoreContext, deps: { ledger: LedgerServi
       // siyasi görüş alanları (cluster, community, x, y — KVKK md. 6) yalnız viewerId'nin KENDİ düğümünde bulunur.
       const includePrivate = opts.includePrivate === true;
       const viewerId = opts.viewerId ?? null;
-      const requested = opts.includeEdgeTypes?.length ? opts.includeEdgeTypes : DEFAULT_VIS_TYPES;
+      // Verilmemiş (undefined) → varsayılan türler; BOŞ dizi → hiç kenar (ör. yalnız RELATED_TO isteyen yetkisiz görüntüleyen, ya da
+      // hiçbir tür seçmeyen istemci): boş istek varsayılan türlere düşüp istenmeyen kenarları istenmiş gibi göstermesin.
+      const requested = opts.includeEdgeTypes ?? DEFAULT_VIS_TYPES;
       const types = new Set<EdgeType>(requested.filter((t) => VIS_PUBLIC_TYPES.has(t) || (t === "RELATED_TO" && includePrivate)));
       const limit = Math.min(5000, Math.max(1, Math.floor(opts.limit ?? 500)));
       const users = verifiedUsers();

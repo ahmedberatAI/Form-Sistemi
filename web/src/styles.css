@@ -36,6 +36,9 @@
   --surface-3: #e3e7ed;
   --border: #d5dae2;
   --border-strong: #b7bfcb;
+  /* Metin alanı/seçim kutusu kenarı: alanın tek görsel sınırı olduğundan bitişik zemine (kart --surface, sayfa --bg) karşı en az 3:1
+     (WCAG 1.4.11). --border-strong ayırıcı çizgiler içindir (ör. .phase-final), alanlarda kullanılmaz. */
+  --input-border: #768091;
   --text: #18202b;
   --text-muted: #566070;
   --primary: #1d4ed8;
@@ -94,6 +97,7 @@
   --surface-3: #27313c;
   --border: #2c3642;
   --border-strong: #3f4b59;
+  --input-border: #727e8e;
   --text: #e5e9ef;
   --text-muted: #9ba6b4;
   --primary: #6f9dff;
@@ -127,6 +131,7 @@
     --surface-3: #27313c;
     --border: #2c3642;
     --border-strong: #3f4b59;
+    --input-border: #727e8e;
     --text: #e5e9ef;
     --text-muted: #9ba6b4;
     --primary: #6f9dff;
@@ -168,6 +173,14 @@
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+  /* Klavye odağı ve derin bağlantılar yapışkan üst çubuğun altında kalmasın (WCAG 2.4.11 Odak Gizlenmez): tarayıcı odaklanan öğeyi
+     görünüme kaydırırken bu boşluğu bırakır. Alt gezinmenin göründüğü genişlikte (< 900 px) alttan da boşluk bırakılır. */
+  scroll-padding-top: calc(var(--sticky-h) + env(safe-area-inset-top, 0px) + 8px);
+}
+@media (max-width: 899.98px) {
+  html {
+    scroll-padding-bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px) + 8px);
+  }
 }
 
 body {
@@ -1058,12 +1071,12 @@ a:focus:not(:focus-visible) {
   padding-block: 0;
   border-top-width: 0;
 }
-/* Derin bağlantı hedefleri sabit üst çubuğun altında kalmasın. */
+/* Derin bağlantı hedefleri sabit üst çubuğun altında kalmasın: üst çubuğun payı html scroll-padding-top'tadır; burada yalnız nefes payı. */
 .card[id],
 .section[id],
 .details[id],
 .clamp-text[id] {
-  scroll-margin-top: calc(var(--sticky-h) + env(safe-area-inset-top, 0px) + 12px);
+  scroll-margin-top: 12px;
 }
 
 /* ───────────── Düğmeler ───────────── */
@@ -1107,7 +1120,7 @@ a:focus:not(:focus-visible) {
   background: var(--primary);
   color: var(--primary-contrast);
 }
-.btn-primary:hover:not(:disabled) {
+.btn-primary:hover:not(:disabled):not([aria-disabled="true"]) {
   background: var(--primary-hover);
   color: var(--primary-contrast);
 }
@@ -1116,7 +1129,7 @@ a:focus:not(:focus-visible) {
   color: var(--text);
   border-color: var(--border-strong);
 }
-.btn-secondary:hover:not(:disabled) {
+.btn-secondary:hover:not(:disabled):not([aria-disabled="true"]) {
   background: var(--surface-2);
   color: var(--text);
 }
@@ -1124,7 +1137,7 @@ a:focus:not(:focus-visible) {
   background: var(--danger);
   color: var(--danger-contrast);
 }
-.btn-danger:hover:not(:disabled) {
+.btn-danger:hover:not(:disabled):not([aria-disabled="true"]) {
   filter: brightness(0.92);
   color: var(--danger-contrast);
 }
@@ -1132,7 +1145,7 @@ a:focus:not(:focus-visible) {
   background: transparent;
   color: var(--primary);
 }
-.btn-ghost:hover:not(:disabled) {
+.btn-ghost:hover:not(:disabled):not([aria-disabled="true"]) {
   background: var(--primary-soft);
   color: var(--primary);
 }
@@ -1717,9 +1730,16 @@ a:focus:not(:focus-visible) {
   background: var(--primary-soft);
   color: var(--primary);
 }
+/* Panel tabIndex=0 ile sekme sırasındadır: klavye odağı görünür olmalı (WCAG 2.4.7). Fareyle tıklamada çerçeve çizilmez. */
 .tab-panel {
-  outline: none;
   min-width: 0;
+}
+.tab-panel:focus:not(:focus-visible) {
+  outline: none;
+}
+.tab-panel:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
 }
 
 /* ───────────── Form ───────────── */
@@ -1763,7 +1783,7 @@ a:focus:not(:focus-visible) {
   width: 100%;
   min-height: 44px;
   padding: 0.55rem 0.7rem;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--input-border);
   border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--text);
@@ -3272,7 +3292,7 @@ h4.sub-heading {
   flex-direction: column;
   gap: 0.5rem;
   min-width: 0;
-  scroll-margin-top: calc(var(--sticky-h) + 12px);
+  scroll-margin-top: 12px; /* üst çubuğun payı html scroll-padding-top'ta */
   transition: box-shadow 0.3s, border-color 0.3s;
 }
 .msg-mine {
@@ -3524,9 +3544,18 @@ h4.sub-heading {
   background: var(--primary);
   color: var(--primary-contrast);
 }
+/* 'Yaşanmadı' evresi: hiçbir şey opaklıkla SOLDURULMAZ (12,8 px etiket --text-muted ile 4,5:1'i sağlar; opaklık 2,4:1'e
+   düşürüyordu, WCAG 1.4.3). Noktadaki evre numarası da metindir: soluk dolgu yerine boş (saydam) nokta ve kesikli çerçeve kullanılır,
+   numara --text-muted kalır (pil zemininde 4,5:1). Durum üstü çizili metin ve kesikli kenarla anlatılır; ekran okuyucuya
+   '(yaşanmadı)' eki gider. */
 .phase-skipped {
-  opacity: 0.55;
   text-decoration: line-through;
+  border-style: dashed;
+}
+.phase-skipped .phase-dot {
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  color: var(--text-muted);
 }
 .phase-final {
   border-color: var(--border-strong);
@@ -3612,8 +3641,9 @@ h4.sub-heading {
 .vstep-ok .vstep-title {
   font-weight: 600;
 }
+/* Sıradaki adım: metin soldurulmaz (opaklık kontrastı 4,5:1'in altına indirirdi); ikincil renk yeter. */
 .vstep-idle {
-  opacity: 0.6;
+  color: var(--text-muted);
 }
 .vstep .spinner {
   margin: 0.2rem;

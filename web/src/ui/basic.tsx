@@ -20,21 +20,27 @@ export type ButtonVariant = "primary" | "secondary" | "danger" | "ghost";
 export interface ButtonProps extends ComponentProps<"button"> {
   variant?: ButtonVariant;
   size?: "sm" | "md";
-  /** true → devre dışı + dönen simge + aria-busy */
+  /**
+   * true → dönen simge + aria-busy + aria-disabled; tıklama (ve formun Enter ile örtük gönderimi) yok sayılır. Düğme `disabled`
+   * YAPILMAZ: odaklı düğme devre dışı kalınca tarayıcı odağı belgeye (body) bırakır ve iş bitince geri vermez (WCAG 2.4.3).
+   */
   loading?: boolean;
   /** Tam genişlik */
   block?: boolean;
   icon?: IconName;
 }
 
-export function Button({ variant = "secondary", size = "md", loading = false, block, icon, className, children, disabled, type = "button", ...rest }: ButtonProps) {
+export function Button({ variant = "secondary", size = "md", loading = false, block, icon, className, children, disabled, type = "button", onClick, ...rest }: ButtonProps) {
+  // Yüklenen düğme (çoğu kez `disabled={busy}` ile birlikte verilir) yerel olarak devre dışı yapılmaz; aria ile kilitlenir.
   return (
     <button
       type={type}
       className={cx("btn", `btn-${variant}`, size === "sm" && "btn-sm", block && "btn-block", className)}
-      disabled={disabled || loading}
+      disabled={loading ? undefined : disabled}
       aria-busy={loading || undefined}
       {...rest}
+      aria-disabled={loading ? true : rest["aria-disabled"]}
+      onClick={loading ? (e) => e.preventDefault() : onClick}
     >
       {loading ? <span className="spinner spinner-sm" aria-hidden="true" /> : icon ? <Icon name={icon} size={size === "sm" ? 16 : 18} /> : null}
       {children}
@@ -384,6 +390,30 @@ export function EmptyState({ title, children, action, icon = "info" }: EmptyStat
   );
 }
 
+// ───────────── Durum iletisi (ekran okuyucu) ─────────────
+
+/**
+ * Görünmez ve SÜREKLİ DOM'da duran durum bölgesi (WCAG 4.1.3 Durum iletileri): odak değişmeden değişen sonuçları (ör. arama
+ * "Süzgece uyan öneri yok", "5 öneri listeleniyor") ekran okuyucuya duyurur. Bölge içerikten önce DOM'da olmalıdır; koşullu çizilen
+ * boş duruma rol vermek güvenilir değildir. Yazarken her tuşta duyuru olmasın diye ileti kısa bir süre durulunca yazılır.
+ */
+export function LiveStatus({ message, delayMs = 500 }: { message: string; delayMs?: number }) {
+  const [shown, setShown] = useState(delayMs > 0 ? "" : message);
+  useEffect(() => {
+    if (delayMs <= 0) {
+      setShown(message);
+      return;
+    }
+    const t = window.setTimeout(() => setShown(message), delayMs);
+    return () => window.clearTimeout(t);
+  }, [message, delayMs]);
+  return (
+    <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+      {shown}
+    </div>
+  );
+}
+
 // ───────────── İlerleme çubuğu ─────────────
 
 export interface ProgressBarProps {
@@ -434,10 +464,20 @@ export function ProgressBar({ value, max = 1, label, valueText, showLabel = true
 
 // ───────────── Sayfa başlığı ve bölüm ─────────────
 
-/** Belge başlığını ayarlar: "<başlık> · Forum Sistemi" */
+export const APP_TITLE = "Forum Sistemi";
+
+/**
+ * Belge başlığını ayarlar: "<başlık> · Forum Sistemi". Bileşen sökülünce (ya da başlık değişince) başlık "Forum Sistemi"ne döner:
+ * başlıksız bir ekrana (ör. hata, bulunamadı) geçildiğinde önceki sayfanın adı kalmaz (WCAG 2.4.2). Yeni sayfanın başlığı, React
+ * sökme temizliklerini yeni efektlerden önce çalıştırdığı için bu sıfırlamanın üzerine yazılır.
+ */
 export function useDocumentTitle(title: string | null | undefined): void {
   useEffect(() => {
-    if (title) document.title = `${title} · Forum Sistemi`;
+    if (!title) return;
+    document.title = `${title} · ${APP_TITLE}`;
+    return () => {
+      document.title = APP_TITLE;
+    };
   }, [title]);
 }
 
@@ -551,6 +591,19 @@ export interface TableProps<T> {
   empty?: ReactNode;
   className?: string;
   rowClassName?: (row: T) => string | undefined;
+}
+
+/**
+ * Kaydırılabilir ön biçimli metin (ör. işlem yükü JSON'u): içinde odaklanabilir öğe olmayan kaydırma kutusu klavyeyle de
+ * kaydırılabilsin diye sekme sırasına girer ve adlandırılmış bölgedir (WCAG 2.1.1; .table-wrap ile aynı desen). Chromium kaydırıcıları
+ * kendiliğinden odaklanabilir yapar, Safari yapmaz.
+ */
+export function ScrollPre({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
+  return (
+    <pre className={cx("sy-pre", className)} tabIndex={0} role="region" aria-label={label}>
+      {children}
+    </pre>
+  );
 }
 
 /** Yatay kaydırılabilir kapsayıcı içinde tablo (360 px'de sayfa taşmaz). */

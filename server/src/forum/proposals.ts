@@ -260,6 +260,13 @@ export function createProposalService(core: ForumCore, parts: ProposalParts): Pr
     let patch: Normalized["patch"] = null;
 
     if (kind === "subtopic" || kind === "amendment") {
+      // Eksik zorunlu alan 400 validation; 404 yalnız kimlik verilmiş ama konu yoksa (istemci "kaynak yok" sanmasın).
+      if (strict && !input.parentTopicId) {
+        throw fieldError(
+          "parentTopicId",
+          kind === "subtopic" ? "Alt konu için üst konu (parentTopicId) zorunludur." : "Düzenleme teklifi için hedef konu (parentTopicId) zorunludur.",
+        );
+      }
       parentTopic = topicRow(input.parentTopicId);
       if (!parentTopic) {
         if (strict) throw notFound(kind === "subtopic" ? "Üst konu" : "Hedef konu");

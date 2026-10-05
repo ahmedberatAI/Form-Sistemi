@@ -61,7 +61,7 @@ import {
   ClampText,
   Countdown,
   Details,
-  ErrorView,
+  PageErrorView,
   HashText,
   Icon,
   KindBadge,
@@ -107,7 +107,7 @@ export default function ProposalDetailPage() {
   useSectionParam(ready, actionFocus ? { focus: { [PAGE_ANCHORS.action]: actionFocus } } : {});
 
   if (loading && !p) return <Spinner block label="Öneri yükleniyor…" />;
-  if (error && !p) return <ErrorView error={error} onRetry={reload} />;
+  if (error && !p) return <PageErrorView error={error} onRetry={reload} subject="Öneri" />;
   if (!p) return null;
 
   // Görüntüleyenin kendi eylemi (oy, destek, itiraz, rapor, bilirkişi görüşü …) bekleyen işlerini değiştirebilir: kabuktaki

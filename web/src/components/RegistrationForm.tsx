@@ -84,6 +84,10 @@ function initialState(i?: Partial<RegistrationInput>): FormState {
 
 export const NICKNAME_RE = /^[A-Za-z0-9çğıöşüÇĞİÖŞÜâîûÂÎÛ._-]{3,32}$/;
 export const NAME_RE = /^[\p{L}\p{M}' .-]+$/u;
+/** Ad/soyad en az bir harf içerir ("-", "'", ". ." ya da yalnız birleştirici işaret olamaz). */
+export const HAS_LETTER = /\p{L}/u;
+/** Takma ad ve adres alanları en az bir harf ya da rakam içerir (yalnız ayraç/noktalama olamaz). */
+export const HAS_LETTER_OR_DIGIT = /[\p{L}\p{N}]/u;
 /** Sunucudaki z.email() deseni (zod 4) */
 export const EMAIL_RE = /^(?:[A-Za-z0-9_'+\-]+\.)*[A-Za-z0-9_'+\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$/;
 /** [en az, en çok] karakter (NFKC ve boşluk sadeleştirmesinden sonra) */
@@ -133,9 +137,27 @@ function boundedTextError(label: string, raw: string, [min, max]: readonly [numb
   return undefined;
 }
 
-/** Ad / soyad: uzunluk sınırları, sonra harf deseni. */
+/** Ad / soyad: uzunluk sınırları, sonra harf deseni, sonra en az bir harf. */
 function personNameError(label: string, raw: string): string | undefined {
-  return boundedTextError(label, raw, REGISTRATION_LIMITS.name) ?? (NAME_RE.test(normalizeTextInput(raw)) ? undefined : `${label} yalnızca harf, boşluk, kesme işareti ve tire içerebilir.`);
+  const bounded = boundedTextError(label, raw, REGISTRATION_LIMITS.name);
+  if (bounded) return bounded;
+  const v = normalizeTextInput(raw);
+  if (!NAME_RE.test(v)) return `${label} yalnızca harf, boşluk, kesme işareti ve tire içerebilir.`;
+  return HAS_LETTER.test(v) ? undefined : `${label} en az bir harf içermelidir.`;
+}
+
+/** Adres alanı: uzunluk sınırları, sonra en az bir harf ya da rakam ("..", "--" gibi yalnız noktalama değil). */
+function addressTextError(label: string, raw: string, limits: readonly [number, number]): string | undefined {
+  return boundedTextError(label, raw, limits) ?? (HAS_LETTER_OR_DIGIT.test(normalizeTextInput(raw)) ? undefined : `${label} en az bir harf ya da rakam içermelidir.`);
+}
+
+/** Takma ad kuralı (kayıt ve Profil'deki değişiklik aynı kural; sunucudaki nicknameSchema ile aynı sıra ve iletiler). */
+export function nicknameError(raw: string): string | undefined {
+  const nick = normalizeNicknameInput(raw);
+  if (nick.length < REGISTRATION_LIMITS.nickname[0] || nick.length > REGISTRATION_LIMITS.nickname[1]) return "Takma ad 3–32 karakter olmalıdır.";
+  if (!NICKNAME_RE.test(nick)) return "Takma ad yalnızca harf (Türkçe harfler dahil), rakam, nokta, alt çizgi ve tire içerebilir; boşluk olamaz.";
+  if (!HAS_LETTER_OR_DIGIT.test(nick)) return "Takma ad en az bir harf ya da rakam içermelidir.";
+  return undefined;
 }
 
 const ORDER: FieldKey[] = ["nickname", "password", "password2", "firstName", "lastName", "tckn", "birthDate", "email", "phone", "il", "ilce", "mahalle", "acikAdres", "postaKodu", "kvkkNoticeAccepted"];
@@ -146,9 +168,7 @@ export function validate(s: FormState, mode: "self" | "registrar", today: string
   const set = (k: FieldKey, msg: string | undefined) => {
     if (msg) e[k] = msg;
   };
-  const nick = normalizeNicknameInput(s.nickname);
-  if (nick.length < REGISTRATION_LIMITS.nickname[0] || nick.length > REGISTRATION_LIMITS.nickname[1]) e.nickname = "Takma ad 3–32 karakter olmalıdır.";
-  else if (!NICKNAME_RE.test(nick)) e.nickname = "Takma ad yalnızca harf (Türkçe harfler dahil), rakam, nokta, alt çizgi ve tire içerebilir; boşluk olamaz.";
+  set("nickname", nicknameError(s.nickname));
   if (s.password.length < 8) e.password = "Şifre en az 8 karakter olmalıdır.";
   else if (s.password.length > 128) e.password = "Şifre en fazla 128 karakter olabilir.";
   else if (!/\p{L}/u.test(s.password) || !/\p{N}/u.test(s.password)) e.password = "Şifre en az bir harf ve bir rakam içermelidir.";
@@ -166,10 +186,10 @@ export function validate(s: FormState, mode: "self" | "registrar", today: string
   if (email.length > REGISTRATION_LIMITS.email[1]) e.email = "E-posta adresi çok uzun.";
   else if (!EMAIL_RE.test(email)) e.email = "Geçerli bir e-posta adresi girin.";
   if (!isValidPhone(s.phone)) e.phone = "Telefon numarası 05XX XXX XX XX ya da +90 ile başlayan biçimde olmalıdır.";
-  set("il", boundedTextError("İl", s.il, REGISTRATION_LIMITS.il));
-  set("ilce", boundedTextError("İlçe", s.ilce, REGISTRATION_LIMITS.ilce));
-  set("mahalle", boundedTextError("Mahalle", s.mahalle, REGISTRATION_LIMITS.mahalle));
-  set("acikAdres", boundedTextError("Açık adres", s.acikAdres, REGISTRATION_LIMITS.acikAdres));
+  set("il", addressTextError("İl", s.il, REGISTRATION_LIMITS.il));
+  set("ilce", addressTextError("İlçe", s.ilce, REGISTRATION_LIMITS.ilce));
+  set("mahalle", addressTextError("Mahalle", s.mahalle, REGISTRATION_LIMITS.mahalle));
+  set("acikAdres", addressTextError("Açık adres", s.acikAdres, REGISTRATION_LIMITS.acikAdres));
   if (s.postaKodu.trim() && !/^\d{5}$/.test(s.postaKodu.trim())) e.postaKodu = "Posta kodu 5 haneli olmalıdır.";
   if (!s.kvkkNoticeAccepted) e.kvkkNoticeAccepted = mode === "self" ? "Devam etmek için aydınlatma metnini okuduğunuzu onaylayın." : "Üyenin aydınlatma metnini okuduğunu onaylayın.";
   return e;

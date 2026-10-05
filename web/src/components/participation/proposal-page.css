@@ -202,7 +202,7 @@
 .action-area,
 .evidence {
   min-width: 0;
-  scroll-margin-top: calc(var(--sticky-h) + env(safe-area-inset-top, 0px) + 12px);
+  scroll-margin-top: 12px; /* üst çubuğun payı html scroll-padding-top'ta (styles.css) */
 }
 .evidence-head {
   display: flex;

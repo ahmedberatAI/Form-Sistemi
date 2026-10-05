@@ -12,7 +12,7 @@ import { normalizeSearch, proposalRef } from "../lib/format";
 import { useDebounced, useQueryState } from "../lib/hooks";
 import { routes } from "../lib/routes";
 import { useAsync } from "../lib/useAsync";
-import { Button, Details, EmptyState, ErrorView, Input, LinkButton, PageHeader, Select, Spinner, Tabs, type TabItem } from "../ui";
+import { Button, Details, EmptyState, ErrorView, Input, LinkButton, LiveStatus, PageHeader, Select, Spinner, Tabs, type TabItem } from "../ui";
 import {
   autoTabNote,
   countPhases,
@@ -83,6 +83,16 @@ function PhaseChips({ tab, phase, counts, total, onSelect }: PhaseChipsProps) {
   );
 }
 
+/**
+ * Liste sayfalarının durum iletisi (saf işlev; birim testli): yüklenince "N öneri listeleniyor" / "N öneri süzgece uyuyor", boşsa
+ * boş durumun başlığı ("Süzgece uyan öneri yok"). Yüklenmeden boş (ilk çizimde duyuru yok).
+ */
+export function listStatusMessage(o: { loaded: boolean; count: number; filtered: boolean; emptyTitle: string; noun: string }): string {
+  if (!o.loaded) return "";
+  if (o.count === 0) return o.emptyTitle;
+  return o.filtered ? `${o.count} ${o.noun} süzgece uyuyor` : `${o.count} ${o.noun} listeleniyor`;
+}
+
 export default function ProposalsPage() {
   const auth = useAuth();
   const myId = auth.user?.id ?? null;
@@ -138,6 +148,7 @@ export default function ProposalsPage() {
   }, [base, view.tab, view.phase, sort, myId]);
 
   const filtered = !!kind || !!q.trim();
+  const emptyTitle = filtered ? "Süzgece uyan öneri yok" : view.tab === "benim" ? "Henüz öneri yazmadınız" : currentPhase ? "Bu evrede öneri yok" : "Bu sekmede öneri yok";
   // Çiplerin altındaki tek satır: seçili çipin açıklaması; çipsiz sekmede (Tümü, Benim) sekmenin açıklaması.
   const info = currentPhase?.info ?? (chipTab ? null : currentTab.info);
 
@@ -198,6 +209,9 @@ export default function ProposalsPage() {
         )}
       </div>
 
+      {/* Arama/süzgeç/sekme sonucu odak değişmeden değişir: sayısı ya da 'Süzgece uyan öneri yok' ekran okuyucuya duyurulur (WCAG 4.1.3). */}
+      <LiveStatus message={listStatusMessage({ loaded: !!data, count: shown.length, filtered, emptyTitle, noun: "öneri" })} />
+
       <Tabs<TopTabId> label="Öneri durumu" tabs={tabs} value={view.tab} onChange={(t) => setTab(t)} className="proposals-tabs">
         <div className="proposals-panel">
           {note ? <p className="small muted proposals-note">{note}</p> : null}
@@ -207,7 +221,7 @@ export default function ProposalsPage() {
           {error ? <ErrorView error={error} onRetry={reload} /> : null}
           {data && !shown.length ? (
             <EmptyState
-              title={filtered ? "Süzgece uyan öneri yok" : view.tab === "benim" ? "Henüz öneri yazmadınız" : currentPhase ? "Bu evrede öneri yok" : "Bu sekmede öneri yok"}
+              title={emptyTitle}
               icon="proposals"
               action={
                 filtered ? (

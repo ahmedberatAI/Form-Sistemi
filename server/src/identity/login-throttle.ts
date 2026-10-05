@@ -24,6 +24,8 @@ export interface LoginThrottleOptions {
   windowMs?: number;
   lockMs?: number;
   maxEntries?: number;
+  /** Kilit iletisi (dakika cinsinden kalan süreyle); varsayılan giriş iletisi. Şifre teyidi kilidi kendi iletisini verir. */
+  lockedMessage?: (minutes: number) => string;
 }
 
 export interface LoginThrottle {
@@ -48,19 +50,21 @@ interface Entry {
 }
 
 /** Tanımlayıcının sayaç anahtarı: düz metin bellekte tutulmasın (ör. ad alanına yanlışlıkla yazılmış bir şifre). */
-export function throttleKey(kind: "nickname" | "email", normalized: string): string {
+export function throttleKey(kind: "nickname" | "email" | "reauth", normalized: string): string {
   return createHash("sha256").update(`${kind}:${normalized}`, "utf8").digest("base64url");
 }
 
-export function lockedError(remainingMs: number): AppError {
+const LOGIN_LOCKED_MESSAGE = (min: number) =>
+  `Bu takma ad ya da e-posta ile çok fazla başarısız giriş denemesi yapıldı. Güvenliğiniz için giriş geçici olarak durduruldu; lütfen ${min} dakika sonra tekrar deneyin.`;
+
+/** Şifre teyidi (şifre/takma ad değişikliği, hesap silme) kilidinin iletisi. */
+export const REAUTH_LOCKED_MESSAGE = (min: number) =>
+  `Şifre teyidinde çok fazla başarısız deneme yapıldı. Güvenliğiniz için şifre gerektiren işlemler geçici olarak durduruldu; lütfen ${min} dakika sonra tekrar deneyin.`;
+
+export function lockedError(remainingMs: number, message: (minutes: number) => string = LOGIN_LOCKED_MESSAGE): AppError {
   const sec = Math.max(1, Math.ceil(remainingMs / 1000));
   const min = Math.max(1, Math.ceil(sec / 60));
-  return new AppError(
-    429,
-    "login_locked",
-    `Bu takma ad ya da e-posta ile çok fazla başarısız giriş denemesi yapıldı. Güvenliğiniz için giriş geçici olarak durduruldu; lütfen ${min} dakika sonra tekrar deneyin.`,
-    { retryAfterSeconds: sec },
-  );
+  return new AppError(429, "login_locked", message(min), { retryAfterSeconds: sec });
 }
 
 export function createLoginThrottle(opts: LoginThrottleOptions = {}): LoginThrottle {
@@ -69,6 +73,7 @@ export function createLoginThrottle(opts: LoginThrottleOptions = {}): LoginThrot
   const windowMs = opts.windowMs ?? LOGIN_WINDOW_MS;
   const lockMs = opts.lockMs ?? LOGIN_LOCK_MS;
   const maxEntries = opts.maxEntries ?? LOGIN_THROTTLE_MAX_ENTRIES;
+  const lockedMessage = opts.lockedMessage ?? LOGIN_LOCKED_MESSAGE;
   const entries = new Map<string, Entry>();
 
   const expired = (e: Entry, t: number) => e.lockedUntil <= t && t - e.windowStart >= windowMs;
@@ -116,7 +121,7 @@ export function createLoginThrottle(opts: LoginThrottleOptions = {}): LoginThrot
     begin(key) {
       const t = now();
       let e = live(key, t);
-      if (e && e.lockedUntil > t) throw lockedError(e.lockedUntil - t);
+      if (e && e.lockedUntil > t) throw lockedError(e.lockedUntil - t, lockedMessage);
       if (!e) {
         makeRoom(t);
         e = { attempts: 0, windowStart: t, lockedUntil: 0, lockReported: false };

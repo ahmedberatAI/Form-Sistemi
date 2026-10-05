@@ -8,8 +8,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DetailLevelProvider } from "../../lib/detailLevel";
 import { PREF_KEYS, removePref, setPrefSync } from "../../lib/prefs";
 import { ToastProvider } from "../../ui/Toast";
-import { bridgeIsInformational, bridgeSummary, bridgeVerdict, checkShowsNote, collapsedChecks, MinorityReportList, planChecks, ResultsCard, totalsLine } from "./ResultsCard";
-import { VERIFY_LEAD, VerifyTallyPanel } from "./VerifyTallyPanel";
+import {
+  approvalTexts,
+  bridgeIsInformational,
+  bridgeSummary,
+  bridgeVerdict,
+  checkShowsNote,
+  clusterPgFloorText,
+  collapsedChecks,
+  MinorityReportList,
+  planChecks,
+  ResultsCard,
+  totalsLine,
+} from "./ResultsCard";
+import { roundTone, roundVerdict, VERIFY_LEAD, VerifyTallyPanel, verifyProgressLabel } from "./VerifyTallyPanel";
 
 vi.mock("../../auth/AuthContext", () => ({
   useAuth: () => ({ can: () => true, user: null, now: () => Date.UTC(2026, 9, 3) }),
@@ -381,5 +393,59 @@ describe("VerifyTallyPanel düzeni", () => {
   it("'Tam' görünümde 'Neyi denetler?' açık gelir", () => {
     setPrefSync(PREF_KEYS.detail, "tam");
     expect(isOpen(detailsTag(render(panel()), "verify-intro"))).toBe(true);
+  });
+});
+
+// ───────────── Sınıra yakın değerlerin gösterimi (ALGORİTMA §4.2 r2, §12.15) ─────────────
+
+describe("gösterilen değer karşılaştırma sonucuyla çelişmez", () => {
+  it("küme tablosu: P_g 14/47 = 0,2979 < taban 0,30 → '0,298 | 0,30' (eskiden '0,30 | 0,30 | ✘')", () => {
+    expect(clusterPgFloorText({ pg: 14 / 47, floor: 0.3, yes: 13, no: 32 })).toEqual({ pg: "0,298", floor: "0,30" });
+    // T1: 16 kabul / 25 red → P_g 17/43 = 0,3953 < 0,40
+    expect(clusterPgFloorText({ pg: 17 / 43, floor: 0.4, yes: 16, no: 25 })).toEqual({ pg: "0,395", floor: "0,40" });
+    // Sınır yuvarlanınca karşılaştırma çelişirse sınırın da hassasiyeti artar: 2/3 iken P_g 0,6668 "0,6668 ≥ 0,67" görünmesin
+    expect(clusterPgFloorText({ pg: 0.6668, floor: 2 / 3, yes: 0, no: 0 })).toEqual({ pg: "0,6668", floor: "0,6667" });
+  });
+
+  it("küme tablosu: ayırt edilebilen ve tam eşit değerler bugünkü 2 basamakla kalır; taban yoksa '—'", () => {
+    expect(clusterPgFloorText({ pg: 0.73, floor: 0.4, yes: 7, no: 2 })).toEqual({ pg: "0,73", floor: "0,40" });
+    expect(clusterPgFloorText({ pg: 3 / 10, floor: 0.3, yes: 2, no: 6 })).toEqual({ pg: "0,30", floor: "0,30" });
+    expect(clusterPgFloorText({ pg: 0.5, floor: null, yes: 0, no: 0 })).toEqual({ pg: "0,50", floor: "—" });
+  });
+
+  it("onay çubuğu: 1499/2500 = %59,96 eşik %60'ın altında → '%59,96' ve 'Eşik: ≥ %60,0' (eskiden '%60' / '≥ %60')", () => {
+    const r = { approval: 1499 / 2500, totals: { ...result().totals, yes: 1499, no: 1001 }, thresholdUsed: { num: 3, den: 5 }, thresholdStrict: false };
+    expect(approvalTexts(r)).toEqual({ value: "%59,96", threshold: "≥ %60,0" });
+    const html = render(<ResultsCard result={result({ ...r, outcome: "reject", thresholdMet: false })} />);
+    expect(html).toContain("%59,96 (1499/2500)");
+    expect(html).toContain("Eşik: ≥ %60,0");
+  });
+
+  it("onay çubuğu: ayırt edilebilen değerde bugünkü biçim korunur; tam eşitlikte sınırla aynı yazılır", () => {
+    expect(approvalTexts({ approval: 30 / 38, totals: result().totals, thresholdUsed: { num: 3, den: 5 }, thresholdStrict: false })).toEqual({ value: "%78,9", threshold: "≥ %60" });
+    const eq = { approval: 0.5, totals: { ...result().totals, yes: 4, no: 4 }, thresholdUsed: { num: 1, den: 2 }, thresholdStrict: true };
+    expect(approvalTexts(eq)).toEqual({ value: "%50", threshold: "> %50" });
+  });
+
+  it("ResultsCard tablosu P_g'yi tabandan ayırt edilebilir yazar", () => {
+    const html = render(<ResultsCard result={result({ bridgeMet: false, clusters: [cluster("g0"), cluster("g2", { yes: 13, no: 32, pg: 14 / 47, floor: 0.3, passed: false })] })} />);
+    expect(html).toContain("<strong>0,298</strong>");
+    expect(html).not.toContain("<strong>0,30</strong>");
+  });
+});
+
+describe("sayım doğrulaması hükmü: geçici hata BAŞARISIZ değildir", () => {
+  it("uyuşmazlık → BAŞARISIZ (kırmızı); sonuç alınamadı → uyarı; bloğa girmedi → bilgi; hepsi tuttu → yeşil", () => {
+    expect([roundVerdict({ ok: false, pending: false, inconclusive: null }), roundTone({ ok: false, pending: false, inconclusive: null })]).toEqual(["doğrulama BAŞARISIZ", "error"]);
+    const inc = { ok: true, pending: true, inconclusive: "Sunucunun hız sınırına takıldı" };
+    expect([roundVerdict(inc), roundTone(inc)]).toEqual(["sonuç alınamadı, yeniden deneyin", "warning"]);
+    expect(roundTone({ ok: true, pending: true, inconclusive: null })).toBe("info");
+    expect([roundVerdict({ ok: true, pending: false, inconclusive: null }), roundTone({ ok: true, pending: false, inconclusive: null })]).toEqual(["sayım doğrulandı", "success"]);
+  });
+
+  it("ilerleme metni: doğrulanan taahhüt sayısı ve hız sınırı beklemesi", () => {
+    expect(verifyProgressLabel(null)).toBe("Bülten indiriliyor ve sayım yeniden yapılıyor…");
+    expect(verifyProgressLabel({ done: 120, total: 1251, waitingMs: 0 })).toBe("Oy taahhütleri defterden doğrulanıyor: 120/1.251…");
+    expect(verifyProgressLabel({ done: 120, total: 1251, waitingMs: 53_200 })).toContain("hız sınırı nedeniyle 54 sn bekleniyor");
   });
 });

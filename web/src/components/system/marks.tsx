@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { LEDGER_TX_LABELS, PROPOSAL_STATUS_LABELS, type LedgerTxType, type TickResponse } from "@forum/shared";
 import { proposalRef } from "../../lib/format";
 import { routes } from "../../lib/routes";
-import { Badge, cx } from "../../ui";
+import { Alert, Badge, cx } from "../../ui";
 import "./system.css";
 
 /** Doğrulama sonucu: ok → "✔ geçerli", false → "✘ geçersiz", null → "— denetlenmedi" (renk + simge + metin). */
@@ -65,24 +65,45 @@ export function TxTypeBadges({ types }: { types: string[] }) {
   );
 }
 
+/**
+ * Yönetici isteğinin süre bütçesi dolduğunda (`pending: true`) gösterilen not: kalan geçişler sunucudaki zamanlayıcıyla sürer.
+ * Yönetim ekranı bunu hem sonuç kartında hem bildirimde kullanır.
+ */
+export const TICK_PENDING_NOTE =
+  "Vadesi gelen evre geçişlerinin bir kısmı bu istekte bitmedi; kalanları sunucudaki zamanlayıcı birkaç saniye içinde işler. Sonucu görmek için biraz sonra sayfayı yenileyin ya da zamanlayıcıyı yeniden çalıştırın.";
+
 /** Zamanlayıcı sonucu: faz geçişleri. */
 export function TransitionsList({ result }: { result: TickResponse }) {
-  if (!result.transitions.length) return <p className="muted mt-0">Bu adımda evre değişikliği olmadı.</p>;
+  const pending = result.pending ? (
+    <Alert tone="warning" title="Geçişler sürüyor">
+      {TICK_PENDING_NOTE}
+    </Alert>
+  ) : null;
+  if (!result.transitions.length)
+    return (
+      <>
+        {pending}
+        <p className="muted mt-0">{result.pending ? "Bu istekte henüz evre değişikliği tamamlanmadı." : "Bu adımda evre değişikliği olmadı."}</p>
+      </>
+    );
   return (
-    <ul className="list">
-      {result.transitions.map((t, i) => (
-        <li className="list-item" key={`${t.proposalId}-${i}`}>
-          <div className="row">
-            <Link to={routes.proposal(t.proposalId)}>
-              <strong>{proposalRef(t.seq)}</strong>
-            </Link>
-            <span>
-              {PROPOSAL_STATUS_LABELS[t.from] ?? t.from} → <strong>{PROPOSAL_STATUS_LABELS[t.to] ?? t.to}</strong>
-            </span>
-          </div>
-          {t.reason ? <div className="small muted">{t.reason}</div> : null}
-        </li>
-      ))}
-    </ul>
+    <>
+      {pending}
+      <ul className="list">
+        {result.transitions.map((t, i) => (
+          <li className="list-item" key={`${t.proposalId}-${i}`}>
+            <div className="row">
+              <Link to={routes.proposal(t.proposalId)}>
+                <strong>{proposalRef(t.seq)}</strong>
+              </Link>
+              <span>
+                {PROPOSAL_STATUS_LABELS[t.from] ?? t.from} → <strong>{PROPOSAL_STATUS_LABELS[t.to] ?? t.to}</strong>
+              </span>
+            </div>
+            {t.reason ? <div className="small muted">{t.reason}</div> : null}
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }

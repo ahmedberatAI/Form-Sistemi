@@ -242,9 +242,15 @@ bakar.
   imhası ve hesap silme, satır değişikliğini ve denetim kaydını tek işlemde yazar: denetim satırı yazılamazsa değişiklik geri
   alınır. Bildirim ve defter kaydı işlemden sonra yapılır. Kimlik modülünün gönderdiği bir defter kaydı reddedilirse bu artık
   yutulmaz: `identity.ledger_error` (yalnız işlem türü ve hata kodu; üye bilgisi ve hata iletisi yok) olarak günlüğe yazılır.
+- **Şifre teyidi kilidi.** Mevcut şifreyi soran işlemler (şifre değişikliği, takma ad değişikliği, hesap silme) üye kimliğine bağlı
+  ayrı bir sayaç kullanır: 15 dakikada 5 yanlış şifreden sonra bu üç işlem 15 dakika durur (429 `login_locked`, `Retry-After`,
+  kendi iletisiyle; kilitliyken şifre denetlenmez). Kilit başına bir kez `identity.reauth_locked` yazılır. Ele geçirilmiş bir
+  oturum belirteciyle şifre kaba kuvvetle bulunup değiştirilemez (değişiklik diğer oturumları kapatıp hesabı kalıcı olarak ele
+  geçirirdi). Bu uçlar ve düzeltme talebi ayrıca `auth/*` ile aynı sıkı IP sayacına (20 istek/dk) tabidir.
 - Oturum belirteci HMAC imzalıdır; veritabanında yalnızca oturum kimliği durur. `authenticate` imza, süre (180 gün,
   simüle saat), iptal ve hesap durumunu (silinmiş/reddedilmiş → geçersiz) denetler. Şifre değişince diğer tüm oturumlar
-  iptal edilir.
+  iptal edilir. Oturum yalnız şifre özeti doğrulama süresince değişmemişse açılır: eski şifreyle başlamış eşzamanlı bir giriş,
+  arada şifre değiştirildiyse 401 alır ve iptalden kaçan oturum kalmaz.
 - SQLite `PRAGMA secure_delete = ON`: üzerine yazılan/silinen satır baytları sayfalarda sıfırlanır; imhadan sonra WAL
   dosyası denetim noktasıyla (checkpoint) kesilir.
 
@@ -254,8 +260,8 @@ Aşağıdakiler yalnız süreç belleğindedir; diske, yedeklere ya da deftere y
 
 | Kayıt | İçerik | Süre ve sınır | Kişisel veri |
 |---|---|---|---|
-| Giriş sayaçları | Tanımlayıcı özeti → başarısız deneme sayısı, pencere ve kilit zamanı | 15 dk pencere, 15 dk kilit (gerçek saat); en çok 10 000 tanımlayıcı; dolunca önce süresi dolmuşlar, sonra kilitsiz kayıtlardan en az denemesi olan atılır (kilitli kayıt ancak hepsi kilitliyse) | Tanımlayıcı düz metin değil özet olarak tutulur (e-posta için kör indeksten türetilir) |
-| `Idempotency-Key` yanıt deposu | Oturumlu kullanıcı + yöntem + yol + anahtar → ilk başarılı (2xx) yanıt | İlk istekten itibaren 10 dk (gerçek saat); 5000 kayıt, toplam 32 MB, yanıt başına 1 MB | **Yanıt gövdeleri** (ör. yazılan mesajın metni, `MessageView`) süreç belleğinde en çok 10 dakika durur. **İstek gövdeleri saklanmaz**; yalnız süreç başına rastgele anahtarlı bir HMAC özeti tutulur |
+| Giriş ve şifre teyidi sayaçları | Tanımlayıcı özeti (şifre teyidinde üye kimliğinin özeti) → başarısız deneme sayısı, pencere ve kilit zamanı | 15 dk pencere, 15 dk kilit (gerçek saat); en çok 10 000 tanımlayıcı; dolunca önce süresi dolmuşlar, sonra kilitsiz kayıtlardan en az denemesi olan atılır (kilitli kayıt ancak hepsi kilitliyse) | Tanımlayıcı düz metin değil özet olarak tutulur (e-posta için kör indeksten türetilir) |
+| `Idempotency-Key` yanıt deposu | Oturumlu kullanıcı + yöntem + yol + anahtar → ilk başarılı (2xx) yanıt | İlk istekten itibaren 10 dk (gerçek saat); 5000 kayıt, toplam 32 MB, kullanıcı başına 4 MB, yanıt başına 1 MB (bayt sınırında yalnız gövde bırakılır, "işlendi" bilgisi kalır) | **Yanıt gövdeleri** (ör. yazılan mesajın metni, `MessageView`) süreç belleğinde en çok 10 dakika durur. **İstek gövdeleri saklanmaz**; yalnız süreç başına rastgele anahtarlı bir HMAC özeti tutulur |
 
 `Idempotency-Key` kapsamı dışında kalanlar: anonim istekler, `/api/auth/*`, şifre içeren `/api/me/password`, çözülmüş kişisel veri
 döndüren `/api/registrar/users/:id/pii` ile `/api/registrar/corrections/:id/review` ve yalnız okuma/ön denetim yapan
@@ -283,9 +289,9 @@ Başvuru süresi: en geç 30 gün (md. 13). Döküm ve silme anında yerine geti
 
 | Adım | Ne olur? | İz |
 |---|---|---|
-| 1. Talep | Üye düzeltilecek alanları (ad, soyad, TCKN, doğum tarihi, e-posta, telefon, adres) ve **gerekçesini** (10–2000 karakter) gönderir. Değerler kayıt formuyla aynı kurallarla doğrulanır; mevcut kayıtla aynı alanlar ayıklanır; yinelenen TCKN/e-posta 409 ile reddedilir (kör indeksle, düz metne dokunmadan). Aynı anda tek bekleyen talep olabilir. | Öneri ve gerekçe kişinin DEK'iyle şifreli (`identity_corrections`); `audit_log` `identity.correction_requested` (yalnız alan adları); kayıt memurlarına bildirim |
+| 1. Talep | Üye düzeltilecek alanları (ad, soyad, TCKN, doğum tarihi, e-posta, telefon, adres) ve **gerekçesini** (10–2000 karakter) gönderir. Değerler kayıt formuyla aynı kurallarla doğrulanır; mevcut kayıtla aynı alanlar ayıklanır. Başka bir üyede kayıtlı TCKN/e-posta talep anında **reddedilmez** (kör indeksle, düz metne dokunmadan denetlenir; ayrık bir 409, herhangi bir hesapla bir e-postanın ya da TCKN'nin üye olup olmadığını sorgulatırdı): çakışma `identity.duplicate_attempt` olarak günlüğe yazılır ve karar anına kalır. Aynı anda tek bekleyen talep olabilir. | Öneri ve gerekçe kişinin DEK'iyle şifreli (`identity_corrections`); `audit_log` `identity.correction_requested` (yalnız alan adları); kayıt memurlarına bildirim |
 | 2. İnceleme | Talep listesi değer içermez. Kayıt memuru (ya da denetçi/yönetici) **amaç yazarak** inceler: düzeltilen alanların mevcut ve önerilen değerleri (TCKN maskeli) ve gerekçe gösterilir. | `pii_access_log` (aktör, üye, amaç) + `audit_log` `identity.pii_access` (`correctionId`) |
-| 3. Karar | Yalnız talebi **kendisi inceleyen** kayıt memuru/yönetici karar verir; kendi talebine karar veremez; denetçi yalnız okur. **Onay:** yalnız değişen kasa alanları aynı DEK ile **yeni rastgele IV'lerle yeniden şifrelenir**, işlem içinde yeniden çözülerek doğrulanır; TCKN/e-posta/hane kör indeksleri, il/ilçe ve (doğum tarihi değiştiyse) reşitlik güncellenir. **Ret:** kasa değişmez. Her iki durumda öneri **imha edilir** (`enc_payload` NULL); gerekçe hesap verebilirlik için şifreli kalır. | `audit_log` `identity.correction_approved` / `identity.correction_rejected` (alan adları, not var/yok); üyeye bildirim |
+| 3. Karar | Yalnız talebi **kendisi inceleyen** kayıt memuru/yönetici karar verir; kendi talebine karar veremez; denetçi yalnız okur. Onayda TCKN/e-posta çakışması yeniden denetlenir: varsa 409 `duplicate_tckn`/`duplicate_email`, kasa değişmez. **Onay:** yalnız değişen kasa alanları aynı DEK ile **yeni rastgele IV'lerle yeniden şifrelenir**, işlem içinde yeniden çözülerek doğrulanır; TCKN/e-posta/hane kör indeksleri, il/ilçe ve (doğum tarihi değiştiyse) reşitlik güncellenir. **Ret:** kasa değişmez. Her iki durumda öneri **imha edilir** (`enc_payload` NULL); gerekçe hesap verebilirlik için şifreli kalır. | `audit_log` `identity.correction_approved` / `identity.correction_rejected` (alan adları, not var/yok); üyeye bildirim |
 | — | Üye bekleyen talebini geri çekebilir (öneri imha). Hesap silinirse (kripto-imha) öneri ve gerekçe NULL yapılır, bekleyen talep "geri çekildi" sayılır. KVKK dökümünde talep geçmişi (alanlar, durum, tarihler, not) yer alır. | `identity.correction_withdrawn` |
 
 Deftere düzeltmeyle ilgili hiçbir kayıt yazılmaz (kişisel veri yok, `memberRef` de değişmez).
@@ -302,6 +308,8 @@ verisinin silinmesini isteyebilir ve bu oylamaya konamaz. Çözüm, **kimlik** i
 | Bildirimler | Başkalarına gitmiş kayıtlı bildirim metinlerinde (ör. kayıt memurunun "\"ali\" takma adlı yeni üye…", "ali, mesajınızı yanıtladı") eski takma ad `Silinmiş üye #<kısa>` olur; böylece silinen takma ad personelin bildirim kutusunda ve dökümünde kalmaz. Değiştirilen yalnızca şablonların takma adı yazdığı biçimlerdir (tırnak içinde ya da gövde başında) |
 | Defter | `MEMBER_ERASED {memberRef}` eklenir; eski kayıtlar değişmez ama zaten kişisel veri içermez |
 | Mesajlar, öneriler, sürümler | **Silinmez.** Yazar artık "Silinmiş üye #…" olarak görünür; içerik, kimseye bağlanamayan takma adlı bir kayıt olarak kalır |
+| Bilirkişi kaydı | Aynı işlemde kapatılır: durum `removed`, serbest metin yeterlilik beyanı (`credentials`) boşaltılır, uzmanlık alanları `[]`, yaptırım notu NULL; kabul edilmiş ya da davet bekleyen görevler yaptırım akışındaki gibi yedeğe devredilir; `EXPERT_IN` graf kenarları iptal edilir. Kayıt hiçbir bilirkişi listesinde görünmez, profilde "bilirkişi" yazmaz, yeniden onaylanamaz ya da yaptırıma konu olamaz (409 `invalid_state`). Verilmiş raporlar kamusal kayıt olarak kalır, yazarı "Silinmiş üye #…" görünür. Bu kuraldan önce silinmiş hesapların kayıtları açılışta kapatılır, asılı görevleri zamanlayıcının ilk turunda yedeğe devredilir |
+| Graf ilişkileri | Kapanmış hesap yeni takip, kefalet ya da yakınlık beyanının hedefi olamaz (409 `invalid_state`); eski kenarlar geri alınabilir |
 | Oylar ve sayımlar | Kapanmış sayımlar değişmez (silme geriye etkili değildir); `ballots` satırları yalnızca artık kimliğe bağlanamayan üye kimliğini taşır |
 | Denetim ve erişim günlükleri | Saklanır (silme kayıtlarının en az 3 yıl saklanması yükümlülüğü); kişisel veri içermez |
 
@@ -355,10 +363,13 @@ süreyi yeniden başlatır.
    DEK'leri de kalıcı olarak çözülemez hâle gelir.
 4. **Tek süreç.** Kasa, forum ve anahtarlar aynı Node.js sürecindedir; JavaScript dizelerindeki çözülmüş veriler bellekten
    güvenle silinemez (yalnızca `Buffer` anahtarlar sıfırlanır). Üretimde kasa ayrı bir hizmete taşınabilir.
-5. **Üyelik sorgulanabilirliği.** Yinelenen TCKN/e-posta kaydı 409 ile reddedilir; bu, birinin TCKN'sini bilen birinin o
-   kişinin üye olup olmadığını öğrenmesine yol açabilir (siyasi üyelik de hassastır). Önlemler: `auth/*` için hız sınırı
-   (20 istek/dk), her yinelenen denemenin `identity.duplicate_attempt` olarak günlüğe yazılması. Daha güçlü alternatif:
-   genel bir yanıt verip sonucu e-postayla bildirmek.
+5. **Üyelik sorgulanabilirliği (kayıt).** Kayıtta (`POST /api/auth/register`) yinelenen TCKN/e-posta 409 ile reddedilir; bu,
+   birinin TCKN'sini bilen birinin o kişinin üye olup olmadığını öğrenmesine yol açabilir (siyasi üyelik de hassastır). Önlemler:
+   `auth/*` için hız sınırı (20 istek/dk), her yinelenen denemenin `identity.duplicate_attempt` olarak günlüğe yazılması. Genel
+   bir ileti tek başına yetmez (gövdenin geri kalanını arayan belirlediği için 409'un kendisi üyeliği söyler); güçlü çözüm başvuruyu
+   her durumda kabul edip çakışmayı kayıt memuruna işaretlemektir. Bu, kör indekslerin tekilliğini, ana anahtar dönüşümünü,
+   e-postayla girişi ve kayıt formunu etkilediği için ürün kararı bekleyen bilinçli bir sınırdır. Düzeltme talebi ucu bu kâhini
+   artık oluşturmaz (§5.1: çakışma talep anında reddedilmez, karar anına kalır).
 6. **Personel için iki faktörlü kimlik doğrulama (2FA) yoktur — bilinçli sınırlama.** Kurul 2018/10, özel nitelikli
    veriye uzaktan erişimde iki faktör önerir; kayıt memuru, denetçi ve yönetici hesapları kişisel veriye eriştiği için bu
    öneri onları doğrudan kapsar. Bu sürümde eklenmemesinin gerekçeleri:

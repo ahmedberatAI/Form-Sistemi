@@ -22,10 +22,18 @@ export const IDEMPOTENT_REPLAYED_HEADER = "Idempotent-Replayed";
 export const DEFAULT_IDEMPOTENCY = {
   /** Başarılı yanıtın saklanma süresi: ilk isteğin gelişinden itibaren 10 dk. */
   ttlMs: 10 * 60_000,
-  /** En çok saklanan anahtar sayısı (aşılınca en eski tamamlanmış kayıt atılır). */
+  /** En çok saklanan anahtar sayısı (aşılınca en eski tamamlanmış kayıt atılır). Tek IP genel sınırla (300/dk) TTL içinde dolduramaz. */
   maxEntries: 5_000,
-  /** Saklanan yanıt gövdelerinin toplam boyutu. */
+  /**
+   * Saklanan yanıt gövdelerinin toplam boyutu. Aşılınca kayıt SİLİNMEZ: en eski tamamlanmış kayıtların yalnız gövdesi bırakılır
+   * (parmak izi ve "işlendi" bilgisi TTL boyunca kalır); yeniden gönderim işlemi tekrarlamaz, 409 idempotency_replay_unavailable alır.
+   */
   maxBytes: 32 * 1024 * 1024,
+  /**
+   * Kullanıcı başına saklanan gövde kotası: aşılınca önce O kullanıcının kendi en eski gövdeleri bırakılır. Tek bir kullanıcının
+   * büyük yanıtları (ör. sürüm geçmişli öneri güncellemeleri) başkalarının çift kayıt korumasını düşüremez.
+   */
+  maxBytesPerUser: 4 * 1024 * 1024,
   /** Tek yanıtın en büyük boyutu; daha büyük yanıt saklanmaz, yeniden gönderim 409 idempotency_replay_unavailable alır. */
   maxEntryBytes: 1024 * 1024,
   /** Uçuştaki ilk isteğin sonucunu bekleme süresi (istemcinin 30 sn'lik zaman aşımından kısa). */
@@ -36,6 +44,7 @@ export interface IdempotencyOptions {
   ttlMs?: number;
   maxEntries?: number;
   maxBytes?: number;
+  maxBytesPerUser?: number;
   maxEntryBytes?: number;
   waitMs?: number;
   /** Saklama süresi için duvar saati (ms); testler için değiştirilebilir. */
@@ -69,6 +78,8 @@ const replayUnavailable = () =>
   new AppError(409, "idempotency_replay_unavailable", "Bu istek zaten işlendi, ancak yanıtı yeniden gönderilemiyor. Sonucu görmek için sayfayı yenileyin.");
 
 interface Entry {
+  /** İsteği yapan kullanıcı (kullanıcı başına bayt kotası için). */
+  readonly owner: string;
   readonly fingerprint: string;
   readonly expiresAt: number;
   done: boolean;
@@ -87,6 +98,7 @@ type Limits = Required<IdempotencyOptions>;
 class IdempotencyStore {
   private readonly entries = new Map<string, Entry>();
   private bytes = 0;
+  private readonly ownerBytes = new Map<string, number>();
   constructor(private readonly o: Limits) {}
 
   get(key: string): Entry | undefined {
@@ -94,12 +106,12 @@ class IdempotencyStore {
     return this.entries.get(key);
   }
 
-  claim(key: string, fingerprint: string): Entry {
+  claim(key: string, owner: string, fingerprint: string): Entry {
     let settle!: () => void;
     const settled = new Promise<void>((r) => (settle = r));
-    const e: Entry = { fingerprint, expiresAt: this.o.now() + this.o.ttlMs, done: false, status: 0, contentType: undefined, payload: null, bytes: 0, settled, settle };
+    const e: Entry = { owner, fingerprint, expiresAt: this.o.now() + this.o.ttlMs, done: false, status: 0, contentType: undefined, payload: null, bytes: 0, settled, settle };
     this.entries.set(key, e);
-    this.evict();
+    this.evict(owner);
     return e;
   }
 
@@ -110,12 +122,11 @@ class IdempotencyStore {
       e.status = status;
       e.contentType = contentType;
       const bytes = payload === null ? 0 : typeof payload === "string" ? Buffer.byteLength(payload) : payload.length;
-      if (payload !== null && bytes <= this.o.maxEntryBytes) {
+      if (payload !== null && bytes <= this.o.maxEntryBytes && bytes <= this.o.maxBytesPerUser) {
         e.payload = payload;
-        e.bytes = bytes;
-        this.bytes += bytes;
+        this.account(e, bytes);
       }
-      this.evict();
+      this.evict(e.owner);
     }
     e.settle();
   }
@@ -125,9 +136,24 @@ class IdempotencyStore {
     else e.settle();
   }
 
+  private account(e: Entry, delta: number): void {
+    e.bytes += delta;
+    this.bytes += delta;
+    const next = (this.ownerBytes.get(e.owner) ?? 0) + delta;
+    if (next > 0) this.ownerBytes.set(e.owner, next);
+    else this.ownerBytes.delete(e.owner);
+  }
+
+  /** Gövdeyi bırakır (mezar taşı): "işlendi" bilgisi ve parmak izi kalır, yeniden gönderim 409 idempotency_replay_unavailable alır. */
+  private dropPayload(e: Entry): void {
+    if (e.payload === null) return;
+    this.account(e, -e.bytes);
+    e.payload = null;
+  }
+
   private remove(key: string, e: Entry): void {
     this.entries.delete(key);
-    this.bytes -= e.bytes;
+    this.account(e, -e.bytes);
     e.settle();
   }
 
@@ -139,13 +165,30 @@ class IdempotencyStore {
     }
   }
 
-  /** Sınır aşılırsa en eski TAMAMLANMIŞ kayıtlar atılır; uçuştakiler (eşzamanlı istek sayısıyla sınırlı) korunur. */
-  private evict(): void {
-    const over = () => this.entries.size > this.o.maxEntries || this.bytes > this.o.maxBytes;
-    if (!over()) return;
-    for (const [k, e] of this.entries) {
-      if (!over()) break;
-      if (e.done) this.remove(k, e);
+  /**
+   * Sınırlar (uçuştaki kayıtlar, eşzamanlı istek sayısıyla sınırlı oldukları için korunur):
+   *  1. kullanıcı başına bayt kotası → o kullanıcının en eski gövdeleri bırakılır;
+   *  2. toplam bayt sınırı → en eski gövdeler bırakılır (kayıt silinmez: işlem yeniden gönderimde tekrarlanmaz);
+   *  3. kayıt sayısı sınırı → en eski tamamlanmış kayıtlar silinir.
+   */
+  private evict(owner: string): void {
+    if ((this.ownerBytes.get(owner) ?? 0) > this.o.maxBytesPerUser) {
+      for (const e of this.entries.values()) {
+        if ((this.ownerBytes.get(owner) ?? 0) <= this.o.maxBytesPerUser) break;
+        if (e.done && e.owner === owner) this.dropPayload(e);
+      }
+    }
+    if (this.bytes > this.o.maxBytes) {
+      for (const e of this.entries.values()) {
+        if (this.bytes <= this.o.maxBytes) break;
+        if (e.done) this.dropPayload(e);
+      }
+    }
+    if (this.entries.size > this.o.maxEntries) {
+      for (const [k, e] of this.entries) {
+        if (this.entries.size <= this.o.maxEntries) break;
+        if (e.done) this.remove(k, e);
+      }
     }
   }
 }
@@ -202,7 +245,7 @@ export function installIdempotency(app: FastifyInstance, opts: IdempotencyOption
     for (;;) {
       const e = store.get(key);
       if (!e) {
-        claims.set(req, { key, entry: store.claim(key, fingerprint) });
+        claims.set(req, { key, entry: store.claim(key, user.id, fingerprint) });
         return;
       }
       if (e.fingerprint !== fingerprint) throw reusedKey();

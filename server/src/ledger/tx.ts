@@ -1,10 +1,10 @@
 // İşlem kimliği, imza baytları, kişisel veri savunması ve çift imza kanıtı denetimi.
+import { createPublicKey, verify as nodeVerify, type KeyObject } from "node:crypto";
 import {
   CHAIN_ID,
   LEDGER_TX_LABELS,
   canonicalJson,
   ed25519Sign,
-  ed25519Verify,
   hashCanonical,
   hexToBytes,
   precommitSignBytes,
@@ -117,9 +117,45 @@ export function signTxHash(hash: string, appSecretKey: string): string {
   return ed25519Sign(hexToBytes(hash), appSecretKey);
 }
 
-// ───────────── İmza doğrulama önbelleği ─────────────
-// ed25519Verify saf bir fonksiyondur; (anahtar, imza, mesaj özeti) üçlüsüyle önbelleğe almak sonucu değiştirmez.
-// Aynı süreçteki dört doğrulayıcının aynı imzayı dört kez doğrulamasını önler.
+// ───────────── İmza doğrulama ─────────────
+// Sunucuda imzalar Node'un yerel (OpenSSL) Ed25519 doğrulamasıyla denetlenir: saf JS (@noble) doğrulama imza başına ~0,8 ms
+// sürer ve soğuk bir tam zincir doğrulaması (yeniden başlatma sonrası ilk GET /api/ledger/verify) on binlerce imzada olay döngüsünü
+// dakikalarca kilitlerdi. İmzalar zaten @noble ile (RFC 8032, belirlenimci) üretilir; geçerli imzalarda iki doğrulama aynı sonucu
+// verir (yerel doğrulama yalnız standart dışı kodlamalarda daha katıdır). Tarayıcı/Android yeniden doğrulaması @forum/shared'deki
+// saf JS sürümünü kullanmaya devam eder.
+const SPKI_ED25519_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
+const KEY_HEX = /^[0-9a-fA-F]{64}$/;
+const SIG_HEX = /^[0-9a-fA-F]{128}$/;
+const keyCache = new Map<string, KeyObject | null>();
+
+function ed25519Key(publicKeyHex: string): KeyObject | null {
+  let k = keyCache.get(publicKeyHex);
+  if (k !== undefined) return k;
+  try {
+    k = KEY_HEX.test(publicKeyHex)
+      ? createPublicKey({ key: Buffer.concat([SPKI_ED25519_PREFIX, Buffer.from(publicKeyHex, "hex")]), format: "der", type: "spki" })
+      : null;
+  } catch {
+    k = null;
+  }
+  if (keyCache.size >= 1_000) keyCache.clear(); // doğrulayıcı + uygulama anahtarları: birkaç tane; sınır yalnız güvenlik ağı
+  keyCache.set(publicKeyHex, k);
+  return k;
+}
+
+/** Yerel Ed25519 doğrulaması (hex imza ve anahtar); bozuk girdi false. */
+export function ed25519VerifyNative(sigHex: string, message: Uint8Array, publicKeyHex: string): boolean {
+  if (!SIG_HEX.test(sigHex)) return false;
+  const key = ed25519Key(publicKeyHex);
+  if (!key) return false;
+  try {
+    return nodeVerify(null, message, key, Buffer.from(sigHex, "hex"));
+  } catch {
+    return false;
+  }
+}
+
+// (anahtar, imza, mesaj özeti) üçlüsüyle önbellek: doğrulama saf bir fonksiyondur; dört doğrulayıcı aynı imzayı dört kez doğrulamaz.
 const verifyMemo = new Map<string, boolean>();
 const MEMO_LIMIT = 100_000;
 
@@ -128,7 +164,7 @@ export function verifySig(sig: unknown, message: Uint8Array, publicKey: string):
   const key = publicKey + sig + sha256Hex(message);
   const hit = verifyMemo.get(key);
   if (hit !== undefined) return hit;
-  const ok = ed25519Verify(sig, message, publicKey);
+  const ok = ed25519VerifyNative(sig, message, publicKey);
   if (verifyMemo.size >= MEMO_LIMIT) {
     // En eski %10'u at (Map ekleme sırasını korur).
     let drop = MEMO_LIMIT / 10;

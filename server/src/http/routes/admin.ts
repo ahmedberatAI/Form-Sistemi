@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { HOUR } from "../../core/clock";
 import type { AdminUserRow, AuditLogEntry, ClusterSnapshotView, Me, TickResponse } from "@forum/shared";
 import type { Transition } from "../../core/forum-contracts";
-import { failedProposalIds } from "../../forum/lifecycle";
+import { failedProposalIds, tickDeferred } from "../../forum/lifecycle";
 import { requireRole } from "../auth";
 import { adminUsersQuery, auditLogQuery, clockAdvanceBody, idParams, setRolesBody } from "../schemas";
 import type { AppServices, RouteDeps } from "../types";
@@ -11,21 +11,38 @@ import { parseBody, parseParams, parseQuery } from "../validation";
 
 /** Yaşam döngüsü bir turda yeni geçişlere yol açabilir (ör. uzlaşma süresi 0 olan DEL); en çok 5 tur ilerletilir. */
 export const MAX_TICK_ROUNDS = 5;
+/**
+ * Yönetici isteğinin geçişlere ayırabileceği en uzun süre (ms): web istemcisinin 30 sn'lik zaman aşımından kısa. Yüzlerce önerinin
+ * aynı anda vadesi geldiğinde kalan geçişler zamanlayıcıya (ya da bir sonraki "tick" isteğine) bırakılır; yanıt `pending: true` olur.
+ */
+export const ADMIN_TICK_BUDGET_MS = 20_000;
 
 /** `failed`: yaşam döngüsünün ilerletemediği (hata/geri çekilme) öneri kimlikleri — yalnızca varsa döner. */
-export async function tickUntilSettled(services: AppServices): Promise<TickResponse & { failed?: string[] }> {
+export async function tickUntilSettled(services: AppServices, budgetMs = ADMIN_TICK_BUDGET_MS): Promise<TickResponse & { failed?: string[] }> {
   const all: Transition[] = [];
   const failed = new Set<string>();
+  const deadline = performance.now() + budgetMs;
+  let pending = false;
   for (let i = 0; i < MAX_TICK_ROUNDS; i++) {
-    const t = await services.forum.lifecycle.tick();
+    const remaining = deadline - performance.now();
+    if (i > 0 && remaining <= 0) {
+      pending = true;
+      break;
+    }
+    const t = await services.forum.lifecycle.tick({ budgetMs: Math.max(0, remaining) });
     all.push(...t);
     for (const id of failedProposalIds(t)) failed.add(id);
+    if (tickDeferred(t)) {
+      pending = true;
+      break;
+    }
     if (t.length === 0) break;
   }
   return {
     transitions: all.map(({ proposalId, seq, from, to, reason }) => ({ proposalId, seq, from, to, reason })),
     now: services.clock.now(),
     ...(failed.size > 0 ? { failed: [...failed] } : {}),
+    ...(pending ? { pending: true } : {}),
   };
 }
 

@@ -244,7 +244,12 @@ export interface GraphResponse {
   edges: GraphVisEdge[];
 }
 
-export const getGraph = (query?: { types?: EdgeType[]; limit?: number }) => http.get<GraphResponse>("/api/graph", { types: query?.types, limit: query?.limit });
+/**
+ * Boş tür listesi "hiç kenar" demektir: `types=` açıkça gönderilir. qs() boş diziyi atladığı için parametre düşerdi ve sunucu
+ * varsayılan türleri (FOLLOWS, VOUCHES, DELEGATES_TO) döndürürdü; "hiçbiri seçili değil" yine kenar gösterirdi.
+ */
+export const getGraph = (query?: { types?: EdgeType[]; limit?: number }) =>
+  http.get<GraphResponse>(query?.types?.length === 0 ? "/api/graph?types=" : "/api/graph", { types: query?.types, limit: query?.limit });
 export const getGraphStats = () => http.get<GraphStats>("/api/graph/stats");
 export const getLatestClusters = () => http.get<ClusterSnapshotView | null>("/api/clusters/latest");
 export const getClusterSnapshot = (id: string) => http.get<ClusterSnapshotView>(`/api/clusters/${seg(id)}`);
@@ -256,6 +261,10 @@ export const getLedgerStatus = () => http.get<LedgerStatus>("/api/ledger/status"
 export const getValidators = () => http.get<ValidatorKeys>("/api/ledger/validators");
 export const listBlocks = (query?: { from?: number; limit?: number }) => http.get<BlockListResponse>("/api/ledger/blocks", query);
 export const getBlock = (height: number, node?: string) => http.get<BlockView>(`/api/ledger/blocks/${seg(height)}`, { node });
+/**
+ * Defter işlemleri (en yeniden eskiye, en çok 500). ballotId/round: pusula süzgeci — sunucu desteklemiyorsa yok sayar; istemci
+ * sonucu her durumda kendisi yeniden süzer (VerifyVotePage › checkLatestCommit).
+ */
 export const listTxs = (query?: LedgerTxListQuery) => http.get<CommittedTxView[]>("/api/ledger/txs", query);
 export const getTx = (hash: string) => http.get<CommittedTxView>(`/api/ledger/txs/${seg(hash)}`);
 /** Dahil olma kanıtı → shared verifyInclusionProof(proof, pinnedValidators) ile doğrulanır. */

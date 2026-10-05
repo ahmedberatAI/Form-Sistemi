@@ -2,7 +2,7 @@
 // YZ moderasyon uyarısı (danışma), defter kaydı, gizlenmiş (mezar taşı + tek cevap) ve daraltılmış durumlar.
 // Sade alt satır: iki satırlık hash alt bilgisi tek sessiz satırdır ('özet a1b2c3… · defter d4e5f6… ›'; kopyalama işlem
 // sayfasında). 12 satırı aşan gövde ClampText ile kısalır; `.msg-body` gövdeyi saran düğümde kalır (odak ve e2e bu sınıfa bakar).
-import { useEffect, useId, useState } from "react";
+import { createContext, memo, useContext, useEffect, useId, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { HiddenMessageResponse, MessageVersionView, MessageView } from "@forum/shared";
 import { endorseMessage, getHiddenMessage, getMessageVersions, postRebuttal } from "../../api/endpoints";
@@ -63,6 +63,34 @@ function HiddenVersions({ hidden }: { hidden: HiddenMessageResponse }) {
   );
 }
 
+/**
+ * Mesajı görüntüleyenin mesaj için gereken yetkileri (yalnız ilkel değerler). Tartışma bunu bir kez hesaplayıp bağlamla verir:
+ * mesajlar oturum bağlamına (useAuth) ayrı ayrı abone OLMAZ. Oturum bağlamı 30 sn'de bir (sistem saati) ve 60 sn'de bir (okunmamış
+ * bildirim) değişir; her mesaj abone olsaydı uzun tartışmada (2000 mesaj) her yoklamada bütün liste saniyelerce yeniden çizilirdi.
+ */
+export interface MessageViewer {
+  id: string | null;
+  loggedIn: boolean;
+  /** Doğrulanmış üye (V): katılım bildirir, yanıtlar */
+  verified: boolean;
+  /** Denetçi (D): gizlenmiş metni okuyabilir */
+  auditor: boolean;
+}
+
+export const MessageViewerContext = createContext<MessageViewer | null>(null);
+
+/** Oturumdan görüntüleyen bilgisi (saf işlev). */
+export function messageViewerOf(auth: { user: { id: string } | null; can: (p: "V" | "D") => boolean }): MessageViewer {
+  return { id: auth.user?.id ?? null, loggedIn: !!auth.user, verified: auth.can("V"), auditor: auth.can("D") };
+}
+
+/** Bağlam yoksa (mesaj tek başına çizildiğinde) görüntüleyeni oturumdan okur. */
+function useViewerFromAuth(): MessageViewer {
+  const auth = useAuth();
+  const v = messageViewerOf(auth);
+  return useMemo(() => v, [v.id, v.loggedIn, v.verified, v.auditor]); // eslint-disable-line react-hooks/exhaustive-deps
+}
+
 export interface MessageItemProps {
   message: MessageView;
   /** Derin yanıtlarda "↳ @takma-ad" göstermek için */
@@ -76,8 +104,22 @@ export interface MessageItemProps {
   canReply?: boolean;
 }
 
-export function MessageItem({ message: m, parentNickname, focused, deletionSeq, onUpdate, onReply, canReply = true }: MessageItemProps) {
-  const auth = useAuth();
+function MessageItemWithAuth(props: MessageItemProps) {
+  return <MessageItemView {...props} viewer={useViewerFromAuth()} />;
+}
+
+function MessageItemBase(props: MessageItemProps) {
+  const viewer = useContext(MessageViewerContext);
+  return viewer ? <MessageItemView {...props} viewer={viewer} /> : <MessageItemWithAuth {...props} />;
+}
+
+/**
+ * Tek mesaj. memo: tartışma yoklaması ve üst sayfanın 30 sn'lik yoklaması, mesajın kendisi (nesne kimliği), görüntüleyen ve geri
+ * çağırımlar değişmedikçe mesajı yeniden çizmez (Discussion değişmeyen mesajın nesnesini korur, geri çağırımlar kararlıdır).
+ */
+export const MessageItem = memo(MessageItemBase);
+
+function MessageItemView({ message: m, parentNickname, focused, deletionSeq, onUpdate, onReply, canReply = true, viewer }: MessageItemProps & { viewer: MessageViewer }) {
   const toast = useToast();
   const confirm = useConfirm();
   const navigate = useNavigate();
@@ -92,7 +134,7 @@ export function MessageItem({ message: m, parentNickname, focused, deletionSeq, 
   const [rebuttal, setRebuttal] = useState("");
   const [hidden, setHidden] = useState<HiddenMessageResponse | null>(null);
 
-  const mine = !!auth.user && auth.user.id === m.authorId;
+  const mine = viewer.loggedIn && viewer.id === m.authorId;
   const isHidden = m.visibility === "hidden" || m.visibility === "sealed";
   const isCollapsed = m.visibility === "collapsed";
   const showBody = !isHidden && (!isCollapsed || expanded);
@@ -145,17 +187,17 @@ export function MessageItem({ message: m, parentNickname, focused, deletionSeq, 
   };
 
   const toggleEndorse = (v: 1 | -1) => {
-    if (!auth.user) {
+    if (!viewer.loggedIn) {
       toast.info("Katılım bildirmek için giriş yapın.");
       return;
     }
     void endorse.run(m.endorsements.mine === v ? 0 : v);
   };
 
-  const canEndorse = auth.can("V") && !mine && !isHidden;
-  const endorseTitle = !auth.user
+  const canEndorse = viewer.verified && !mine && !isHidden;
+  const endorseTitle = !viewer.loggedIn
     ? "Giriş yapın"
-    : !auth.can("V")
+    : !viewer.verified
       ? "Yalnızca doğrulanmış üyeler katılım bildirebilir"
       : mine
         ? "Kendi mesajınıza katılım bildiremezsiniz"
@@ -169,7 +211,7 @@ export function MessageItem({ message: m, parentNickname, focused, deletionSeq, 
         <UserLink id={m.authorId} nickname={m.authorNickname} />
         <StanceBadge stance={m.stance} />
         {parentNickname ? <span className="small muted msg-reply-to">↳ @{parentNickname} yanıtı</span> : null}
-        <Time at={m.createdAt} className="small muted" />
+        <Time at={m.createdAt} className="small muted" past />
         {m.version > 1 ? (
           <Badge tone="neutral" title={`Son düzenleme: ${new Date(m.updatedAt).toLocaleString("tr-TR")}`}>
             düzenlendi · sürüm {m.version}
@@ -231,7 +273,7 @@ export function MessageItem({ message: m, parentNickname, focused, deletionSeq, 
               </Button>
             )
           ) : null}
-          {auth.can("D") ? (
+          {viewer.auditor ? (
             hidden ? (
               <Alert tone="warning" title="Gizli metin (erişiminiz kaydedildi)" onClose={() => setHidden(null)}>
                 <HiddenVersions hidden={hidden} />
@@ -333,7 +375,7 @@ export function MessageItem({ message: m, parentNickname, focused, deletionSeq, 
             </span>
           ) : null}
           <div className="msg-buttons">
-            {onReply && canReply && auth.can("V") ? (
+            {onReply && canReply && viewer.verified ? (
               <Button size="sm" variant="ghost" onClick={() => onReply(m)}>
                 Yanıtla
               </Button>

@@ -869,8 +869,10 @@ test("ölçüm: ekran boyu, kelime, tıklanabilir öğe, rozet ve tartışmanın
 // ───────────────────────────── Erişilebilirlik: kontrast ve taşma (açık ve koyu tema) ─────────────────────────────
 
 test("kontrast ve taşma: açık ve koyu temada Ana sayfa ile öneri sayfalarında metin kontrastı WCAG AA, 360 px'de yatay taşma yok", async ({ browser }) => {
-  test.setTimeout(240_000);
-  const views: { label: string; as?: string; path: string }[] = [
+  test.setTimeout(300_000);
+  // wide: 1280 px'de de taranır (evre şeridinin etiketleri 600 px altında görsel olarak gizlidir; 'yaşanmadı' etiketleri yalnız
+  // genişte görünür — test döngüsü tur 1: opaklıkla soldurulmuş etiket ve numara 2,3–3,0:1 kalıyordu).
+  const views: { label: string; as?: string; path: string; wide?: boolean }[] = [
     { label: "Ana sayfa (üye)", as: "ayse", path: "/" },
     { label: "Ana sayfa (ziyaretçi)", path: "/" },
     { label: `Öneri #K-${enacted.seq} (kabul, bilirkişili)`, path: `/oneriler/${enacted.id}` },
@@ -878,7 +880,10 @@ test("kontrast ve taşma: açık ve koyu temada Ana sayfa ile öneri sayfaların
     { label: `Öneri #K-${deliberation.seq} (tartışma)`, as: "ayse", path: `/oneriler/${deliberation.id}` },
   ];
   const bad = proposals.find((p) => p.status === "inadmissible");
-  if (bad) views.push({ label: `Öneri #K-${bad.seq} (yönetmeliğe aykırı)`, path: `/oneriler/${bad.id}` });
+  if (bad) {
+    views.push({ label: `Öneri #K-${bad.seq} (yönetmeliğe aykırı)`, path: `/oneriler/${bad.id}` });
+    views.push({ label: `Öneri #K-${bad.seq} (yönetmeliğe aykırı) · 1280 px, evre etiketleri görünür`, path: `/oneriler/${bad.id}`, wide: true });
+  }
   const problems: string[] = [];
   // Üç koyu/açık yol: açık tema; sistem koyu (prefers-color-scheme bloğu); Ayarlar'dan seçilen koyu ([data-theme="dark"] bloğu)
   const variants = [
@@ -888,7 +893,7 @@ test("kontrast ve taşma: açık ve koyu temada Ana sayfa ile öneri sayfaların
   ] as const;
   for (const variant of variants) {
     for (const v of views) {
-      const sess = await open(browser, v.as, { ...PHONE_360, colorScheme: variant.colorScheme });
+      const sess = await open(browser, v.as, { ...(v.wide ? DESKTOP : PHONE_360), colorScheme: variant.colorScheme });
       const { page } = sess;
       const tag = `[${variant.name}] ${v.label}`;
       await gotoApp(page, v.path);

@@ -7,7 +7,7 @@ import { canDownloadFiles, downloadText } from "../../lib/download";
 import { formatDateTime, formatNumber, formatPercent, normalizeSearch } from "../../lib/format";
 import { routes } from "../../lib/routes";
 import { useAsync } from "../../lib/useAsync";
-import { Alert, Badge, Button, Card, CopyButton, Details, EmptyState, ErrorView, HashText, Input, Select, Spinner, Table, TierBadge, type Tone } from "../../ui";
+import { Alert, Badge, Button, Card, CopyButton, Details, EmptyState, ErrorView, HashText, Input, ScrollPre, Select, Spinner, Table, TierBadge, type Tone } from "../../ui";
 import "./system.css";
 
 const PROTECTION: Record<ProtectionLevel, { label: string; tone: Tone; hint: string }> = {
@@ -345,7 +345,7 @@ export function TurtleView({ versions, version, onVersion }: { versions: number[
             options={[{ value: "", label: "Güncel sürüm" }, ...versions.map((v) => ({ value: String(v), label: `v${v}` }))]}
           />
         </div>
-        {loading && !data ? <Spinner block /> : error ? <ErrorView error={error} onRetry={reload} compact /> : data ? <pre className="sy-pre">{data}</pre> : null}
+        {loading && !data ? <Spinner block /> : error ? <ErrorView error={error} onRetry={reload} compact /> : data ? <ScrollPre label="Yönetmelik Turtle (RDF) dökümü">{data}</ScrollPre> : null}
       </div>
     </Card>
   );

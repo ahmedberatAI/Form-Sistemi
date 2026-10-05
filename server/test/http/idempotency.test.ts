@@ -207,15 +207,32 @@ describe("Idempotency-Key: sınırlar", () => {
     expect(calls).toHaveLength(4);
   });
 
-  it("toplam boyut sınırı aşılınca en eski yanıt atılır", async () => {
+  it("toplam boyut sınırı aşılınca en eski yanıtın GÖVDESİ bırakılır; yeniden gönderim işlemi tekrarlamaz (409 idempotency_replay_unavailable)", async () => {
     const { s, member, calls } = messaging({ bodyOf: () => "x".repeat(400) });
     const app = await server(s, { idempotency: { maxBytes: 1000 } });
     await send(app, s, member, KEY);
     await send(app, s, member, KEY2); // ~2 × 430 bayt: sığar
-    await send(app, s, member, "eeeeeeee-0003"); // üçüncüsü sınırı aşar → en eski (KEY) atılır
+    await send(app, s, member, "eeeeeeee-0003"); // üçüncüsü sınırı aşar → en eskinin (KEY) gövdesi bırakılır, kaydı kalır
     expect((await send(app, s, member, KEY2)).headers["idempotent-replayed"]).toBe("true");
-    expect((await send(app, s, member, KEY)).headers["idempotent-replayed"]).toBeUndefined();
-    expect(calls).toHaveLength(4);
+    const r = await send(app, s, member, KEY);
+    expect(r.statusCode).toBe(409);
+    expect(r.json().error.code).toBe("idempotency_replay_unavailable");
+    expect(calls).toHaveLength(3); // KEY ikinci kez işlenmedi (çift kayıt yok)
+  });
+
+  it("kullanıcı başına kota: bir kullanıcının büyük yanıtları başkasının saklanan yanıtını düşürmez", async () => {
+    const { s, member, other, calls } = messaging({ bodyOf: (n) => (n === 1 ? "kısa yanıt" : "y".repeat(2000)) });
+    const app = await server(s, { idempotency: { maxBytes: 6000, maxBytesPerUser: 2500 } });
+    expect((await send(app, s, member, KEY)).statusCode).toBe(200); // kurban: küçük yanıt
+    // Saldırgan: her biri ~2 KB, yeni anahtarlarla — kendi kotası (2,5 KB) dolunca KENDİ eski gövdeleri bırakılır.
+    for (let i = 0; i < 6; i++) expect((await send(app, s, other, `ffffffff-000${i}`)).statusCode).toBe(200);
+    const again = await send(app, s, member, KEY);
+    expect(again.statusCode).toBe(200);
+    expect(again.headers["idempotent-replayed"]).toBe("true");
+    // Saldırganın eski anahtarları da yeniden işlenmez (gövdesi bırakılmış kayıt → 409).
+    expect((await send(app, s, other, "ffffffff-0000")).json().error.code).toBe("idempotency_replay_unavailable");
+    expect((await send(app, s, other, "ffffffff-0005")).headers["idempotent-replayed"]).toBe("true");
+    expect(calls).toHaveLength(7);
   });
 
   it("saklanamayacak kadar büyük yanıt: işlem tekrarlanmaz, yeniden gönderim 409 idempotency_replay_unavailable", async () => {

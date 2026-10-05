@@ -85,17 +85,47 @@ export async function getSavedServerUrl(): Promise<string | null> {
   return serverUrl;
 }
 
-/** Sunucu adresini kaydeder; null/boş → varsayılana döner. */
+/**
+ * İki sunucu adresi aynı sunucuyu mu gösterir? "" (web'de aynı köken) sayfanın kökenine çözülür; büyük/küçük harf ve sondaki
+ * "/" ya da "/api" farkı sayılmaz (saf işlev; birim testli).
+ */
+export function sameServer(a: string, b: string, origin: string = typeof window !== "undefined" && window.location ? window.location.origin : ""): boolean {
+  const resolve = (u: string) => (normalizeServerUrl(u) || origin).toLowerCase();
+  return resolve(a) === resolve(b);
+}
+
+/**
+ * Sunucu adresini kaydeder; null/boş → varsayılana döner. Etkin adres DEĞİŞİRSE oturum belirteci hemen unutulur (bellekte ve
+ * cihazda) ve "serverchange" olayı yayılır (AuthContext oturumu kapatır): bir sunucunun belirteci başka bir adrese ASLA gönderilmez
+ * (yanlış yazılmış ya da kötü niyetli birinin söylettiği adres hesabı ele geçiremez). Eski sunucuda oturumu kapatmak (logout)
+ * çağıranın işidir ve adres değişmeden ÖNCE yapılmalıdır (SettingsPage).
+ */
 export async function setServerUrl(url: string | null): Promise<void> {
   await loadConfig();
+  const before = serverUrl ?? defaultServerUrl();
   const v = url ? normalizeServerUrl(url) : "";
-  if (v) {
-    serverUrl = v;
-    await setPref(PREF_KEYS.serverUrl, v);
-  } else {
-    serverUrl = null;
-    await removePref(PREF_KEYS.serverUrl);
+  // Adres ve belirteç aynı anda (aynı eşzamanlı adımda) değişir: süren bir istek ya eski adres+eski belirteç ya da yeni adres+belirteçsiz görür.
+  serverUrl = v || null;
+  const changed = !sameServer(before, serverUrl ?? defaultServerUrl());
+  const hadToken = authToken !== null;
+  if (changed && hadToken) {
+    authToken = null;
+    pendingAttempts.clear();
   }
+  if (v) await setPref(PREF_KEYS.serverUrl, v);
+  else await removePref(PREF_KEYS.serverUrl);
+  if (changed && hadToken) {
+    await removePref(PREF_KEYS.token);
+    serverChangeTarget.dispatchEvent(new Event("serverchange"));
+  }
+}
+
+const serverChangeTarget = new EventTarget();
+
+/** Etkin sunucu adresi oturum açıkken değişti (belirteç unutuldu). AuthContext oturumu kapatır. Aboneliği kaldıran fonksiyon döner. */
+export function onServerChange(listener: () => void): () => void {
+  serverChangeTarget.addEventListener("serverchange", listener);
+  return () => serverChangeTarget.removeEventListener("serverchange", listener);
 }
 
 /** Yolu tam URL'ye çevirir (ör. "/api/health" → "http://10.0.2.2:4000/api/health"). */
@@ -285,7 +315,9 @@ function defaultMessage(status: number): string {
  */
 export async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   const base = await getServerUrl();
-  const url = base + path + qs(opts.query);
+  // Yol kendi sorgusunu taşıyabilir (ör. boş liste için açık `?types=`): ek sorgu o durumda `&` ile eklenir.
+  const query = qs(opts.query);
+  const url = base + path + (query && path.includes("?") ? "&" + query.slice(1) : query);
   const method = opts.method ?? "GET";
   const headers: Record<string, string> = { Accept: opts.responseType === "text" ? "text/plain, text/turtle, */*" : "application/json", ...opts.headers };
   let body: string | undefined;

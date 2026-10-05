@@ -78,3 +78,10 @@
 .discussion-guide .discussion-rules li {
   overflow-wrap: anywhere;
 }
+
+/* Uzun tartışma: ilk ileti dizilerinden sonra "Daha fazla göster" */
+.discussion-more {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--sp-3);
+}

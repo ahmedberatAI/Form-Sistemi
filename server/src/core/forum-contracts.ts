@@ -210,8 +210,10 @@ export interface LifecycleEngine {
   /**
    * Süresi dolan evreleri ilerletir (ALGORITMA.md §3): zamanlayıcının faz geçişleri burada olur. Yazarın submit/withdraw eylemleri
    * (ProposalService) zamanlayıcıyı beklemeden, aynı `applyTransition` ile geçiş yapar. Eşzamanlı çağrılar sıraya alınır (yeniden giriş yok).
+   * Öneriler arasında olay döngüsüne düzenli yol verilir (TICK_SLICE_MS). `budgetMs` verilirse süre dolunca kalan öneriler sonraki
+   * tick'e bırakılır (en az bir öneri işlenir); sonuç `tickDeferred()` ile işaretlenir.
    */
-  tick(): Promise<Transition[]>;
+  tick(opts?: { budgetMs?: number }): Promise<Transition[]>;
   /** Tek bir öneri için hemen değerlendirme (ör. K_s'ye ulaşınca). */
   poke(proposalId: string): Promise<Transition[]>;
 }
