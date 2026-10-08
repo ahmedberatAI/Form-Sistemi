@@ -15,7 +15,7 @@ Sistemin bileşenleri:
 > **Belgeler:** [Karar algoritması (bağlayıcı)](docs/ALGORITMA.md) · [Mimari](docs/MIMARI.md) · [REST API](docs/API.md) ·
 > [Yönetmelik ontolojisi](docs/YONETMELIK.md) · [KVKK](docs/KVKK.md) · [Simülasyon](docs/SIMULASYON.md) ·
 > [Test raporu](docs/TEST_RAPORU.md) · [Araştırma raporu](docs/ARASTIRMA.md) · [Mühendislik ilkeleri incelemesi](docs/MUHENDISLIK.md) ·
-> [Arayüz hafifletme planı](docs/ARAYUZ_PLANI.md)
+> [Arayüz hafifletme planı](docs/ARAYUZ_PLANI.md) · [Sunum kopya kâğıdı](docs/SUNUM.md)
 
 ---
 
@@ -34,6 +34,10 @@ npm start                            # sunucu: http://localhost:4000 (web/dist'i
 ```
 
 Tarayıcıda **http://localhost:4000** adresini açın.
+
+**Windows'ta tek tıkla başlatma:** proje klasöründeki `baslat.cmd` dosyasına çift tıklayın (ya da ona bir masaüstü kısayolu verin; simge `scripts/forum.ico`). Sunucuyu küçültülmüş bir pencerede başlatır ve hazır olunca uygulamayı tarayıcıda açar; sunucu zaten açıksa yalnız tarayıcıyı açar. `setx` ile kaydedilmiş `ANTHROPIC_API_KEY` değerini kendisi bulur; ilk açılışta bağımlılıkları kurup web arayüzünü derler. Kapatmak için sunucu penceresini kapatın.
+
+**Sunum modu:** `sunum.cmd` (ya da masaüstündeki "Forum Sistemi - Sunum" kısayolu) isteğe bağlı olarak mevcut veriyi yedekleyip taze demo verisi üretir (bütün hesapların şifresi `deneme123`; tohumda `TOHUM_SIFRE` ortam değişkeni) ve sunucuyu gerçek zamanlı saatle (`TIME_SCALE=1`) açar. Hesaplar ve önerilen gösterim akışı: [docs/SUNUM.md](docs/SUNUM.md).
 
 **Arayüz:** varsayılan görünüm **Sade**dir: ilk ekran 'ne oldu, benden ne bekleniyor, ne kadar sürem var' sorularını yanıtlar;
 tablo, formül ve hash gibi ayrıntılar adlandırılmış açılırlarda bir dokunuş ötededir. **Ayarlar › Görünüm › 'Tam — tüm ayrıntılar

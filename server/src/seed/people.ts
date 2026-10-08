@@ -29,13 +29,19 @@ export interface Person {
 /** `separateStream` hesaplarının kayıt verisi için tohum (ana tohumdan bağımsız, sabit). */
 export const EXTRA_STREAM_SEED = "forum-seed-1|ek-hesaplar";
 
+/**
+ * Tek ortak şifre: TOHUM_SIFRE verilirse BÜTÜN demo hesaplarının şifresi odur (sunum için akılda kalır şifre; bkz. sunum.cmd).
+ * Verilmezse rol başına varsayılan şifreler kullanılır (e2e testleri bunlara dayanır). Şifre kuralı seed.ts'te açılışta denetlenir.
+ */
+export const SHARED_SEED_PASSWORD = process.env.TOHUM_SIFRE?.trim() || null;
+
 export const PASSWORDS = {
-  admin: "Yonetici123!",
-  demoAdmin: "admin123",
-  registrar: "Kayit123!",
-  auditor: "Denetci123!",
-  expert: "Bilirkisi123!",
-  member: "Uye12345!",
+  admin: SHARED_SEED_PASSWORD ?? "Yonetici123!",
+  demoAdmin: SHARED_SEED_PASSWORD ?? "admin123",
+  registrar: SHARED_SEED_PASSWORD ?? "Kayit123!",
+  auditor: SHARED_SEED_PASSWORD ?? "Denetci123!",
+  expert: SHARED_SEED_PASSWORD ?? "Bilirkisi123!",
+  member: SHARED_SEED_PASSWORD ?? "Uye12345!",
 } as const;
 
 const M = PASSWORDS.member;

@@ -3,6 +3,7 @@ dist/
 *.log
 .env
 server/data/
+server/data-yedek/
 web/android/app/build/
 web/android/.gradle/
 web/android/build/

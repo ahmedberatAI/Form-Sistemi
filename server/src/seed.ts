@@ -9,7 +9,9 @@ import { createApp } from "./app";
 import { DAY, HOUR, ScaledClock } from "./core/clock";
 import { loadConfig, SERVER_ROOT } from "./core/config";
 import { acquireDataDirLock, type DataDirLock } from "./core/lock";
+import { parsePassword } from "./identity/validation";
 import { runSeed } from "./seed/index";
+import { SHARED_SEED_PASSWORD } from "./seed/people";
 
 const SIM_START = Date.UTC(2026, 8, 1, 9, 0);
 /** Senaryonun sığması için gereken asgari simüle süre (başlangıçtan bitişe). */
@@ -76,6 +78,16 @@ function resetDataDir(dataDir: string, force: boolean): void {
 }
 
 async function main(): Promise<void> {
+  // TOHUM_SIFRE (bütün demo hesaplarına ortak şifre) üye şifre kuralına uymalı; yoksa hesaplar yarıda kalmasın diye baştan dur.
+  if (SHARED_SEED_PASSWORD !== null) {
+    try {
+      parsePassword(SHARED_SEED_PASSWORD, "TOHUM_SIFRE");
+    } catch (e) {
+      const detail = (e as { details?: Record<string, string> }).details?.TOHUM_SIFRE;
+      fail(`TOHUM_SIFRE şifre kuralına uymuyor: ${detail ?? (e instanceof Error ? e.message : String(e))}`);
+    }
+    console.log("Bütün demo hesaplarının şifresi TOHUM_SIFRE ile ortak.");
+  }
   const dataDir = resolve(process.env.DATA_DIR ?? join(SERVER_ROOT, "data"));
   // Sunucu (ya da başka bir betik) aynı klasörü kullanırken tohumlama/sıfırlama defter kayıtlarını bozar: tek-örnek kilidi.
   let lock: DataDirLock;
