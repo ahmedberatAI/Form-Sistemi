@@ -404,7 +404,7 @@ describe("KVKK hakları", () => {
     expect(d.personalData.tckn).toBe(inp.tckn);
     expect(d.personalData.email).toBe(inp.email);
     expect(d.personalData.address).toEqual(inp.address);
-    expect(d.consents).toEqual({ kvkkNoticeAcceptedAt: user.joinedAt, politicalConsent: true, aiConsent: false });
+    expect(d.consents).toEqual({ kvkkNoticeAcceptedAt: user.joinedAt, politicalConsent: true, aiConsent: false, personalRanking: true });
     expect(d.messages).toHaveLength(1);
     expect(d.messages[0].body).toBe("Benim görüşüm şudur.");
     expect(d.notifications).toHaveLength(1);

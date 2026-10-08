@@ -164,5 +164,7 @@ describe("decide — özellik: gösterilen değer/sınır karşılaştırması g
       }
     }
     expect(checked).toBeGreaterThan(3000);
-  });
+    // 1500 yinelemelik hesap tek başına ~2 sn sürer; 114 test dosyası paralel çalışınca işlemci paylaşımında vitest'in 5 sn'lik
+    // varsayılan sınırını aşıyordu (zaman aşımı, yanlış sonuç değil). Ağır testlerin kullandığı geniş sınır (bkz. contested.test.ts).
+  }, 60_000);
 });

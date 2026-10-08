@@ -1,6 +1,7 @@
 // Ana sayfanın düzeni (veri almaz; pages/HomePage oturumu, panoyu ve makbuz sayısını verir). Role göre "senden beklenenler":
 // - Üye: selam ve tek satır canlı özet → hesap durumu (doğrulanmamışsa) → 'Sizi bekleyenler' (yoksa role göre ipucu) → oy hakkı
-//   notu → hızlı eylemler → şu an açık → son kararlar; yan sütunda topluluk durumu ve vitrin; en altta tam genişlikte 8 ilke.
+//   notu → hızlı eylemler → şu an açık (ilgi profili varsa kişisel sırada, gerekçe çipleriyle; 'Sizi bekleyenler' bundan etkilenmez)
+//   → son kararlar; yan sütunda topluluk durumu ve vitrin; en altta tam genişlikte 8 ilke.
 // - Ziyaretçi: başlık, slogan, giriş/kayıt → vitrin → şu an açık → son kararlar → topluluk durumu → ilkeler.
 // Masaüstünde (≥ 900 px, `wide`) .split: solda işler ve listeler, sağda önce vitrin sonra topluluk durumu (vitrinin tamamı ilk
 // ekrana sığar); hızlı eylemler selamın sağına geçer. Öğeler DOM'da da oraya taşınır (iki kopya yok, CSS order yok), böylece odak
@@ -100,7 +101,7 @@ export function HomeLayout({ authLoading, user, can, system, data, dataLoading, 
           {dataError && !data ? <ErrorView error={dataError} onRetry={onReload} /> : null}
           {data ? (
             <>
-              <OpenNow open={data.open} total={open ?? 0} myId={myId} />
+              <OpenNow open={data.open} total={open ?? 0} myId={myId} personalized={member && !!data.openPersonalized} />
               <RecentDecisions items={data.recentEnacted} myId={myId} />
             </>
           ) : null}

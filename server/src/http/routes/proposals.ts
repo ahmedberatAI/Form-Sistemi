@@ -8,6 +8,7 @@ import type {
   CreateProposalRequest,
   ExpertQuestion,
   MinorityReport,
+  PersonalizedProposalList,
   PrecheckResponse,
   ProposalDetail,
   ProposalSummary,
@@ -31,16 +32,25 @@ import {
   voteBody,
 } from "../schemas";
 import type { RouteDeps } from "../types";
-import { parseBody, parseParams, parseQuery } from "../validation";
+import { parseBody, parseParams, parseQuery, validationError } from "../validation";
+import { recentFromHeader } from "./discovery";
 
 export function registerProposalRoutes(app: FastifyInstance, { services }: RouteDeps): void {
   const proposals = services.forum.proposals;
+  const discovery = services.forum.discovery;
   const pid = (params: unknown) => parseParams(idParams, params).id;
 
-  app.get("/api/proposals", async (req): Promise<ProposalSummary[]> => {
-    const query = parseQuery(proposalListQuery, req.query);
+  // sort=sana-gore: aynı küme (aynı süzgeç ve limit), kişisel sırada → PersonalizedProposalList; aksi halde ProposalSummary[].
+  // Son açılanlar yalnız X-Forum-Recent başlığıyla (sorgu dizesindeki recent 400).
+  app.get("/api/proposals", async (req): Promise<ProposalSummary[] | PersonalizedProposalList> => {
+    const { sort, ...query } = parseQuery(proposalListQuery, req.query);
+    const recent = recentFromHeader(req);
+    if (recent !== undefined && sort !== "sana-gore") {
+      throw validationError({ recent: "Son açılanlar (X-Forum-Recent) yalnız sort=sana-gore ile birlikte gönderilebilir." });
+    }
     if (query.mine) requireUser(req);
-    return proposals.list(query, req.user);
+    const list = proposals.list(query, req.user);
+    return sort === "sana-gore" ? discovery.personalize(req.user, list, recent ?? []) : list;
   });
 
   app.post("/api/proposals/precheck", async (req): Promise<PrecheckResponse> => {

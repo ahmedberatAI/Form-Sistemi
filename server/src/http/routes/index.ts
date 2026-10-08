@@ -3,6 +3,7 @@ import type { RouteDeps } from "../types";
 import { registerAdminRoutes } from "./admin";
 import { registerAiRoutes } from "./ai";
 import { registerAuthRoutes } from "./auth";
+import { registerDiscoveryRoutes } from "./discovery";
 import { registerExpertRoutes } from "./experts";
 import { registerGraphRoutes } from "./graph";
 import { registerLedgerRoutes } from "./ledger";
@@ -25,6 +26,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
   registerOntologyRoutes(app, deps);
   registerProposalRoutes(app, deps);
   registerTopicRoutes(app, deps);
+  registerDiscoveryRoutes(app, deps);
   registerMessageRoutes(app, deps);
   registerExpertRoutes(app, deps);
   registerGraphRoutes(app, deps);

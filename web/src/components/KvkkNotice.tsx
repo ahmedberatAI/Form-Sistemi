@@ -13,7 +13,9 @@ export function KvkkNotice() {
       </p>
       <p>
         <strong>Amaç ve hukuki sebep:</strong> kimliğinizin kayıt memurunca doğrulanması, her kişinin tek hesapla katılması ve oy hakkının belirlenmesi
-        (KVKK m. 5/2-c, sözleşmenin ifası; m. 5/2-f, meşru menfaat). Oy ve görüş verileri yalnızca açık rızanızla (m. 6) işlenir.
+        (KVKK m. 5/2-c, sözleşmenin ifası; m. 5/2-f, meşru menfaat). Oy ve görüş verileri yalnızca açık rızanızla (m. 6) işlenir. Rızanız varsa
+        yazdığınız, desteklediğiniz ve mesaj yazdığınız öneriler ile Listem kayıtlarınız listelerin size göre sıralanmasında da kullanılır (m. 6/3-a;
+        yalnız sıra değişir, oy bilgisi kullanılmaz); bunu Profil › Listem'deki ‘Kişisel sıralama’ ile ayrıca kapatabilirsiniz.
       </p>
       <p>
         <strong>Saklama ve güvenlik:</strong> kimlik verileri alan bazında, size özel anahtarla şifrelenir (AES-256-GCM). Herkese açık hiçbir sayfada ve

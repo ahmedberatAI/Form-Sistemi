@@ -1,11 +1,12 @@
-// Öneriler listesinin sekme modeli (saf: React/DOM yok, birim testli). 4 üst sekme (Açık · Sonuçlanan · Tümü · Benim) ve
+// Öneriler listesinin sekme modeli (saf: React/DOM yok, birim testli). 5 üst sekme (Açık · Sonuçlanan · Tümü · Benim · Listem) ve
 // Açık/Sonuçlanan içinde 7 evre çipi; URL'de TEK parametre: ?sekme=<kimlik>. Kimlik ya bir üst sekmedir (acik, sonuc, tumu,
 // benim) ya da bir evre çipidir (destek, tartisma, oylama, itiraz, kabul, red, kapanan). Eski 9 sekme kimliğinin hepsi geçerli
 // kalır: ana sayfa, ilke metinleri ve dış bağlantılar değişmeden çalışır. Parametre yoksa ya da geçersizse liste ASLA boş
-// açılmaz: Açık doluysa Açık, değilse Sonuçlanan (o da boşsa Tümü) seçilir; bu seçim URL'ye yazılmaz.
+// açılmaz: Açık doluysa Açık, değilse Sonuçlanan (o da boşsa Tümü) seçilir; bu seçim URL'ye yazılmaz. 'Benim' ve 'Listem' yalnız
+// oturumdaki üyeye gösterilir; 'Listem' üyenin 'Listeme ekle' ile kaydettiği önerilerdir (kimlik kümesi sayfadan verilir).
 import type { ProposalStatus } from "@forum/shared";
 
-export type TopTabId = "acik" | "sonuc" | "tumu" | "benim";
+export type TopTabId = "acik" | "sonuc" | "tumu" | "benim" | "listem";
 export type PhaseId = "destek" | "tartisma" | "oylama" | "itiraz" | "kabul" | "red" | "kapanan";
 
 export interface TopTabDef {
@@ -30,7 +31,11 @@ export const TOP_TABS: TopTabDef[] = [
   { id: "sonuc", label: "Sonuçlanan", info: null },
   { id: "tumu", label: "Tümü", info: "Geri çekilen ve süresi dolan öneriler dahil tüm öneriler." },
   { id: "benim", label: "Benim", info: "Yazdığınız öneriler (yalnızca sizin görebildiğiniz taslaklar dahil)." },
+  { id: "listem", label: "Listem", info: "‘Listeme ekle’ ile kaydettiğiniz öneriler; liste yalnız size görünür. Kaydettiğiniz konular Profil › Listem'dedir." },
 ];
+
+/** Yalnız oturumdaki üyeye gösterilen sekmeler. */
+export const MEMBER_TABS: readonly TopTabId[] = ["benim", "listem"];
 
 /** Açık sekmesi: henüz sonuçlanmamış, herkese açık evreler (taslaklar hariç). */
 export const OPEN_PHASE_STATUSES: ProposalStatus[] = ["sponsoring", "deliberation", "voting", "objection_window", "reconciliation", "revote"];
@@ -88,20 +93,23 @@ const PHASE_BY_ID = new Map<string, PhaseDef>(PHASES.map((p) => [p.id, p]));
 
 export const topTabDef = (id: TopTabId): TopTabDef => TOP_TAB_BY_ID.get(id)!;
 export const phaseDef = (id: PhaseId): PhaseDef => PHASE_BY_ID.get(id)!;
-/** Bir üst sekmenin evre çipleri (Tümü ve Benim'de çip yoktur). */
+/** Bir üst sekmenin evre çipleri (Tümü, Benim ve Listem'de çip yoktur). */
 export const phasesOf = (tab: TopTabId): PhaseDef[] => PHASES.filter((p) => p.tab === tab);
 
-/** Sekme ve çip sayıları için gereken en küçük öneri biçimi. */
+/** Sekme ve çip sayıları için gereken en küçük öneri biçimi (`id` yalnız 'Listem' için gerekir). */
 export interface TabProposal {
+  id?: string;
   status: ProposalStatus;
   authorId: string;
 }
 
 /**
  * Önerinin üst sekmede yer alıp almadığı. Taslaklar yalnız yazarına görünür: Tümü ve Benim'de. "Benim" yazarın bütün
- * önerilerini (taslak dahil) toplar. `myId` yoksa (ziyaretçi) Benim sekmesi boştur.
+ * önerilerini (taslak dahil) toplar. `myId` yoksa (ziyaretçi) Benim ve Listem sekmeleri boştur. "Listem": kimliği `saved`
+ * kümesindeki öneriler (her evrede; görünürlüğü sunucu zaten süzmüştür).
  */
-export function inTopTab(p: TabProposal, tab: TopTabId, myId: string | null): boolean {
+export function inTopTab(p: TabProposal, tab: TopTabId, myId: string | null, saved?: ReadonlySet<string>): boolean {
+  if (tab === "listem") return !!myId && !!saved && p.id !== undefined && saved.has(p.id);
   if (tab === "benim") return !!myId && p.authorId === myId;
   if (p.status === "draft") return tab === "tumu" && !!myId && p.authorId === myId;
   if (tab === "acik") return OPEN_PHASE_STATUSES.includes(p.status);
@@ -145,7 +153,7 @@ export interface ListView {
 /**
  * ?sekme= değerini görünüme çevirir.
  * - Geçerli kimlik (eski 9 sekme dahil) olduğu gibi uygulanır; sayı 0 olsa da başka sekmeye atlanmaz (açıkça istenen görünüm).
- * - "benim" ziyaretçide geçersizdir (`counts.benim === null`).
+ * - "benim" ve "listem" ziyaretçide geçersizdir (`counts.benim === null`).
  * - Parametre yok / bilinmeyen: Açık sayısı 0'dan büyükse Açık, değilse Sonuçlanan, o da boşsa Tümü; hiçbiri doluysa Açık.
  * Sayılar SÜZGEÇSİZ olmalıdır (arama ya da tür yazarken sekme kendiliğinden değişmesin). Bu seçim URL'ye yazılmaz.
  */
@@ -153,7 +161,7 @@ export function resolveListTab(param: string | null | undefined, counts: ListCou
   // Map araması: "constructor", "__proto__" gibi anahtarlar nesne prototipinden sızmaz.
   const top = param ? TOP_TAB_BY_ID.get(param) : undefined;
   const phase = param ? PHASE_BY_ID.get(param) : undefined;
-  if (top && (top.id !== "benim" || counts.benim !== null)) return { tab: top.id, phase: null, auto: false };
+  if (top && (!MEMBER_TABS.includes(top.id) || counts.benim !== null)) return { tab: top.id, phase: null, auto: false };
   if (phase) return { tab: phase.tab, phase: phase.id, auto: false };
   if (counts.acik > 0) return { tab: "acik", phase: null, auto: true };
   if (counts.sonuc > 0) return { tab: "sonuc", phase: null, auto: true };

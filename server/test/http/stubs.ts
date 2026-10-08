@@ -94,6 +94,7 @@ export function stubServices(o: StubOverrides = {}, config: Partial<Config> = {}
     messages: stub("forum.messages", f.messages),
     clusters: stub("forum.clusters", f.clusters),
     community: stub("forum.community", f.community),
+    discovery: stub("forum.discovery", f.discovery),
     lifecycle: stub("forum.lifecycle", f.lifecycle),
   };
   const services: AppServices = {

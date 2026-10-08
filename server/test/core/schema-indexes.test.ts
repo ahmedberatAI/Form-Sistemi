@@ -1,6 +1,7 @@
 // Sıcak sorgular için indeksler (#295, #296): EXPLAIN QUERY PLAN'da tablo taraması (SCAN <tablo>) olmamalı.
 import { describe, expect, it } from "vitest";
 import { migrate, openMemoryDb } from "../../src/db";
+import { SIGNAL_SQL } from "../../src/forum/discovery";
 
 const db = openMemoryDb();
 const plan = (sql: string, params: (string | number)[]): string =>
@@ -30,6 +31,8 @@ describe("sorgu indeksleri", () => {
     ["oturum iptali", "idx_sessions_user", "SELECT * FROM sessions WHERE user_id = ?", ["x"]],
     ["vekâletler", "idx_edges_type_revoked", "SELECT * FROM graph_edges WHERE type = 'DELEGATES_TO' AND revoked_at IS NULL", []],
     ["bildirim listesi", "idx_notifications_created", "SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC", ["x"]],
+    ["kişisel sıra: üyenin destekledikleri", "idx_sponsors_user", "SELECT proposal_id, at FROM proposal_sponsors WHERE user_id = ? AND at >= ?", ["x", 0]],
+    ["Listem", "idx_saved_items_user_created", "SELECT target_type, target_id, created_at FROM saved_items WHERE user_id = ? ORDER BY created_at DESC", ["x"]],
   ];
 
   it.each(cases)("%s: %s kullanılır", (_ad, index, sql, params) => {
@@ -37,6 +40,12 @@ describe("sorgu indeksleri", () => {
     expect(p).toContain(index);
     // Çıplak tablo taraması ("SCAN tablo" ve ardından INDEX yok) olmamalı; "SCAN … USING INDEX" (ör. ORDER BY için) kabul.
     expect(p).not.toMatch(/SCAN (?!json_each)\w+(?! USING)(\s|\||$)/);
+  });
+
+  it("kişisel sıranın tek toplama sorgusu: her kaynak tablo indeksle aranır (yalnız ara sonuç 's' taranır)", () => {
+    const p = plan(SIGNAL_SQL, ["x", 0]);
+    for (const idx of ["idx_proposals_author", "idx_saved_items_user_created", "idx_sponsors_user", "idx_messages_author"]) expect(p).toContain(idx);
+    expect(p.split(" | ").filter((d) => d.startsWith("SCAN"))).toEqual(["SCAN s"]);
   });
 
   it("mevcut (indeksleri olmayan) veritabanları bir sonraki migrate'te indeksleri alır", () => {

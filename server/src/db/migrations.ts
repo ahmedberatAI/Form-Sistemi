@@ -42,12 +42,39 @@ const LEDGER_OUTBOX_SQL = `CREATE TABLE IF NOT EXISTS ledger_outbox (
 );`;
 
 /**
+ * Sürüm 3: "Listem" kayıtları ve kişisel sıralamanın sinyal sorgusu için destekçi indeksi. schema.sql'deki tanımlarla birebir aynıdır.
+ * Kayıtlar yalnız sahibine görünür, KVKK dökümüne girer ve hesap silmede (aynı işlemde) silinir.
+ */
+const SAVED_ITEMS_SQL = `CREATE TABLE IF NOT EXISTS saved_items (
+  user_id TEXT NOT NULL REFERENCES users(id),
+  target_type TEXT NOT NULL CHECK (target_type IN ('proposal', 'topic')),
+  target_id TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, target_type, target_id)
+);
+CREATE INDEX IF NOT EXISTS idx_saved_items_user_created ON saved_items(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_sponsors_user ON proposal_sponsors(user_id, at);`;
+
+/**
+ * Sürüm 4: users.personal_ranking ("Kişisel sıralama" tercihi; varsayılan 1 = açık). schema.sql'deki sütunla birebir aynıdır.
+ * ALTER TABLE ... ADD COLUMN SQLite'ta "IF NOT EXISTS" almaz: sütun zaten varsa (yeniden çalıştırma) dokunulmaz.
+ */
+function addPersonalRanking(db: Db): void {
+  const cols = db.all<{ name: string }>("PRAGMA table_info(users)").map((c) => c.name);
+  if (!cols.includes("personal_ranking")) db.exec("ALTER TABLE users ADD COLUMN personal_ranking INTEGER NOT NULL DEFAULT 1");
+}
+
+/**
  * Sıralı göç listesi (sürüm 1 = taban).
  * Örnek: { version: 3, description: "users.locale sütunu", up: (db) => db.exec("ALTER TABLE users ADD COLUMN locale TEXT") }
  */
 export const MIGRATIONS: readonly Migration[] = [
   // #273: gönderilmiş ama blokta onaylanmamış defter işlemleri sert kapanışta kaybolmasın (işlemsel outbox; ledger/outbox.ts).
   { version: 2, description: "ledger_outbox tablosu (defter giden kutusu)", up: (db) => db.exec(LEDGER_OUTBOX_SQL) },
+  // Önerili arama ve kişisel sıralama: "Listeme ekle" kayıtları (saved_items) + destekçi (user_id) indeksi.
+  { version: 3, description: "saved_items tablosu (Listem) ve destekçi indeksi", up: (db) => db.exec(SAVED_ITEMS_SQL) },
+  // KVKK md. 6/3-a: kişisel sıralama siyasi görüş rızasına ek olarak ayrıca kapatılabilir (users.personal_ranking).
+  { version: 4, description: "users.personal_ranking sütunu (Kişisel sıralama tercihi)", up: addPersonalRanking },
 ];
 
 /** Veritabanı sürümü yazılımın desteklediğinden yeniyse ya da sürüm bozuksa fırlatılır. */

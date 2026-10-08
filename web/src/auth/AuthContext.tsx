@@ -6,6 +6,7 @@ import * as api from "../api/endpoints";
 import { syncOntologyWithBylawVersion } from "../lib/categories";
 import { getPref, PREF_KEYS, removePref, setPref } from "../lib/prefs";
 import { setReceiptOwner } from "../lib/receipts";
+import { clearRecentOpened, setRecentOwner } from "../lib/recentOpened";
 import { clearTasks, getTasksLoadedAt, isStale, setTasks } from "../lib/taskStore";
 
 /**
@@ -133,6 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(t);
     setUserState(me);
     setReceiptOwner(me?.id ?? null);
+    setRecentOwner(me?.id ?? null);
     if (t) await setPref(PREF_KEYS.token, t);
     else await removePref(PREF_KEYS.token);
   }, []);
@@ -205,6 +207,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const me = await api.getMe();
       setUserState(me);
       setReceiptOwner(me.id);
+      setRecentOwner(me.id);
       setConnectionError(null);
       return me;
     } catch (e) {
@@ -329,6 +332,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setUnread(0);
     setSessionExpired(false);
+    // Kişisel sıralamanın cihazdaki geçici girdisi ("son açılanlar") çıkışta silinir (hesap silme de bu yoldan geçer).
+    clearRecentOpened();
     await applySession(null, null); // bekleyen işleri de boşaltır
   }, [applySession]);
 

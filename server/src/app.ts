@@ -61,6 +61,8 @@ const CLOCK_PERSIST_MS = 5_000;
 export const CLOCK_LEASE_REAL_MS = 2 * CLOCK_PERSIST_MS;
 const LIFECYCLE_INTERVAL_MS = 1_000;
 const MAINTENANCE_INTERVAL_MS = 10 * 60_000;
+/** Kişisel sıralama sinyal önbelleğinin düzenli temizlik aralığı (gerçek saat; önbellek ömrü 60 sn → kayıt en geç ~90 sn'de atılır). */
+export const SIGNAL_CACHE_SWEEP_MS = 30_000;
 /** Kapanışta bekleyen deftere yazımların işlenmesi için azami bekleme (sonra defter yine de durdurulur). */
 const LEDGER_FLUSH_MS = 2_000;
 
@@ -238,7 +240,10 @@ export async function createApp(config: Config, opts: CreateAppOptions = {}): Pr
     anchorFoundingBylaw(ontology, led);
     const graph = createGraphService(ctx, { ledger: led });
     const math = createGovernanceMath();
-    const identity = createIdentityService(ctx, { ledger: led, notifier, audit });
+    // İmha sonrası bellek temizliği (hesap silme, başvuru reddi, bayat başvuru imhası): kişisel sıralamanın sinyal önbelleği. Forum
+    // servisleri kimlikten sonra kurulduğu için kanca geç bağlanır.
+    let forgetSignals: (userId: string) => void = () => {};
+    const identity = createIdentityService(ctx, { ledger: led, notifier, audit, onErased: (userId) => forgetSignals(userId) });
     // client undefined: YZ modülü ortamdan karar verir (AI_ENABLED + ANTHROPIC_API_KEY); null: zorla çevrimdışı.
     const ai = createAiService(ctx, { client: opts.aiClient as AnthropicLike | null | undefined });
     const aiSink = createAiRecordSink(ctx, { ledger: led });
@@ -253,6 +258,7 @@ export async function createApp(config: Config, opts: CreateAppOptions = {}): Pr
       householdOf: (userId) => identity.householdOf(userId),
     });
     const forum = createForumServices({ ctx, ledger: led, ontology, graph, math, identity, ai, aiSink, experts, notifier, audit });
+    forgetSignals = (userId) => forum.discovery.forgetCache(userId);
 
     const services: AppServices = { ctx, clock, ledger: led, ontology, graph, math, identity, ai, aiSink, experts, notifier, audit, forum };
 
@@ -263,6 +269,10 @@ export async function createApp(config: Config, opts: CreateAppOptions = {}): Pr
       lifecycle = forum.lifecycle;
       // Kimlik bakımı: TEK zamanlayıcı burada (yaşam döngüsü motoru kimlik bakımı yapmaz).
       timers.push(startIdentityMaintenance({ identity, audit }));
+      // Kişisel sıralamanın sinyal önbelleği: süresi dolan kayıtlar boşta da atılır (en geç TTL + bu aralık; docs/KVKK.md §4.5).
+      const sweep = setInterval(() => forum.discovery.sweepCache(), SIGNAL_CACHE_SWEEP_MS);
+      sweep.unref();
+      timers.push(sweep);
     }
 
     const app = await buildServer(services, config, { logger: opts.logger ?? false, rateLimit: opts.rateLimit, drainMs: opts.httpDrainMs });

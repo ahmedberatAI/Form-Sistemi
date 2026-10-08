@@ -27,3 +27,9 @@ export const TEXT_LIMITS = {
 export const LOSER_WARN_SHARE = 0.75;
 /** Oran en az bu kadar karardan sonra anlamlı sayılır; altında küme "Yetersiz veri" olarak gösterilir. */
 export const LOSER_MIN_DECISIONS = 3;
+
+// Listem ("Listeme ekle"): kişiye özel, yalnız sahibine görünen kayıtlar (öneri ve konu).
+/** Listeye eklenebilen hedef türleri (PUT/DELETE /api/me/saved/:type/:id beyaz listesi). */
+export const SAVED_TARGET_TYPES = ["proposal", "topic"] as const;
+/** Bir üyenin listesindeki en çok kayıt (aşılırsa 422 saved_limit). */
+export const SAVED_ITEMS_MAX = 500;

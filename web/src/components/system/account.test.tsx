@@ -266,6 +266,7 @@ describe("ProfilePage", () => {
       "Hesap özeti",
       "Açık rızalar",
       "Vekâletler",
+      "Listem",
       "Bilirkişilik",
       "Takma ad değiştir",
       "Şifre değiştir",

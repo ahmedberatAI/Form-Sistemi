@@ -21,6 +21,7 @@ import { useAuth } from "../auth/AuthContext";
 import { KvkkNotice } from "../components/KvkkNotice";
 import { nicknameError } from "../components/RegistrationForm";
 import { UserLink } from "../components/UserLink";
+import { SavedListCard } from "../components/discovery/SavedListCard";
 import { DomainChips } from "../components/community/DomainChips";
 import { DelegationForm, OutgoingDelegations, useScopeLabel } from "../components/community/delegation";
 import { ReputationBar } from "../components/community/ReputationBar";
@@ -120,6 +121,7 @@ export default function ProfilePage() {
       <AccountCard me={me} />
       <ConsentsCard me={me} busy={consents.busy} onChange={(key, value) => void consents.set(key, value)} />
       <DelegationsCard />
+      <SavedListCard />
       <ExpertStatusCard me={me} />
       <NicknameCard me={me} />
       <PasswordCard />
@@ -495,7 +497,7 @@ function ConsentsCard({ me, busy, onChange }: { me: Me; busy: ConsentKey | null;
             checked={me.politicalConsent}
             aria-disabled={busy !== null || undefined}
             onChange={(e) => busy === null && onChange("political", e.target.checked)}
-            hint="Oy ve görüş verileriniz siyasi düşüncenizi ortaya koyabileceği için özel nitelikli kişisel veridir (KVKK m. 6) ve yalnızca açık rızanızla işlenir. Oylarınız gizli kalır: defterde yalnızca kimliksiz taahhütler bulunur."
+            hint="Oy ve görüş verileriniz siyasi düşüncenizi ortaya koyabileceği için özel nitelikli kişisel veridir (KVKK m. 6) ve yalnızca açık rızanızla işlenir. Oylarınız gizli kalır: defterde yalnızca kimliksiz taahhütler bulunur. Rızanız varsa öneri, destek ve mesaj kayıtlarınız listelerin size göre sıralanmasında da kullanılır (Profil › Listem › ‘Kişisel sıralama’ ile ayrıca kapatılabilir)."
           />
         </div>
         <div className="consent-box">

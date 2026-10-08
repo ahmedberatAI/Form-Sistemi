@@ -63,6 +63,7 @@ import type {
   OkResponse,
   OntologyOverview,
   PendingUser,
+  PersonalizedProposalList,
   PiiRecord,
   PostMessageRequest,
   PrecheckResponse,
@@ -76,6 +77,10 @@ import type {
   RelateRequest,
   RepairRequest,
   Role,
+  SavedList,
+  SavedState,
+  SavedTargetType,
+  SearchResponse,
   Suggestion,
   SystemInfo,
   TamperRequest,
@@ -92,13 +97,24 @@ import type {
   VoterListResponse,
   VouchRequest,
 } from "@forum/shared";
+import { REC_RECENT_HEADER } from "@forum/shared";
 import { http, seg } from "./client";
+
+/**
+ * "Son açılanlar" (oturumdaki üyenin YALNIZ bu cihazda tuttuğu en çok 20 öneri kimliği; lib/recentOpened) istek BAŞLIĞI olarak
+ * gider (X-Forum-Recent), adres satırında değil: sorgu dizesi ters vekil ve CDN erişim günlüklerine düz yazılır. Boşsa başlık yok.
+ */
+const recentHeaders = (recent?: readonly string[]) => (recent?.length ? { headers: { [REC_RECENT_HEADER]: recent.join(",") } } : undefined);
 
 // ───────────── Sistem ─────────────
 
 export const getHealth = () => http.get<{ ok: true }>("/api/health");
 export const getSystem = () => http.get<SystemInfo>("/api/system");
-export const getDashboard = () => http.get<Dashboard>("/api/dashboard");
+/**
+ * Pano. `recent`: oturumdaki üyenin YALNIZ bu cihazda tuttuğu son açılan öneriler (lib/recentOpened; en çok 20 UUID) — 'Şu an açık'
+ * listesinin kişisel sırasına geçici girdi; X-Forum-Recent başlığıyla gider, sunucuda saklanmaz. Boşsa başlık gönderilmez.
+ */
+export const getDashboard = (recent?: readonly string[]) => http.get<Dashboard>("/api/dashboard", undefined, recentHeaders(recent));
 
 // ───────────── Kimlik ve hesap ─────────────
 
@@ -178,7 +194,14 @@ export const validatePatch = (patch: RegulationPatch) => http.post<AuditReport>(
 
 // ───────────── Öneriler ─────────────
 
-export const listProposals = (query?: ProposalListQuery) => http.get<ProposalSummary[]>("/api/proposals", query);
+export const listProposals = (query?: Omit<ProposalListQuery, "sort">) => http.get<ProposalSummary[]>("/api/proposals", query);
+/**
+ * Kişisel sıra ('Size göre'): varsayılan listeyle AYNI küme (aynı süzgeç ve `limit`), yalnız sıra değişir (önce açık öneriler, ana
+ * sayfa 'Şu an açık'la aynı sırada). `recent`: cihazdaki son açılanlar (en çok 20 UUID; geçici girdi, X-Forum-Recent başlığıyla).
+ * Oturum yoksa, kişisel sıralamaya izin yoksa ya da ilgi profili boşsa `personalized: false` ve varsayılan sıra.
+ */
+export const listProposalsForYou = (query?: Omit<ProposalListQuery, "sort">, recent?: readonly string[]) =>
+  http.get<PersonalizedProposalList>("/api/proposals", { ...query, sort: "sana-gore" }, recentHeaders(recent));
 /** Yan etkisiz ön denetim (katman, parametreler, bulgular, YZ önerileri, benzerler, kişisel veri). */
 export const precheckProposal = (req: CreateProposalRequest) => http.post<PrecheckResponse>("/api/proposals/precheck", req);
 export const createProposal = (req: CreateProposalRequest) => http.post<ProposalDetail>("/api/proposals", req);
@@ -206,6 +229,17 @@ export const getVoters = (id: string) => http.get<VoterListResponse>(`/api/propo
 export const requestAiSummary = (id: string) => http.post<AiAnalysisInfo>(`/api/proposals/${seg(id)}/ai/summary`);
 export const requestAiBridging = (id: string) => http.post<AiAnalysisInfo>(`/api/proposals/${seg(id)}/ai/bridging`);
 export const approveAiAnalysis = (analysisId: string, req: AiApproveRequest = {}) => http.post<AiAnalysisInfo>(`/api/ai/analyses/${seg(analysisId)}/approve`, req);
+
+// ───────────── Keşif: önerili arama ("Hızlı bul") ve Listem ("Listeme ekle") ─────────────
+
+/** Önerili arama: en çok `limit` (1–8) sonuç, sunucu sırasıyla; görünürlük kurallarına uyar (başkasının taslağı çıkmaz). */
+export const search = (q: string, limit?: number, opts?: { signal?: AbortSignal }) => http.get<SearchResponse>("/api/search", { q, limit }, opts);
+/** Listem (yalnız sahibine; en son eklenen önce). Oturum yoksa 401. */
+export const getSaved = () => http.get<SavedList>("/api/me/saved");
+/** Listeye ekler (idempotent: ikinci kez eklemek aynı `savedAt`'i döner). Liste doluysa 422 `saved_limit`. */
+export const saveItem = (type: SavedTargetType, id: string) => http.put<SavedState>(`/api/me/saved/${seg(type)}/${seg(id)}`);
+/** Listeden çıkarır (idempotent; hedefin varlığını belli etmez). */
+export const unsaveItem = (type: SavedTargetType, id: string) => http.del<SavedState>(`/api/me/saved/${seg(type)}/${seg(id)}`);
 
 // ───────────── Konular ve tartışma ─────────────
 

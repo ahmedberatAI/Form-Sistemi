@@ -26,6 +26,20 @@ export function useInterval(fn: () => void, delay: number | null): void {
   }, [delay]);
 }
 
+/** CSS medya sorgusu eşleşiyor mu (ör. "(min-width: 720px)"); değişince yeniden çizdirir. matchMedia yoksa (sunucu çizimi) false. */
+export function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(() => typeof window !== "undefined" && !!window.matchMedia?.(query).matches);
+  useEffect(() => {
+    const mq = window.matchMedia?.(query);
+    if (!mq) return;
+    const update = () => setMatches(mq.matches);
+    update();
+    mq.addEventListener?.("change", update);
+    return () => mq.removeEventListener?.("change", update);
+  }, [query]);
+  return matches;
+}
+
 /** Değeri ms kadar geciktirir (arama kutuları, canlı ön denetim). */
 export function useDebounced<T>(value: T, ms = 400): T {
   const [v, setV] = useState(value);

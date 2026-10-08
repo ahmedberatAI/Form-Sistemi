@@ -7,6 +7,8 @@
 // Faz 3 ekleri: 'Keşfet ve doğrula' (/kesfet; ziyaretçi, 'Tam' görünüm ve yönetici; 'Bu sayfada' tıklamaları, sözlük araması, Term
 // penceresi), Term pencereleri ve sembol/formül anahtarı açıkken Karar parametreleri, Konular 'Süz' açılırı, konu ayrıntısı çapaları
 // (?bolum=surumler|alt-konular), Profil/Ayarlar çapaları, canlı ön denetim paneli, silme talebi formu ve üyenin 'Tam' görünümü.
+// Keşif ekleri: 'Hızlı bul' telefon paneli (boş, sonuçlarla, 'Sonuç yok'; ziyaretçi ve üye), Öneriler'de 5 sekme ve Listem sekmesi,
+// 'Size göre' sıralama (gerekçe çipleri, 'nasıl sıralar' açık), Profil › Listem (dolu) ve 'Listeme ekle' düğmeli öneri/konu sayfaları.
 import { expect, test, type Browser, type Page } from "@playwright/test";
 import type { CommittedTxView, LedgerStatus, ProposalSummary, PublicUser, ThreadResponse, TopicSummary } from "@forum/shared";
 import { useSeededServer } from "../support/fixtures";
@@ -128,6 +130,55 @@ const symbolsOn: View["extra"] = {
   },
 };
 
+/** 'Hızlı bul' telefon paneli: büyüteç düğmesi tam ekran paneli açar (yerel dialog). Panel de 360 px'e sığmalı (measureOverflow pencereyi de ölçer). */
+async function openQuickFind(page: Page) {
+  await page.getByRole("button", { name: "Hızlı bul", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Hızlı bul", exact: true });
+  await expect(dialog).toBeVisible();
+  return { dialog, box: dialog.getByRole("combobox", { name: "Hızlı bul", exact: true }) };
+}
+
+/** Panel açık, henüz yazılmadı: ipucu metni görünür. */
+const quickFindEmpty: View["extra"] = {
+  label: "‘Hızlı bul’ paneli açık (boş)",
+  run: async (page) => {
+    const { dialog } = await openQuickFind(page);
+    await expect(dialog).toContainText("en az 2 harf");
+  },
+};
+
+/** Panel açık, 'mahalle' yazıldı: gruplu sonuçlar (en çok 8) ve 'Tüm önerilerde ara' seçeneği, ilk seçenek etkin. */
+const quickFindResults: View["extra"] = {
+  label: "‘Hızlı bul’ paneli açık (sonuçlarla)",
+  run: async (page) => {
+    const { dialog, box } = await openQuickFind(page);
+    await box.pressSequentially("mahalle");
+    await expect(dialog.locator("[role=option]:has(.qf-ref)").first()).toBeVisible();
+    await expect(dialog.getByRole("option").last()).toContainText("Tüm önerilerde ara");
+    await box.press("ArrowDown");
+  },
+};
+
+/** Panel açık, eşleşmeyen metin: 'Sonuç yok' ve yalnız 'Tüm önerilerde ara' seçeneği. */
+const quickFindNone: View["extra"] = {
+  label: "‘Hızlı bul’ paneli açık (Sonuç yok)",
+  run: async (page) => {
+    const { dialog, box } = await openQuickFind(page);
+    await box.pressSequentially("zzqxw");
+    await expect(dialog.locator(".qf-empty")).toHaveText("Sonuç yok");
+  },
+};
+
+/** Öneriler › Size göre: 'Size göre nasıl sıralar?' açılırı açık (eğitici metin 360 px'e sığmalı). */
+const personalNoteOpen: View["extra"] = {
+  label: "‘Size göre nasıl sıralar?’ açık",
+  run: async (page) => {
+    await expect(page.locator("ul.pcard-list > li .reason-chip").first()).toBeVisible();
+    await page.getByText("‘Size göre’ nasıl sıralar?").click();
+    await expect(page.locator(".personal-note")).toContainText("itiraz imzalarınız kullanılmaz");
+  },
+};
+
 /** Konular sayfasında telefon genişliğinde 'Süz' açılırı (Kategori ve Arşiv süzgeçleri) açık. */
 const filtersOpen: View["extra"] = {
   label: "‘Süz’ açılırı açık",
@@ -170,6 +221,8 @@ let data: {
   tx: CommittedTxView;
   /** Silme talebi formunun ?mesaj= ile açılacağı görünür gövdeli bir mesaj */
   messageId: string;
+  /** Ayşe'nin Listem'ine eklenenler: en uzun başlıklı öneri, ikinci bir öneri ve en uzun başlıklı konu (satır ve başlık taşması ölçülsün) */
+  saved: { longProposal: ProposalSummary; otherProposal: ProposalSummary; longTopic: TopicSummary };
 };
 
 test.beforeAll(async () => {
@@ -190,8 +243,22 @@ test.beforeAll(async () => {
     height: status.height,
     tx: txs[0],
     messageId: "",
+    saved: { longProposal: proposals[0], otherProposal: proposals[1], longTopic: topics[0] },
   };
   expect(data.proposals.length).toBeGreaterThan(30);
+  // Listem dolu olsun: Profil › Listem, Öneriler › Listem, basılı 'Listeme ekle' ve 'Listenizde' çipi gerçek uzun başlıklarla ölçülür.
+  const longest = <T extends { title: string }>(list: T[]): T => [...list].sort((a, b) => b.title.length - a.title.length)[0];
+  const longProposal = longest(data.proposals.filter((p) => p.status !== "draft"));
+  const otherProposal = data.proposals.find((p) => p.status === "voting" && p.id !== longProposal.id)!;
+  const longTopic = longest(topics);
+  data.saved = { longProposal, otherProposal, longTopic };
+  for (const [type, id] of [
+    ["proposal", longProposal.id],
+    ["proposal", otherProposal.id],
+    ["topic", longTopic.id],
+  ] as const) {
+    await api.request("PUT", `/api/me/saved/${type}/${id}`, { as: "ayse" });
+  }
   const thread = await api.get<ThreadResponse>(`/api/threads/topic/${data.topics[0].id}`);
   data.messageId = thread.messages.find((m) => m.visibility === "visible" && !!m.body)?.id ?? "";
   expect(data.messageId, "ilk konunun tartışmasında görünür bir mesaj olmalı").toBeTruthy();
@@ -234,6 +301,9 @@ test("ziyaretçi: tüm genel sayfalar ve her öneri (360 px)", async ({ browser 
   const enacted = data.proposals.find((p) => p.status === "enacted")!;
   const views: View[] = [
     { label: "Ana sayfa", path: "/", extra: moreSheet },
+    { label: "Ana sayfa › Hızlı bul paneli (boş)", path: "/", extra: quickFindEmpty },
+    { label: "Ana sayfa › Hızlı bul paneli (sonuçlarla)", path: "/", extra: quickFindResults },
+    { label: "Ana sayfa › Hızlı bul paneli (Sonuç yok)", path: "/", extra: quickFindNone },
     { label: "Giriş", path: "/giris" },
     { label: "Kayıt", path: "/kayit" },
     { label: "Konular", path: "/konular" },
@@ -338,12 +408,21 @@ test("üye ve bekleyen üye: profil, bildirimler, yeni öneri formları, oy pane
   const s = await phone(browser, "ayse");
   await scan(s, "üye (ayse)", [
     { label: "Ana sayfa (görevler)", path: "/", extra: moreSheet },
+    { label: "Ana sayfa › Hızlı bul paneli (sonuçlarla; kendi taslağı da aranır)", path: "/", extra: quickFindResults },
     { label: "Profil", path: "/profil" },
+    { label: "Profil: Listem (dolu)", path: "/profil?bolum=listem" },
     { label: "Profil: Kişisel verilerim (KVKK) açık", path: "/profil?bolum=kvkk" },
     { label: "Profil: Kimlik bilgilerimi düzelt açık", path: "/profil?bolum=duzeltme" },
     { label: "Bildirimler", path: "/bildirimler", tabs: true },
     { label: "Keşfet ve doğrula", path: "/kesfet", extra: onThisPageLinks },
     { label: "Öneriler: oylamadakiler (Sizden bekleniyor)", path: "/oneriler?sekme=oylama" },
+    { label: "Öneriler (5 sekme: Açık · Sonuçlanan · Tümü · Benim · Listem)", path: "/oneriler", tabs: true },
+    { label: "Öneriler: Listem sekmesi (dolu)", path: "/oneriler?sekme=listem" },
+    { label: "Öneriler: Sırala › Size göre (gerekçe çipleri)", path: "/oneriler?sekme=tumu&sirala=sana-gore" },
+    { label: "Öneriler: Size göre › ‘nasıl sıralar?’ açık", path: "/oneriler?sekme=tumu&sirala=sana-gore", extra: personalNoteOpen },
+    { label: "Öneri sayfası (Listeme ekle: listede, en uzun başlık)", path: `/oneriler/${data.saved.longProposal.id}` },
+    { label: "Öneri sayfası (Listeme ekle: listede değil)", path: `/oneriler/${data.proposals.find((p) => p.status === "enacted" && p.id !== data.saved.longProposal.id)!.id}` },
+    { label: "Konu ayrıntısı (Listeme ekle: listede, en uzun başlık)", path: `/konular/${data.saved.longTopic.id}` },
     { label: "Yeni öneri", path: "/oneriler/yeni" },
     { label: "Yeni öneri: yeni konu", path: "/oneriler/yeni?tur=topic" },
     { label: "Yeni öneri: ön denetim paneli", path: "/oneriler/yeni", extra: fillPrecheck },
@@ -361,6 +440,9 @@ test("üye ve bekleyen üye: profil, bildirimler, yeni öneri formları, oy pane
     { label: "Ana sayfa (onay bekleniyor şeridi)", path: "/" },
     { label: "Yeni öneri (doğrulama gerekli)", path: "/oneriler/yeni" },
     { label: "Profil", path: "/profil" },
+    { label: "Profil: Listem (boş)", path: "/profil?bolum=listem" },
+    { label: "Öneriler (5 sekme)", path: "/oneriler", tabs: true },
+    { label: "Öneriler: Listem sekmesi (boş)", path: "/oneriler?sekme=listem" },
   ]);
   expectNoProblems(p0, n0);
 });
@@ -373,10 +455,13 @@ test("üye (Tam görünüm): profil, ayarlar, bildirimler, yeni öneri formları
   await scan(s, "üye (ayse, Tam)", [
     { label: "Ana sayfa (görevler)", path: "/", extra: moreSheet },
     { label: "Profil", path: "/profil" },
+    { label: "Profil: Listem (dolu, Tam)", path: "/profil?bolum=listem" },
     { label: "Ayarlar", path: "/ayarlar" },
     { label: "Bildirimler", path: "/bildirimler", tabs: true },
     { label: "Konular", path: "/konular" },
     { label: "Öneriler: oylamadakiler", path: "/oneriler?sekme=oylama" },
+    { label: "Öneriler: Size göre (Tam)", path: "/oneriler?sekme=tumu&sirala=sana-gore" },
+    { label: "Öneriler: Listem sekmesi (Tam)", path: "/oneriler?sekme=listem" },
     { label: "Yeni öneri: yeni konu (ön denetim paneli)", path: "/oneriler/yeni", extra: fillPrecheck },
     { label: "Yeni öneri: alt konu", path: `/oneriler/yeni?tur=subtopic&konu=${data.topics[0].id}` },
     { label: "Yeni öneri: düzenleme teklifi", path: `/oneriler/yeni?tur=amendment&konu=${data.topics[0].id}` },

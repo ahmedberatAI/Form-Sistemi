@@ -27,7 +27,7 @@ export function regInput(over: Partial<RegistrationInput> = {}): RegistrationInp
 }
 
 /** opts: gerçek duvar saati (bekleyen başvuru imhası, giriş kilidi) ve giriş kilidi ayarları; verilmezse Date.now ve varsayılanlar. */
-export function setup(opts: Pick<IdentityDeps, "realNow" | "loginThrottle"> = {}) {
+export function setup(opts: Pick<IdentityDeps, "realNow" | "loginThrottle" | "onErased"> = {}) {
   const ctx = makeCtx();
   const ledger = new FakeLedger(ctx.clock);
   const notifier = new MemoryNotifier();

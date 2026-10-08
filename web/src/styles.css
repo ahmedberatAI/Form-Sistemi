@@ -5,6 +5,7 @@
    SINIF KILAVUZU (ayrıntı: src/README.md)
    Yerleşim   .app .app-header .app-nav .nav-link .nav-divider .app-main .app-footer .bottom-nav .bottom-link .more-system .skip-link
    Sayfa      .page .page-narrow (≤ 720px) .page-wide · .page-header .page-title .page-subtitle .page-actions .page-meta .page-back
+              .page-header-top .page-tools (geri bağlantısı + sağda küçük araç, ör. 'Listeme ekle')
    Düzen      .stack .stack-sm .stack-lg (dikey boşluk) · .row .row-between .row-end (yatay, sarmalı)
               .grid-2 .grid-3 .grid-auto (duyarlı ızgara) · .split (ana + yan sütun) · .mt .mb .mt-0
    Metin      .muted .small .mono .nowrap .truncate .prose .h3 .lead · .ta-left .ta-right .ta-center
@@ -892,6 +893,23 @@ a:focus:not(:focus-visible) {
 }
 .page-back:hover {
   color: var(--text);
+}
+/* Geri bağlantısı + sağda küçük araç (PageHeader `tools`, ör. 'Listeme ekle'): tek satır, başlık satırını sarmaz */
+.page-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.page-header-top > .page-back {
+  align-self: center;
+  min-width: 0;
+}
+.page-tools {
+  display: flex;
+  flex: none;
+  gap: var(--sp-2);
 }
 
 .section {

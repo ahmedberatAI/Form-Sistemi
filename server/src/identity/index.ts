@@ -44,6 +44,11 @@ export interface IdentityDeps {
   realNow?: () => number;
   /** Hesap başına giriş kilidi ayarları (yalnız testler); varsayılan 15 dakikada 5 başarısızlık → 15 dakika kilit. */
   loginThrottle?: Omit<LoginThrottleOptions, "now">;
+  /**
+   * Hesabın kişisel verisi imha edildikten SONRA (işlem tamamlanınca) çağrılır: hesap silme, kayıt memuru reddi ve bayat başvuru
+   * imhası. Süreç belleğinde o kişiye ait kopyalar (ör. kişisel sıralamanın sinyal önbelleği) hemen düşürülür. Hatası imhayı bozmaz.
+   */
+  onErased?: (userId: string) => void;
 }
 
 /** IdentityService + HTTP katmanı ve zamanlayıcı için ek yardımcılar. */
@@ -384,6 +389,15 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
    * takma adı metin olarak taşımaz ({{uye:<kimlik>}} belirteci), okunurken güncel (anonim) adla çözülür; metin yeniden yazılmaz.
    * Yalnız satırları günceller: çağıran bunu denetim kaydıyla birlikte TEK db.tx içinde yapar, işlem bittikten sonra checkpointWal.
    */
+  /** İmha sonrası kanca (bkz. IdentityDeps.onErased); hatası yutulur: imha zaten tamamlandı, bellek kaydı en geç süresi dolunca atılır. */
+  function notifyErased(userId: string): void {
+    try {
+      deps.onErased?.(userId);
+    } catch {
+      /* yalnız bellek içi kopyalar */
+    }
+  }
+
   function shredRows(userId: string, status: "erased" | "rejected"): void {
     const now = clock.now();
     const short = userId.replace(/-/g, "").slice(0, 6);
@@ -409,6 +423,8 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
         userId,
       );
       db.run("UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL", now, userId);
+      // Listem (kişiye özel yer imleri; şema sürümü 3): kişisel tercih kaydıdır, imha ile AYNI işlemde silinir.
+      db.run("DELETE FROM saved_items WHERE user_id = ?", userId);
       // Düzeltme talepleri: öneri ve gerekçe (DEK'le şifreli, artık zaten çözülemez) NULL; bekleyenler geri çekilmiş sayılır.
       db.run(
         `UPDATE identity_corrections SET enc_payload = NULL, enc_reason = NULL,
@@ -601,6 +617,7 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
           shredRows(userId, "rejected");
           deps.audit.log(actorId, "identity.verify", userId, { decision: "reject", hasNote: cleanNote.length > 0 });
         });
+        notifyErased(userId);
         checkpointWal();
         submitLedger("MEMBER_ERASED", { memberRef });
         deps.notifier.notify(userId, {
@@ -727,17 +744,20 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
       const details: Record<string, string> = {};
       if (c.politicalConsent !== undefined && typeof c.politicalConsent !== "boolean") details.politicalConsent = "Siyasi görüş rızası evet/hayır olmalıdır.";
       if (c.aiConsent !== undefined && typeof c.aiConsent !== "boolean") details.aiConsent = "Yapay zekâ rızası evet/hayır olmalıdır.";
+      if (c.personalRanking !== undefined && typeof c.personalRanking !== "boolean") details.personalRanking = "Kişisel sıralama tercihi evet/hayır olmalıdır.";
       if (Object.keys(details).length) throw validationError(details);
       const changes: Record<string, boolean> = {};
       if (typeof c.politicalConsent === "boolean" && (row.political_consent === 1) !== c.politicalConsent) changes.politicalConsent = c.politicalConsent;
       if (typeof c.aiConsent === "boolean" && (row.ai_consent === 1) !== c.aiConsent) changes.aiConsent = c.aiConsent;
+      if (typeof c.personalRanking === "boolean" && (row.personal_ranking !== 0) !== c.personalRanking) changes.personalRanking = c.personalRanking;
       if (Object.keys(changes).length === 0) return meOf(row);
-      // Rıza değişikliği ve ispatı (denetim kaydı) tek işlemde (#280): kayıtsız rıza değişikliği kalmasın.
+      // Rıza/tercih değişikliği ve ispatı (denetim kaydı) tek işlemde (#280): kayıtsız rıza değişikliği kalmasın.
       db.tx(() => {
         db.run(
-          "UPDATE users SET political_consent = ?, ai_consent = ? WHERE id = ?",
+          "UPDATE users SET political_consent = ?, ai_consent = ?, personal_ranking = ? WHERE id = ?",
           (changes.politicalConsent ?? row.political_consent === 1) ? 1 : 0,
           (changes.aiConsent ?? row.ai_consent === 1) ? 1 : 0,
+          (changes.personalRanking ?? row.personal_ranking !== 0) ? 1 : 0,
           userId,
         );
         deps.audit.log(userId, "identity.consents", userId, changes);
@@ -817,11 +837,20 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
           kvkkNoticeAcceptedAt: row.kvkk_notice_at,
           politicalConsent: row.political_consent === 1,
           aiConsent: row.ai_consent === 1,
+          // Kişisel sıralama tercihi (varsayılan açık; yalnız siyasi görüş rızasıyla birlikte etkilidir).
+          personalRanking: row.personal_ranking !== 0,
         },
         processing: [
           { data: "Ad, soyad, T.C. kimlik no, doğum tarihi, e-posta, telefon, adres", purpose: "Kimlik doğrulama, tek kişi–tek oy, reşitlik ve çıkar çatışması denetimi", storage: "Alan bazında AES-256-GCM ile şifreli kimlik kasası" },
           { data: "Oylar, öneriler, mesajlar (siyasi görüş — özel nitelikli veri)", purpose: "Katılımcı karar alma", legalBasis: "Açık rıza (KVKK md. 6/3-a)" },
           { data: "İçeriğin yapay zekâ analizi", purpose: "Danışma niteliğinde özet ve sınıflandırma", legalBasis: "Ayrı açık rıza (varsayılan kapalı); yurt dışına aktarım KVKK md. 9" },
+          {
+            data: "Listem kayıtları; kendi yazarlık, destek ve mesaj yazma kayıtlarınız (son 180 gün; siyasi görüş — özel nitelikli veri)",
+            purpose:
+              "Listelerin size göre sıralanması (\"Size göre\", ana sayfa \"Şu an açık\"): yalnız sıra değişir, hiçbir içerik gizlenmez. Oy, oy verip vermediğiniz, itiraz ve azınlık raporu kullanılmaz; son açtığınız öneriler yalnız cihazınızda tutulur ve sunucuda saklanmaz",
+            legalBasis:
+              "Açık rıza (KVKK md. 6/3-a): siyasi görüş rızanız yoksa hiç işlenmez; \"Kişisel sıralama\" tercihiyle (consents.personalRanking) ayrıca kapatılabilir",
+          },
         ],
         sessions: exportRows("SELECT created_at, expires_at, revoked_at FROM sessions WHERE user_id = ? ORDER BY created_at", userId),
         piiAccessLog: exportRows(
@@ -840,6 +869,10 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
         ),
         proposalSuggestions: exportRows("SELECT id, proposal_id, body, status, created_at, decided_at FROM proposal_suggestions WHERE author_id = ? ORDER BY created_at", userId),
         sponsorships: exportRows("SELECT proposal_id, at, ledger_tx FROM proposal_sponsors WHERE user_id = ? ORDER BY at", userId),
+        // Listem ("Listeme ekle"): yalnız sahibine görünen kayıtlar. Kişisel sıralamanın sinyallerinden biridir; sıralamada kullanılan
+        // diğer sinyaller (yazarlık, destekleme, mesaj) zaten proposals / sponsorships / messages bölümlerindedir. "Son açılanlar"
+        // sunucuda tutulmaz (yalnız istemcinin cihazında).
+        savedItems: exportRows("SELECT target_type, target_id, created_at FROM saved_items WHERE user_id = ? ORDER BY created_at, target_type, target_id", userId),
         opinionCluster: exportOpinionCluster(userId),
         eligibleVoterRolls: exportRows("SELECT proposal_id FROM eligible_voters WHERE user_id = ? ORDER BY proposal_id", userId).map((r) => r.proposalId),
         messages: exportRows(
@@ -909,11 +942,12 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
         shredRows(userId, "erased");
         deps.audit.log(userId, "identity.erase", userId, { method: "crypto-shredding" });
       });
-      // Defter kaydı ve WAL sıkıştırması bir mikro görevde, yani çağıranın (varsa) eşzamanlı işlemi bittikten SONRA. O işlem geri
-      // alındıysa hesap silinmemiştir: deftere "silindi" yazılmaz.
+      // Defter kaydı, bellek kancası ve WAL sıkıştırması bir mikro görevde, yani çağıranın (varsa) eşzamanlı işlemi bittikten SONRA.
+      // O işlem geri alındıysa hesap silinmemiştir: deftere "silindi" yazılmaz.
       return Promise.resolve().then(() => {
         if (getRow(userId)?.status !== "erased") return;
         submitLedger("MEMBER_ERASED", { memberRef: vault.memberRef(userId) });
+        notifyErased(userId);
         checkpointWal();
       });
     },
@@ -1038,6 +1072,7 @@ export function createIdentityService(ctx: CoreContext, deps: IdentityDeps): Ide
           deps.audit.log(null, "identity.purge_stale", id, { method: "crypto-shredding" });
         });
         submitLedger("MEMBER_ERASED", { memberRef: vault.memberRef(id) });
+        notifyErased(id);
       }
       if (stale.length > 0) checkpointWal();
       return stale.length;

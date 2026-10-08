@@ -153,11 +153,8 @@ export function truncate(s: string | null | undefined, max = 140): string {
   return s.length > max ? s.slice(0, max - 1).trimEnd() + "…" : s;
 }
 
-/** Türkçe büyük/küçük harfe duyarsız arama için normalleştirme ("İstanbul" ~ "istanbul", "ı" ~ "i"). */
-export function normalizeSearch(s: string): string {
-  return s
-    .toLocaleLowerCase(LOCALE)
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/ı/g, "i");
-}
+/**
+ * Türkçe büyük/küçük harfe ve aksana duyarsız arama için normalleştirme ("İstanbul" ~ "istanbul", "ı" ~ "i", "Çevre" ~ "cevre").
+ * Tek kaynak shared/src/search.ts: sunucunun önerili araması (GET /api/search) ile yerel süzgeçler AYNI kuralı kullanır.
+ */
+export { normalizeSearch } from "@forum/shared";

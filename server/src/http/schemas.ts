@@ -5,6 +5,11 @@ import { z } from "zod";
 import { isSafeIri } from "../ontology/iri";
 import {
   expandIri,
+  REC_PARAMS,
+  REC_RECENT_HEADER,
+  SAVED_TARGET_TYPES,
+  SEARCH_LIMIT_MAX,
+  SEARCH_QUERY_MAX,
   TEXT_LIMITS,
   type AiApproveRequest,
   type AssignmentRespondRequest,
@@ -46,6 +51,8 @@ import {
   type RepairRequest,
   type RightsFlagRequest,
   type Role,
+  type SavedTargetType,
+  type SearchQuery,
   type SetRolesRequest,
   type Stance,
   type SuggestionDecisionRequest,
@@ -130,6 +137,38 @@ const id = z.string().min(1).max(200);
 const qBool = z.enum(["1", "0", "true", "false"]).transform((v) => v === "1" || v === "true");
 const qInt = (min: number, max: number) => z.coerce.number().int().min(min).max(max);
 const qText = (max: number) => z.string().max(max);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/**
+ * "Son açılanlar" (kişisel sıralamanın geçici girdisi): virgülle ayrılmış en çok 20 öneri kimliği (UUID). Boş öğeler atılır,
+ * yinelenenler teklenir. YALNIZ istek başlığıyla gelir ({@link RECENT_HEADER}): adres satırındaki sorgu dizesi ters vekilin
+ * (nginx, CDN) erişim günlüğüne düz yazılırdı; başlık değerleri varsayılan günlük biçimlerinde yoktur. Değerler yalnız o isteğin
+ * sıralamasında kullanılır; saklanmaz.
+ */
+const recentIds = z
+  .string()
+  .max(REC_PARAMS.maxRecent * 40)
+  .transform((s, ctx) => {
+    const ids = [...new Set(s.split(",").map((p) => p.trim()).filter(Boolean))];
+    if (ids.length > REC_PARAMS.maxRecent) {
+      ctx.addIssue({ code: "custom", message: `En fazla ${REC_PARAMS.maxRecent} öneri kimliği gönderilebilir.` });
+      return z.NEVER;
+    }
+    if (ids.some((id) => !UUID_RE.test(id))) {
+      ctx.addIssue({ code: "custom", message: "Son açılanlar yalnız öneri kimliklerinden (UUID) oluşmalıdır." });
+      return z.NEVER;
+    }
+    return ids;
+  });
+
+/** "Son açılanlar" istek başlığı (shared REC_RECENT_HEADER; Node başlık adlarını küçük harfe çevirir). */
+export const RECENT_HEADER = REC_RECENT_HEADER.toLowerCase();
+/** Başlığın doğrulaması (hata ayrıntısı `details.recent`). */
+export const recentHeader = z.object({ recent: recentIds.optional() });
+/** Sorgu dizesindeki `recent` her zaman reddedilir: son açılanlar adres satırında (vekil günlüklerinde) iz bırakmasın. */
+const noRecentInQuery = z
+  .unknown()
+  .refine((v) => v === undefined, { message: "Son açılanlar adres satırında gönderilemez; X-Forum-Recent istek başlığını kullanın." })
+  .optional();
 
 // ───────────── Yol parametreleri ─────────────
 
@@ -145,7 +184,7 @@ export const hashParams = z.object({ hash: z.string().regex(/^[0-9a-fA-F]{64}$/,
 /** Kayıt formunun ayrıntılı (Türkçe, alan bazlı) doğrulaması kimlik modülündedir; burada yalnız nesne olduğu denetlenir. */
 export const registrationBody = z.record(z.string(), z.unknown());
 export const loginBody = z.object({ login: text(320), password: text(1024) });
-export const consentsBody = z.object({ aiConsent: z.boolean().optional(), politicalConsent: z.boolean().optional() });
+export const consentsBody = z.object({ aiConsent: z.boolean().optional(), politicalConsent: z.boolean().optional(), personalRanking: z.boolean().optional() });
 export const changePasswordBody = z.object({ oldPassword: text(1024), newPassword: text(1024) });
 // Takma adın asıl kuralı (3–32 karakter, izinli karakterler) kimlik modülündedir (parseNickname); buradaki üst sınır yalnız
 // taşıma sınırıdır ve aşıldığında da asıl kuralı söyler ("En fazla 100 karakter" değil).
@@ -157,6 +196,8 @@ export const delegateBody = z.object({
   rank: z.number().int().min(1).max(3),
 });
 export const markReadBody = z.object({ ids: z.array(id).max(1000).optional() });
+/** Listem: hedef türü beyaz listesi (proposal | topic) + kimlik. */
+export const savedParams = z.object({ type: z.enum(SAVED_TARGET_TYPES), id });
 export const notificationsQuery = z.object({ unread: qBool.optional() });
 
 // ───────────── Kayıt memuru / yönetim ─────────────
@@ -225,15 +266,24 @@ export const validatePatchBody = z.object({ patch: regulationPatchSchema });
 
 // ───────────── Öneriler ─────────────
 
-export const proposalListQuery = z.object({
-  status: z.enum([...PROPOSAL_STATUSES, "open", "closed"]).optional(),
-  kind: z.enum(PROPOSAL_KINDS).optional(),
-  q: qText(200).optional(),
-  topicId: qText(200).optional(),
-  authorId: qText(200).optional(),
-  mine: qBool.optional(),
-  limit: qInt(1, 1000).optional(),
-});
+export const proposalListQuery = z
+  .object({
+    status: z.enum([...PROPOSAL_STATUSES, "open", "closed"]).optional(),
+    kind: z.enum(PROPOSAL_KINDS).optional(),
+    q: qText(200).optional(),
+    topicId: qText(200).optional(),
+    authorId: qText(200).optional(),
+    mine: qBool.optional(),
+    limit: qInt(1, 1000).optional(),
+    // Kişisel sıra ("Size göre"): yanıt PersonalizedProposalList olur; küme varsayılan listeyle aynıdır. Son açılanlar başlıkla gelir.
+    sort: z.enum(["sana-gore"]).optional(),
+    recent: noRecentInQuery,
+  });
+
+// ───────────── Önerili arama ve pano ─────────────
+
+export const searchQuery = z.object({ q: qText(SEARCH_QUERY_MAX), limit: qInt(1, SEARCH_LIMIT_MAX).optional() });
+export const dashboardQuery = z.object({ recent: noRecentInQuery });
 
 export const createProposalBody = z.object({
   kind: z.enum(PROPOSAL_KINDS),
@@ -331,6 +381,7 @@ export type _SetChecks = [
   Check<Same<(typeof EXPERT_STATUSES)[number], ExpertStatus>>,
   Check<Same<(typeof EDGE_TYPES)[number], EdgeType>>,
   Check<Same<(typeof LEDGER_TX_TYPES)[number], LedgerTxType>>,
+  Check<Same<(typeof SAVED_TARGET_TYPES)[number], SavedTargetType>>,
 ];
 
 export type _BodyChecks = [
@@ -353,6 +404,7 @@ export type _BodyChecks = [
   Check<Fits<z.output<typeof regulationPatchSchema>, RegulationPatch>>,
   Check<Fits<z.output<typeof validatePatchBody>, ValidatePatchRequest>>,
   Check<Fits<z.output<typeof proposalListQuery>, ProposalListQuery>>,
+  Check<Fits<z.output<typeof searchQuery>, SearchQuery>>,
   Check<Fits<z.output<typeof createProposalBody>, CreateProposalRequest>>,
   Check<Fits<z.output<typeof updateProposalBody>, UpdateProposalRequest>>,
   Check<Fits<z.output<typeof suggestionBody>, SuggestionRequest>>,

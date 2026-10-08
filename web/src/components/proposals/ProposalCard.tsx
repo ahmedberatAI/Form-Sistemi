@@ -7,13 +7,14 @@
 // yanında griye döner (nesne başına tek renkli durum rozeti).
 import { Fragment, useId } from "react";
 import { Link } from "react-router-dom";
-import { PROPOSAL_KIND_LABELS, PROPOSAL_STATUS_LABELS, type ProposalStatus, type ProposalSummary } from "@forum/shared";
+import { PROPOSAL_KIND_LABELS, PROPOSAL_STATUS_LABELS, type ProposalStatus, type ProposalSummary, type RankReason } from "@forum/shared";
 import { useOntology } from "../../lib/categories";
 import { formatPercent, proposalRef } from "../../lib/format";
 import { routes } from "../../lib/routes";
 import { expectationText, useProposalExpectations, type ExpectationKind } from "../../lib/taskStore";
 import { Badge, Countdown, cx, Icon, ProgressBar, StatusBadge, statusTone, TierBadge, Time, type IconName } from "../../ui";
 import { UserLink } from "../UserLink";
+import { ReasonChip, showsReason } from "../discovery/ReasonChip";
 import "./proposals.css";
 
 /** Evre geri sayımının önündeki metin ("Oylamanın bitmesine 2 sa 13 dk kaldı"). */
@@ -54,9 +55,11 @@ export interface ProposalCardProps {
   /** Oturumdaki kullanıcının kimliği: kendi önerisi "Sizin" rozetiyle işaretlenir */
   myId?: string | null;
   headingLevel?: 2 | 3 | 4;
+  /** Kişisel sırada ('Size göre') kısa gerekçe: başlığın altında gri çip ('Genel sıralama' gösterilmez) */
+  reason?: RankReason | null;
 }
 
-export function ProposalCard({ proposal: p, compact, myId, headingLevel = 3 }: ProposalCardProps) {
+export function ProposalCard({ proposal: p, compact, myId, headingLevel = 3, reason }: ProposalCardProps) {
   const { categoryLabel, categoryPath } = useOntology();
   const hid = useId();
   const noteId = useId();
@@ -87,6 +90,12 @@ export function ProposalCard({ proposal: p, compact, myId, headingLevel = 3 }: P
       <H className="pcard-title" id={hid}>
         <Link to={routes.proposal(p.id)}>{p.title}</Link>
       </H>
+
+      {showsReason(reason) ? (
+        <div className="pcard-reason">
+          <ReasonChip reason={reason} />
+        </div>
+      ) : null}
 
       <div className="pcard-meta pcard-meta-dots">
         <span>{PROPOSAL_KIND_LABELS[p.kind] ?? p.kind}</span>
@@ -168,8 +177,11 @@ export function ProposalCard({ proposal: p, compact, myId, headingLevel = 3 }: P
   );
 }
 
+/** Liste öğesi: kişisel sıradaki öneriler gerekçe taşır (RankedProposalSummary / DashboardOpenProposal). */
+export type ProposalWithReason = ProposalSummary & { reason?: RankReason | null };
+
 export interface ProposalListProps {
-  proposals: ProposalSummary[];
+  proposals: readonly ProposalWithReason[];
   compact?: boolean;
   myId?: string | null;
   headingLevel?: 2 | 3 | 4;
@@ -183,7 +195,7 @@ export function ProposalList({ proposals, compact, myId, headingLevel, label }: 
     <ul className={cx("pcard-list", compact && "pcard-list-compact")} aria-label={label}>
       {proposals.map((p) => (
         <li key={p.id}>
-          <ProposalCard proposal={p} compact={compact} myId={myId} headingLevel={headingLevel} />
+          <ProposalCard proposal={p} compact={compact} myId={myId} headingLevel={headingLevel} reason={p.reason} />
         </li>
       ))}
     </ul>
@@ -258,6 +270,8 @@ export interface ProposalRowProps {
   showKind?: boolean;
   /** Meta satırına yazarı ('@takma ad') yaz */
   showAuthor?: boolean;
+  /** Kişisel sırada kısa gerekçe (gri çip, meta satırının sonunda; 'Genel sıralama' gösterilmez) */
+  reason?: RankReason | null;
 }
 
 /**
@@ -265,7 +279,7 @@ export interface ProposalRowProps {
  * ("#K-31 Kütüphane … Oylamada katılım 23/57 2 sa 13 dk kaldı"). Başlık tek satırdır (…); telefonda meta alt satırda,
  * ≥ 600 px'de meta sağda.
  */
-export function ProposalRow({ proposal: p, myId, showKind, showAuthor }: ProposalRowProps) {
+export function ProposalRow({ proposal: p, myId, showKind, showAuthor, reason }: ProposalRowProps) {
   const spec = proposalRowSpec(p);
   const mine = !!myId && p.authorId === myId;
   const details = proposalRowDetails(p, spec, { kind: showKind, author: showAuthor, mine });
@@ -306,12 +320,20 @@ export function ProposalRow({ proposal: p, myId, showKind, showAuthor }: Proposa
           </>
         ) : null}
       </span>
+      {showsReason(reason) ? (
+        <>
+          {" "}
+          <span className="prow-why">
+            <ReasonChip reason={reason} />
+          </span>
+        </>
+      ) : null}
     </Link>
   );
 }
 
 export interface ProposalRowListProps extends Pick<ProposalRowProps, "showKind" | "showAuthor"> {
-  proposals: ProposalSummary[];
+  proposals: readonly ProposalWithReason[];
   myId?: string | null;
   /** Liste için erişilebilir ad */
   label: string;
@@ -323,7 +345,7 @@ export function ProposalRowList({ proposals, myId, label, showKind, showAuthor }
     <ul className="prow-list" aria-label={label}>
       {proposals.map((p) => (
         <li key={p.id}>
-          <ProposalRow proposal={p} myId={myId} showKind={showKind} showAuthor={showAuthor} />
+          <ProposalRow proposal={p} myId={myId} showKind={showKind} showAuthor={showAuthor} reason={p.reason} />
         </li>
       ))}
     </ul>

@@ -962,6 +962,9 @@ test("Term: terim düğmesi pencere açar; Esc kapatır ve odak terime döner; �
   await dialog.getByRole("link", { name: "Yönetmelikte ›" }).click();
   await expect(page).toHaveURL(/#\/yonetmelik/);
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  // Sayfa yerleşmeden tam sayfa yüklemesine geçilirse süren istekler yarıda kesilir ve Chromium konsola
+  // 'net::ERR_NETWORK_IO_SUSPENDED' yazar (tam koşuda arada bir görüldü); gezinme bitsin, sonra yeniden yüklensin.
+  await waitSettled(page);
 
   // 'Sözlükte ›' terimin Keşfet sözlüğündeki yerine götürür: grup açılır, ad odaklanır, ?bolum silinir
   await gotoApp(page, url);

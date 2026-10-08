@@ -27,7 +27,10 @@ CREATE TABLE IF NOT EXISTS users (
   verified_at INTEGER,
   verified_by TEXT,
   reputation REAL NOT NULL DEFAULT 0,
-  objection_budget_used TEXT NOT NULL DEFAULT '[]' -- JSON: imza zaman damgaları (30 günlük pencere)
+  objection_budget_used TEXT NOT NULL DEFAULT '[]', -- JSON: imza zaman damgaları (30 günlük pencere)
+  -- "Kişisel sıralama" tercihi (şema sürümü 4): 1 = açık (varsayılan). Yalnız siyasi görüş rızasıyla birlikte etkilidir; 0 iken
+  -- kişisel sıralama için hiçbir etkinlik sinyali okunmaz (forum/discovery.ts). KVKK dökümünde consents.personalRanking.
+  personal_ranking INTEGER NOT NULL DEFAULT 1
 );
 
 -- Kimlik kasası: alan bazlı AES-256-GCM. Yalnızca identity modülü erişir.
@@ -500,6 +503,20 @@ CREATE TABLE IF NOT EXISTS ledger_outbox (
   submitted_at INTEGER NOT NULL              -- simüle saat
 );
 
+-- ───────────── Listem (şema sürümü 3) ─────────────
+-- "Listeme ekle" kayıtları: kişiye özel yer imleri (öneri ya da konu). Yalnız sahibine görünür; KVKK dökümüne girer; hesap silmede
+-- (kripto-imha işleminin içinde) silinir. Bir tartışma/öneri kaydı DEĞİLDİR: listeden çıkarma satırı siler. Kişisel sıralamada
+-- "listeye ekleme" sinyalidir (shared/src/recommend.ts). Hedef kimliği yabancı anahtar değildir (iki tablodan birine bakar);
+-- sunucu eklemede hedefin var ve görüntüleyene görünür olduğunu denetler.
+CREATE TABLE IF NOT EXISTS saved_items (
+  user_id TEXT NOT NULL REFERENCES users(id),
+  target_type TEXT NOT NULL CHECK (target_type IN ('proposal', 'topic')),
+  target_id TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, target_type, target_id)
+);
+CREATE INDEX IF NOT EXISTS idx_saved_items_user_created ON saved_items(user_id, created_at);
+
 -- ───────────── Sorgu indeksleri (sıcak WHERE/JOIN sütunları; mevcut veritabanları bir sonraki açılışta alır) ─────────────
 -- Denetim günlüğü: öneri özetleri (action + target IN …), yönetici görünümü (ORDER BY at DESC), dışa aktarım (target), takma ad bekleme süresi.
 CREATE INDEX IF NOT EXISTS idx_audit_action_target ON audit_log(action, target);
@@ -524,6 +541,8 @@ CREATE INDEX IF NOT EXISTS idx_proposals_author ON proposals(author_id);
 CREATE INDEX IF NOT EXISTS idx_ballots_user ON ballots(user_id);
 CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+-- Kişisel sıralamanın sinyal sorgusu (üyenin destekledikleri; şema sürümü 3).
+CREATE INDEX IF NOT EXISTS idx_sponsors_user ON proposal_sponsors(user_id, at);
 
 -- Vekâlet grafiği (graph.delegations: type = 'DELEGATES_TO' AND revoked_at IS NULL) ve bildirim listesi (user_id, created_at).
 CREATE INDEX IF NOT EXISTS idx_edges_type_revoked ON graph_edges(type, revoked_at);

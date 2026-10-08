@@ -27,9 +27,12 @@ import type {
   Stance,
   ThreadType,
   Tier,
+  TopicSummary,
   VoteChoice,
 } from "./types";
 import type { RevealEntry, TallyPayload } from "./decision";
+import type { RankReason } from "./recommend";
+import type { SearchMatch } from "./search";
 
 // ───────────── Kimlik ─────────────
 
@@ -42,6 +45,8 @@ export interface LoginRequest {
 export interface ConsentsRequest {
   aiConsent?: boolean;
   politicalConsent?: boolean;
+  /** Kişisel sıralama tercihi (rıza değil; yalnız siyasi görüş rızasıyla birlikte etkilidir) */
+  personalRanking?: boolean;
 }
 
 export interface ChangePasswordRequest {
@@ -239,6 +244,32 @@ export interface ProposalListQuery {
   authorId?: string;
   mine?: boolean;
   limit?: number;
+  /**
+   * "sana-gore": kişisel sıra — yanıt `PersonalizedProposalList` olur (dizi değil). Küme varsayılan listeyle AYNIDIR (aynı süzgeç ve
+   * `limit`); yalnız sıra değişir: önce süren (açık) öneriler (ana sayfa "Şu an açık"la aynı sıra), sonra diğerleri. Oturum yoksa,
+   * kişisel sıralamaya izin yoksa (siyasi görüş rızası ya da "Kişisel sıralama" tercihi) ya da profil boşsa varsayılan sıra döner
+   * (`personalized: false`). İstemcinin cihazındaki son açılanlar sorgu dizesinde DEĞİL, {@link REC_RECENT_HEADER} başlığıyla gider.
+   */
+  sort?: ProposalSort;
+}
+
+/** Öneri listesi sıralama parametresi (sunucu tarafında yalnız kişisel sıra; diğer sıralamalar istemcidedir). */
+export type ProposalSort = "sana-gore";
+
+/** Kişisel sıradaki öneri: özet + kişisel puan + kısa gerekçe (algoritma: shared/src/recommend.ts). */
+export interface RankedProposalSummary extends ProposalSummary {
+  /** Kişisel puan [0, 1]; kişisel sıra yoksa (soğuk başlangıç, oturum yok) null */
+  score: number | null;
+  /** Kısa gerekçe çipi; kişisel sıra yoksa null */
+  reason: RankReason | null;
+}
+
+/** GET /api/proposals?sort=sana-gore yanıtı. */
+export interface PersonalizedProposalList {
+  /** false: oturum yok ya da ilgi profili boş (soğuk başlangıç) — `items` varsayılan sıradadır, puan ve gerekçe null */
+  personalized: boolean;
+  /** Varsayılan listeyle AYNI küme (hiçbir öneri gizlenmez ya da düşmez), kişisel sırada */
+  items: RankedProposalSummary[];
 }
 
 export interface PrecheckResponse {
@@ -340,12 +371,22 @@ export interface AiApproveRequest {
   draftIndex?: number;
 }
 
+/** Ana sayfa "Şu an açık" satırı: kişisel sıradaysa puan ve gerekçe taşır. */
+export type DashboardOpenProposal = ProposalSummary & Partial<Pick<RankedProposalSummary, "score" | "reason">>;
+
 export interface Dashboard {
   counts: Record<ProposalStatus, number>;
   topics: number;
   members: { verified: number; pending: number };
   recentEnacted: ProposalSummary[];
-  open: ProposalSummary[];
+  /**
+   * Açık öneriler (en çok 10). Varsayılan: evre bitişi en yakın olanlar. Oturumlu ve ilgi profili olan görüntüleyende TÜM açık
+   * öneriler kişisel sıraya dizilip ilk 10'u gelir (`openPersonalized: true`; her satırda `score` ve `reason`). "Sizi bekleyenler"
+   * (`tasks`) kişiselleştirmeden etkilenmez.
+   */
+  open: DashboardOpenProposal[];
+  /** true: `open` kişisel sırada (sunucu her zaman gönderir; isteğe bağlı olması yalnız eski istemci/fikstür uyumu içindir) */
+  openPersonalized?: boolean;
   /** Görüntüleyen kişiye özel bekleyen işler (oturum yoksa boş) */
   tasks: DashboardTask[];
   /** Kalıcı kaybeden küme göstergesi (çoğunluk tiranlığı erken uyarısı) */
@@ -358,6 +399,72 @@ export interface DashboardTask {
   title: string;
   link: string;
   dueAt: number | null;
+}
+
+// ───────────── Önerili arama ("Hızlı bul") ─────────────
+
+/** GET /api/search sorgusu. */
+export interface SearchQuery {
+  /** Arama metni (en çok 100 karakter). 2 karakterden kısaysa ve numara değilse sonuç boştur. "#K12", "K-12", "#T3", "12" numara aramasıdır. */
+  q: string;
+  /** 1–8 (varsayılan 8) */
+  limit?: number;
+}
+
+interface SearchHitBase {
+  id: string;
+  seq: number;
+  title: string;
+  /** Eşleşme düzeyi: ref (numara) > prefix (başlık yazılanla başlıyor) > word (kelime başı) > contains (içinde geçiyor) */
+  match: SearchMatch;
+  /** Açık/etkin: öneride taslak ya da işleyen evre; konuda yürürlükte (active) */
+  open: boolean;
+  createdAt: number;
+}
+
+export interface ProposalSearchHit extends SearchHitBase {
+  type: "proposal";
+  kind: ProposalKind;
+  status: ProposalStatus;
+}
+
+export interface TopicSearchHit extends SearchHitBase {
+  type: "topic";
+  status: "active" | "archived";
+}
+
+export type SearchHit = ProposalSearchHit | TopicSearchHit;
+
+export interface SearchResponse {
+  /** Aranan metin (kırpılmış) */
+  q: string;
+  /** En çok `limit` sonuç, sıralı (compareSearchHits); istemci türe göre gruplar */
+  items: SearchHit[];
+  /** Kesilmeden önceki toplam eşleşme sayıları ("Tüm önerilerde ara (23)" için) */
+  total: { proposals: number; topics: number };
+}
+
+// ───────────── Listem (kayıtlı öneri ve konular) ─────────────
+
+/** Listeye eklenebilen hedef türleri (yol parametresi `:type`). */
+export type SavedTargetType = "proposal" | "topic";
+
+/** PUT / DELETE /api/me/saved/:type/:id yanıtı (ikisi de idempotent). */
+export interface SavedState {
+  type: SavedTargetType;
+  id: string;
+  saved: boolean;
+  /** Listeye ilk eklenme anı (yinelenen PUT değiştirmez); listede değilse null */
+  savedAt: number | null;
+}
+
+export type SavedItem =
+  | { type: "proposal"; id: string; savedAt: number; proposal: ProposalSummary }
+  | { type: "topic"; id: string; savedAt: number; topic: TopicSummary };
+
+/** GET /api/me/saved yanıtı: yalnız sahibine; en son eklenen önce. Artık görülemeyen hedefler listelenmez. */
+export interface SavedList {
+  items: SavedItem[];
 }
 
 // ───────────── Konular / tartışma ─────────────

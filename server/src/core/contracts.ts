@@ -305,7 +305,8 @@ export interface IdentityService {
   me(userId: string): Me;
   getPii(actorId: string, userId: string, purpose: string): PiiRecord;
   householdOf(userId: string): string | null;
-  setConsents(userId: string, c: { aiConsent?: boolean; politicalConsent?: boolean }): Me;
+  /** Rızalar ve kişisel sıralama tercihi (personalRanking; yalnız siyasi görüş rızasıyla birlikte etkilidir). */
+  setConsents(userId: string, c: { aiConsent?: boolean; politicalConsent?: boolean; personalRanking?: boolean }): Me;
   setRoles(actorId: string, userId: string, roles: Role[]): Me;
   exportOwnData(userId: string): Record<string, unknown>;
   /**

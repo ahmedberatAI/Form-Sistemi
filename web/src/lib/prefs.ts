@@ -15,6 +15,13 @@ export const PREF_KEYS = {
   validators: "forum.validators",
   /** 'Notu gizle' ile bu cihazda gizlenen notların anahtarları (JSON dizi). Bkz. getDismissed/addDismissed, components/home/SetupNotes */
   dismissed: "forum.dismissed",
+  /**
+   * Son açılan öneriler (kişisel sıralamanın geçici girdisi): anahtar `forum.sonAcilanlar:<kullanıcı kimliği>`, JSON dizi, en çok 20
+   * öneri kimliği. YALNIZ bu cihazda; çıkışta silinir. Bkz. lib/recentOpened
+   */
+  recentOpened: "forum.sonAcilanlar",
+  /** Öneriler › Sırala: 'Size göre' seçimi bu cihazda hatırlanır; anahtar `forum.oneriSirasi:<kullanıcı kimliği>`. Bkz. lib/personalSort */
+  proposalSort: "forum.oneriSirasi",
 } as const;
 
 const memory = new Map<string, string>();

@@ -1,8 +1,9 @@
 // Fastify 5 sunucusunu kurar: eklentiler (CORS, hız sınırı, statik dosyalar), kimlik doğrulama, hata biçimi, rotalar.
 import { existsSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
-import Fastify, { type FastifyInstance, type FastifyReply, type onRequestHookHandler } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest, type onRequestHookHandler } from "fastify";
 import cors from "@fastify/cors";
+import { REC_RECENT_HEADER } from "@forum/shared";
 import rateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
 import type { Config, TrustProxy } from "../core/config";
@@ -62,6 +63,37 @@ export function fastifyTrustProxy(tp: TrustProxy | undefined): boolean | string[
   return tp ?? false;
 }
 
+/**
+ * Günlükte gizlenen sorgu parametreleri. "Son açılanlar" artık yalnız X-Forum-Recent başlığıyla gelir ve sorgu dizesindeki `recent`
+ * 400 ile reddedilir; eski ya da hatalı bir istemci yine de adres satırında gönderirse değer en azından bu sunucunun günlüğüne
+ * yazılmaz (savunma derinliği; docs/KVKK.md).
+ */
+const REDACTED_QUERY_KEYS = new Set(["recent"]);
+
+/**
+ * İstek adresinin günlüğe yazılacak biçimi: {@link REDACTED_QUERY_KEYS} değerleri "[gizli]" olur (anahtar yüzde kodlu yazılsa da),
+ * diğer parametreler olduğu gibi kalır.
+ */
+export function redactUrl(url: string): string {
+  const q = url.indexOf("?");
+  if (q < 0) return url;
+  const parts = url
+    .slice(q + 1)
+    .split("&")
+    .map((part) => {
+      const eq = part.indexOf("=");
+      const rawKey = eq < 0 ? part : part.slice(0, eq);
+      let key = rawKey;
+      try {
+        key = decodeURIComponent(rawKey.replace(/\+/g, " "));
+      } catch {
+        /* bozuk kodlama: ham anahtar */
+      }
+      return REDACTED_QUERY_KEYS.has(key) ? `${rawKey}=[gizli]` : part;
+    });
+  return `${url.slice(0, q)}?${parts.join("&")}`;
+}
+
 function isDir(p: string): boolean {
   try {
     return statSync(p).isDirectory();
@@ -75,7 +107,21 @@ export async function buildServer(services: AppServices, config: Config, opts: B
   // trustProxy (TRUST_PROXY): ters vekil arkasında req.ip, güvenilen vekillerin X-Forwarded-For'undan okunur; kapalıyken
   // (varsayılan) doğrudan bağlantının adresidir. Hız sınırı req.ip'ye göre sayar: vekil arkasında kapalı kalırsa herkes tek IP olur.
   const app = Fastify({
-    logger: opts.logger ? { level: process.env.LOG_LEVEL ?? "warn" } : false,
+    logger: opts.logger
+      ? {
+          level: process.env.LOG_LEVEL ?? "warn",
+          // Fastify'ın varsayılan istek özeti; yalnız adres redactUrl'den geçer ("son açılanlar" günlüğe yazılmaz).
+          serializers: {
+            req: (req: FastifyRequest) => ({
+              method: req.method,
+              url: redactUrl(req.url),
+              host: req.host,
+              remoteAddress: req.ip,
+              remotePort: req.socket?.remotePort,
+            }),
+          },
+        }
+      : false,
     bodyLimit: BODY_LIMIT,
     trustProxy: fastifyTrustProxy(config.trustProxy),
     routerOptions: { maxParamLength: MAX_PARAM_LENGTH },
@@ -139,7 +185,8 @@ export async function buildServer(services: AppServices, config: Config, opts: B
   await app.register(cors, {
     origin: config.corsOrigins.includes("*") ? true : config.corsOrigins,
     methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Authorization", "Content-Type", "Accept", IDEMPOTENCY_KEY_HEADER],
+    // X-Forum-Recent: kişisel sıralamanın geçici girdisi (son açılanlar; adres satırında değil başlıkta gider).
+    allowedHeaders: ["Authorization", "Content-Type", "Accept", IDEMPOTENCY_KEY_HEADER, REC_RECENT_HEADER],
     exposedHeaders: ["Retry-After", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset", IDEMPOTENT_REPLAYED_HEADER],
     maxAge: 600,
   });

@@ -2,6 +2,7 @@
 import type { ForumDeps, ForumServices, LifecycleEngine } from "../core/forum-contracts";
 import { createClusterService } from "./clusters";
 import { createCommunityService } from "./community";
+import { createDiscoveryService } from "./discovery";
 import { createLifecycle } from "./lifecycle";
 import { createMessageService } from "./messages";
 import { createProposalService } from "./proposals";
@@ -15,8 +16,9 @@ export function createForumServices(deps: ForumDeps): ForumServices {
   const messages = createMessageService(core);
   const lifecycle: LifecycleEngine = createLifecycle(core, { clusters, topics, messages });
   const proposals = createProposalService(core, { clusters, messages, lifecycle: () => lifecycle });
-  const community = createCommunityService(core);
-  return { proposals, topics, messages, clusters, community, lifecycle };
+  const discovery = createDiscoveryService(core);
+  const community = createCommunityService(core, { discovery });
+  return { proposals, topics, messages, clusters, community, discovery, lifecycle };
 }
 
 export { ForumCore } from "./util";

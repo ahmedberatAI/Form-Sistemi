@@ -10,3 +10,5 @@ export * from "./api";
 export * from "./vocab";
 export * from "./privacy";
 export * from "./limits";
+export * from "./search";
+export * from "./recommend";

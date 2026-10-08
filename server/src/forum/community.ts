@@ -19,11 +19,11 @@ import {
 import type { AuthUser } from "../core/contracts";
 import { notFound } from "../core/errors";
 import { renderNotificationRows } from "../core/notification-text";
-import type { CommunityService, Viewer } from "../core/forum-contracts";
+import type { CommunityService, DiscoveryService, Viewer } from "../core/forum-contracts";
 import { json } from "../db";
 import { latestClusterOf } from "./clusters";
 import { canObject, canVote, canWriteMinorityReport } from "./eligibility";
-import { ACTIVE_SQL, ALL_STATUSES, hasRole, jsonList, proposalLink, proposalRef, safe, type ForumCore } from "./util";
+import { ALL_STATUSES, hasRole, jsonList, proposalLink, proposalRef, safe, type ForumCore } from "./util";
 import { publicUsers, publicUsersByIds, querySummaries } from "./views";
 
 interface UserRow {
@@ -37,7 +37,10 @@ interface UserRow {
 
 const bare = (key: string): string => (key.startsWith("user:") ? key.slice(5) : key);
 
-export function createCommunityService(core: ForumCore): CommunityService {
+/** Ana sayfa "Şu an açık" satır sayısı. */
+const DASHBOARD_OPEN_LIMIT = 10;
+
+export function createCommunityService(core: ForumCore, parts: { discovery: DiscoveryService }): CommunityService {
   const { db, deps } = core;
 
   function delegationViews(edges: { id: string; from: string; to: string; scope: string; rank: number; createdAt: number }[]): DelegationView[] {
@@ -258,14 +261,15 @@ export function createCommunityService(core: ForumCore): CommunityService {
       };
     },
 
-    dashboard(viewer: Viewer): Dashboard {
+    dashboard(viewer: Viewer, opts: { recent?: readonly string[] } = {}): Dashboard {
       const counts = Object.fromEntries(ALL_STATUSES.map((s) => [s, 0])) as Record<ProposalStatus, number>;
       for (const r of db.all<{ status: ProposalStatus; c: number }>("SELECT status, COUNT(*) AS c FROM proposals WHERE status <> 'draft' GROUP BY status")) {
         counts[r.status] = Number(r.c);
       }
       const topics = Number(db.get<{ c: number }>("SELECT COUNT(*) AS c FROM topics WHERE status = 'active'")?.c ?? 0);
       const recentEnacted = querySummaries(core, "p.status = 'enacted'", [], "ORDER BY p.updated_at DESC, p.seq DESC LIMIT 5");
-      const open = querySummaries(core, `p.status IN ${ACTIVE_SQL}`, [], "ORDER BY COALESCE(p.phase_ends_at, 9e15) ASC, p.seq DESC LIMIT 10");
+      // "Şu an açık": profil varsa kişisel sıra (gerekçeli); "Sizi bekleyenler" (tasks) ayrı ve kişiselleştirmeden bağımsızdır.
+      const open = parts.discovery.openForDashboard(viewer, DASHBOARD_OPEN_LIMIT, opts.recent ?? []);
       // Yalnız kalıcı kaybeden göstergesi (önbellekli): pano her yoklamada uzlaşı/aracı/sybil hesaplarını tetiklemez.
       const loser = safe(() => deps.graph.permanentLoser(), []);
       const l = ledgerSummary();
@@ -274,7 +278,8 @@ export function createCommunityService(core: ForumCore): CommunityService {
         topics,
         members: memberCounts(),
         recentEnacted,
-        open,
+        open: open.items,
+        openPersonalized: open.personalized,
         tasks: viewer ? service.tasks(viewer) : [],
         permanentLoser: loser.map((x) => ({ clusterId: x.clusterId, label: clusterLabel(x.clusterId), lostShare: x.lostShare, decisions: x.decisions })),
         ledger: { height: l.height, healthy: l.healthy, validators: l.validators },

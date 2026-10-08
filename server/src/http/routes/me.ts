@@ -119,6 +119,8 @@ export function registerMeRoutes(app: FastifyInstance, { services, authLimiter }
       }
       throw e;
     }
+    // Listem kayıtları imha işleminde silindi; bellekteki kişisel sıralama sinyallerini kimlik servisinin onErased kancası düşürür
+    // (başvuru reddi ve bayat başvuru imhasında da aynı kanca; app.ts).
     await erased;
     // 4) İşlem sonrası: vekâlet verenlere haber verilir (kişi başına bir bildirim).
     for (const from of new Set(delegators)) {

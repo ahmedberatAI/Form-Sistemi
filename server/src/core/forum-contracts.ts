@@ -11,6 +11,7 @@ import type {
   ClusterSnapshotView,
   CreateProposalRequest,
   Dashboard,
+  DashboardOpenProposal,
   DashboardTask,
   ExpertQuestion,
   HiddenMessageResponse,
@@ -22,6 +23,7 @@ import type {
   MyDelegations,
   Notification,
   ObjectionRequest,
+  PersonalizedProposalList,
   PostMessageRequest,
   PrecheckResponse,
   ProposalDetail,
@@ -31,6 +33,10 @@ import type {
   PublicProfile,
   PublicUser,
   RightsFlagRequest,
+  SavedList,
+  SavedState,
+  SavedTargetType,
+  SearchResponse,
   Suggestion,
   SystemInfo,
   ThreadType,
@@ -188,8 +194,49 @@ export interface CommunityService {
   markRead(userId: string, ids?: string[]): void;
   auditLog(filter: { actorId?: string; action?: string; limit?: number }): AuditLogEntry[];
   systemInfo(): SystemInfo;
-  dashboard(viewer: Viewer): Dashboard;
+  /**
+   * Pano. "Şu an açık" (open) oturumlu ve ilgi profili olan görüntüleyende kişisel sıradadır (DiscoveryService.openForDashboard);
+   * `recent`: istemcinin cihazındaki son açılanlar (geçici; saklanmaz). Görevler (tasks) kişiselleştirmeden etkilenmez.
+   */
+  dashboard(viewer: Viewer, opts?: { recent?: readonly string[] }): Dashboard;
   tasks(viewer: AuthUser): DashboardTask[];
+}
+
+// ═════════════════════════ Keşif: arama, Listem, kişisel sıra ═════════════════════════
+
+export interface DiscoveryService {
+  /**
+   * Önerili arama: öneri ve konu başlıkları (Türkçe duyarsız) ve numaralar (#K-12, #T-3). En çok `limit` (1–8) sonuç; sıra
+   * shared compareSearchHits. Görünürlük: başkasının taslağı hiç görünmez. 2 karakterden kısa ve numara olmayan metin → boş sonuç.
+   */
+  search(q: string, limit: number | undefined, viewer: Viewer): SearchResponse;
+  /** Listem (yalnız sahibine): en son eklenen önce; artık görülemeyen hedefler listelenmez. */
+  saved(userId: string): SavedList;
+  /**
+   * Listeye ekle (saved=true) / çıkar (false); ikisi de idempotent. Eklemede hedef var ve görüntüleyene görünür olmalı (yoksa 404);
+   * liste dolu → 422 saved_limit. Çıkarma hedefin varlığını belli etmez.
+   */
+  setSaved(actor: AuthUser, type: SavedTargetType, id: string, saved: boolean): SavedState;
+  /** Görüntüleyenin listesinde mi. */
+  isSaved(userId: string, type: SavedTargetType, id: string): boolean;
+  /**
+   * Verilen öneri özetlerini görüntüleyene göre kişisel sıraya dizer (shared rankForUser). Küme AYNI kalır, yalnız sıra değişir:
+   * önce süren (açık) öneriler — openForDashboard ile aynı sıra — sonra diğerleri. Oturum yoksa, siyasi görüş rızası ya da
+   * "Kişisel sıralama" tercihi yoksa ya da profil boşsa girdi sırası (personalized: false). Oy, itiraz ve azınlık raporu verisi
+   * KULLANILMAZ. `recent`: istemcinin cihazındaki son açılanlar (geçici; saklanmaz).
+   */
+  personalize(viewer: Viewer, items: ProposalSummary[], recent?: readonly string[]): PersonalizedProposalList;
+  /**
+   * Ana sayfa "Şu an açık": kişisel sıraya izin ve profil varsa TÜM açık öneriler kişisel sıraya dizilip ilk `limit` (kişisel
+   * listenin açık bölümüyle aynı sıra); yoksa evre bitişi en yakın olanlar.
+   */
+  openForDashboard(viewer: Viewer, limit: number, recent?: readonly string[]): { personalized: boolean; items: DashboardOpenProposal[] };
+  /** Kullanıcının sinyal önbelleğini düşürür (hesap silme, başvuru reddi, bayat başvuru imhası: kimlik servisinin onErased kancası). */
+  forgetCache(userId: string): void;
+  /** Süresi dolmuş önbellek kayıtlarını atar (sunucu düzenli çağırır; boşta da bellekte eski sinyal kalmasın). */
+  sweepCache(): void;
+  /** Bellekte sinyali tutulan üye sayısı (izleme ve testler; içerik döndürmez). */
+  signalCacheSize(): number;
 }
 
 // ═════════════════════════ Yaşam döngüsü ═════════════════════════
@@ -224,5 +271,6 @@ export interface ForumServices {
   messages: MessageService;
   clusters: ClusterService;
   community: CommunityService;
+  discovery: DiscoveryService;
   lifecycle: LifecycleEngine;
 }

@@ -9,7 +9,7 @@ export interface Harness extends App {
   clock: ManualClock;
   req(method: InjectOptions["method"], url: string, opts?: { token?: string | null; body?: unknown; headers?: Record<string, string> }): Promise<LightMyRequestResponse>;
   /** 2xx bekler ve JSON gövdeyi döndürür; değilse ayrıntılı hata fırlatır. */
-  ok<T = unknown>(method: InjectOptions["method"], url: string, opts?: { token?: string | null; body?: unknown }): Promise<T>;
+  ok<T = unknown>(method: InjectOptions["method"], url: string, opts?: { token?: string | null; body?: unknown; headers?: Record<string, string> }): Promise<T>;
   /** Yeni üye kaydı (HTTP) → AuthResponse (durum pending). */
   register(nickname: string, over?: Partial<RegistrationInput>): Promise<AuthResponse>;
   /** Doğrudan doğrulanmış üye (kayıt memuru "Üyeyi sisteme gir") + giriş. */
@@ -58,7 +58,7 @@ export async function boot(config: Partial<Config> = {}, opts: { rateLimit?: { g
     if (o.token) headers.authorization = `Bearer ${o.token}`;
     return app.inject({ method, url, headers, payload: o.body === undefined ? undefined : (o.body as InjectOptions["payload"]) });
   };
-  const ok: Harness["ok"] = async <T>(method: InjectOptions["method"], url: string, o: { token?: string | null; body?: unknown } = {}) => {
+  const ok: Harness["ok"] = async <T>(method: InjectOptions["method"], url: string, o: { token?: string | null; body?: unknown; headers?: Record<string, string> } = {}) => {
     const r = await req(method, url, o);
     if (r.statusCode < 200 || r.statusCode >= 300) throw new Error(`${method} ${url} → ${r.statusCode}: ${r.body}`);
     return (r.body ? r.json() : undefined) as T;

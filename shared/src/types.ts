@@ -23,6 +23,11 @@ export interface Me extends PublicUser {
   isAdult: boolean;
   aiConsent: boolean;
   politicalConsent: boolean;
+  /**
+   * "Kişisel sıralama" tercihi: açıkken (varsayılan) ve siyasi görüş rızası varsa listeler kişiye göre sıralanabilir ("Size göre",
+   * ana sayfa "Şu an açık"); kapalıyken hiçbir etkinlik sinyali okunmaz. Sunucu her zaman gönderir (yoksa açık sayılır).
+   */
+  personalRanking?: boolean;
   regionIl?: string | null;
   regionIlce?: string | null;
 }
@@ -445,6 +450,8 @@ export interface ProposalDetail extends ProposalSummary {
   ledgerTxs: { type: string; txHash: string; at: number }[];
   /** Türe göre TOPLAM defter kaydı sayısı (ledgerTxs VOTE_COMMIT için kısaltılmış olabilir). */
   ledgerTxCounts?: Record<string, number>;
+  /** Görüntüleyenin listesinde mi ("Listeme ekle"); oturum yoksa alan yoktur */
+  saved?: boolean;
 }
 
 export interface CreateProposalInput {
@@ -492,6 +499,8 @@ export interface TopicDetail extends TopicSummary {
   children: TopicSummary[];
   ancestors: { id: string; title: string }[];
   openProposals: ProposalSummary[];
+  /** Görüntüleyenin listesinde mi ("Listeme ekle"); oturum yoksa alan yoktur */
+  saved?: boolean;
 }
 
 export type ThreadType = "topic" | "proposal";

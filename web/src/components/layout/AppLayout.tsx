@@ -1,4 +1,4 @@
-// Uygulama iskeleti: üst çubuk (logo, bildirimler, kullanıcı menüsü), masaüstünde grup ayraçlı üst gezinme,
+// Uygulama iskeleti: üst çubuk (logo, 'Hızlı bul' önerili arama, bildirimler, kullanıcı menüsü), masaüstünde grup ayraçlı üst gezinme,
 // mobilde alt gezinme + "Daha fazla" sayfası (en altında "Sistem durumu"), genel uyarı şeritleri ve alt bilgi.
 // 'Ana sayfa' öğesinde bekleyen iş sayısı rozeti (lib/taskStore; AuthProvider 60 sn'de bir yeniler, ayrıca burada sayfa
 // değişince bayatsa): rozet aria-hidden'dır, bağlantı adı 'Ana sayfa' kalır; sayı ekran okuyucuya aria-describedby ile söylenir.
@@ -11,6 +11,7 @@ import { useNow } from "../../lib/hooks";
 import { routes } from "../../lib/routes";
 import { countBadgeText, taskCountText, useTaskCount } from "../../lib/taskStore";
 import { Alert, Button, cx, DropdownMenu, Icon, Modal } from "../../ui";
+import { QuickFindButton, QuickFindInline, useInlineQuickFind } from "../discovery/QuickFind";
 import { canOpenAdmin, canOpenRegistrar, GROUP_LABELS, systemRows, topNavSections, visibleItems, type NavItem } from "./nav";
 
 /** Sayfa değişince bekleyen işler bu kadar eskiyse yenilenir (oy verip listeye dönen üyenin rozeti ve kartları güncel kalsın). */
@@ -182,6 +183,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const homeTasks: HomeTasks = { count: taskCount, descId: taskDescId };
   const { refreshTasks } = auth;
   const navSeen = useRef(false);
+  // 'Hızlı bul': geniş ekranda üst çubukta kutu, telefonda büyüteç düğmesi (panel). Alt gezinme değişmez.
+  const inlineFind = useInlineQuickFind();
 
   // Sayfa değişince başa kaydır ve odağı içeriğe taşı (ekran okuyucular için).
   useEffect(() => {
@@ -224,7 +227,9 @@ export function AppLayout({ children }: { children: ReactNode }) {
       <header className="app-header">
         <div className="app-header-inner">
           <Brand />
+          {inlineFind ? <QuickFindInline /> : null}
           <div className="header-actions">
+            {inlineFind ? null : <QuickFindButton />}
             {user ? (
               <>
                 <Link to="/bildirimler" className="icon-btn header-bell" aria-label={auth.unread ? `Bildirimler (${auth.unread} okunmamış)` : "Bildirimler"}>

@@ -19,8 +19,10 @@ src/
   ui/                      yeniden kullanılabilir bileşenler (hepsi `../ui`'dan içe aktarılır)
   lib/                     format, prefs, receipts, validators, diff, useAsync, categories, hooks, routes, download, detailLevel, sectionParam,
                            nextStep, glossary (sözlük), taskStore (görev sayısı), notificationKinds (bildirim sınıfları),
+                           quickFind ('Hızlı bul' saf mantığı), recentOpened (son açılanlar), personalSort ('Size göre'), backButton (Android geri tuşunun sayfa içi adımları), deviceStore,
                            ledgerVerify / blockVerify (tarayıcıda doğrulama), native (Android geri tuşu)
   components/              RegistrationForm, CategoryPicker, UserLink, KvkkNotice, layout/ (AppLayout, nav.ts), common/ (NextStepCard),
+                           discovery/ (QuickFind: 'Hızlı bul' kutusu ve paneli · SaveToggle: 'Listeme ekle' · ReasonChip: gerekçe çipi · SavedListCard: Profil › Listem · discovery.css),
                            home/ (Ana sayfa parçaları), participation/ (öneri sayfası kartları ve panelleri), proposals/ (kartlar, yeni öneri,
                            konular), community/ (graf, görüş haritası, bilirkişi paneli ve raporu, vekâlet), system/ (defter, ontoloji,
                            yönetim panelleri, tema, hesap mantığı, hata sınırı); PlaceholderPage (hiçbir yol kullanmıyor, bkz. aşağıda)
@@ -94,11 +96,11 @@ Evet" dizisinde sunucu eski "Evet" makbuzunu yeniden döndürür, oy sessizce "H
 
 ## Uç noktalar (`api/endpoints.ts`)
 
-Hepsi `Promise` döner, tipler `@forum/shared`'dan. (docs/API.md ile birebir; 104 uç nokta. **Çağıranı olmayan altı işlev** — `getHealth`, `getFollowing`,
+Hepsi `Promise` döner, tipler `@forum/shared`'dan. (docs/API.md ile birebir; 108 uç nokta. **Çağıranı olmayan altı işlev** — `getHealth`, `getFollowing`,
 `getReceipts`, `getVoters`, `getClusterSnapshot`, `getAiStatus` — aşağıda "(çağıranı yok)" ile işaretlidir: arayüzde henüz bir ekranı yoktur ve istemci sözleşmesi
 API.md'yi tam karşılasın diye tutulur.)
 
-- **Sistem:** `getSystem()`, `getDashboard()`, `getHealth()` (çağıranı yok; bağlantı sınaması `pingServer` aynı adresi doğrudan çağırır)
+- **Sistem:** `getSystem()`, `getDashboard(recent?)` (`recent`: cihazdaki son açılanlar, yalnız doluysa `X-Forum-Recent` başlığıyla gider — adres satırında asla), `getHealth()` (çağıranı yok; bağlantı sınaması `pingServer` aynı adresi doğrudan çağırır)
 - **Kimlik/hesap:** `register(input)`, `login({login, password})`, `logout()`, `getMe()`, `updateConsents({aiConsent?, politicalConsent?})`,
   `changePassword({oldPassword, newPassword})`, `changeNickname({nickname, password})`, `exportMyData()`, `eraseMe({confirm: "SİL", password})`,
   `getMyDelegations()`, `delegate({to, scope, rank})`, `revokeDelegation(id)`, `getFollowing()` (çağıranı yok),
@@ -113,7 +115,8 @@ API.md'yi tam karşılasın diye tutulur.)
 - **Kullanıcılar:** `listUsers({q?, limit?})`, `getUser(id)`, `followUser(id)`, `unfollowUser(id)`, `vouchUser(id, level)`, `unvouchUser(id)`,
   `relateUser(id, kind)`, `unrelateUser(id, kind?)`
 - **Ontoloji:** `getOntology()`, `getOntologyVersions()`, `getTurtle(version?)` (metin), `validatePatch(patch)`
-- **Öneriler:** `listProposals(query?)`, `precheckProposal(req)`, `createProposal(req)`, `getProposal(id)`, `updateProposal(id, {title, body, acknowledgePii?})`,
+- **Öneriler:** `listProposals(query?)` (varsayılan sıra; dizi), `listProposalsForYou(query?, recent?)` ('Size göre': `sort=sana-gore`; son açılanlar `X-Forum-Recent` başlığında; `{personalized, items}` —
+  küme aynı, yalnız sıra değişir), `precheckProposal(req)`, `createProposal(req)`, `getProposal(id)`, `updateProposal(id, {title, body, acknowledgePii?})`,
   `submitProposal(id)`, `sponsorProposal(id)`, `withdrawProposal(id)`, `addSuggestion(id, body)`, `decideSuggestion(id, sid, "accept"|"reject")`,
   `flagRight(id, {right, direction, remove?})`, `vote(id, choice)`, `getReceipts(id)` (çağıranı yok; makbuzlar cihazdan okunur), `submitObjection(id, {ground, statement})`,
   `addMinorityReport(id, body)`, `requestExperts(id, "panel"|"counter")`, `askExpertQuestion(id, body)`, `getBulletin(id)`, `getVoters(id)` (çağıranı yok),
@@ -128,6 +131,8 @@ API.md'yi tam karşılasın diye tutulur.)
 - **Defter:** `getLedgerStatus()`, `getValidators()`, `listBlocks({from?, limit?})`, `getBlock(height, node?)`, `listTxs({type?, proposalId?, limit?})`,
   `getTx(hash)`, `getProof(hash)`, `verifyChain(node?)`, `tamperBlock({nodeId, height})`, `repairNode({nodeId})`, `setNodeFault({nodeId, fault})`
 - **YZ:** `getAiStatus()` (çağıranı yok; YZ kipi `auth.system` içinden okunur)
+- **Keşif:** `search(q, limit?, {signal?})` (önerili arama, en çok 8), `getSaved()` (Listem), `saveItem(type, id)` / `unsaveItem(type, id)` (PUT/DELETE, idempotent;
+  liste doluysa 422 `saved_limit`)
 
 ## Oturum (`auth/AuthContext.tsx`)
 
@@ -176,6 +181,7 @@ rol yalnız **doğrulanmış** hesapta sayılır (bkz. yukarıda);
 | `useNow(ms=1000)` (`lib/hooks`) | Sunucu saatine göre "şimdi"; her `ms`'de yeniden çizdirir. |
 | `useDebounced(value, ms)` | Canlı ön denetim / arama için. |
 | `useQueryState(key, default)` | URL sorgu parametresine bağlı durum (ör. sekme): `const [tab, setTab] = useQueryState("sekme", "acik")`. Aynı olayda birden çok anahtar güncellenebilir; güncellemeler birbirini ezmez. |
+| `useMediaQuery(query)` (`lib/hooks`) | CSS medya sorgusu eşleşiyor mu (ör. 'Hızlı bul' kutu/büyüteç seçimi); sunucu çiziminde false. |
 | `useInterval(fn, delay \| null)` (`lib/hooks`) | `setInterval` sarmalayıcısı; **şu an hiçbir bileşen kullanmıyor** (yoklama `useAsync({pollMs})` ve AuthContext zamanlayıcılarıyla yapılır). |
 | `useDocumentTitle(title)` (`ui`) | `PageHeader` zaten ayarlar. Bileşen sökülünce başlık "Forum Sistemi"ne döner (başlıksız ekranda önceki sayfanın adı kalmaz). |
 
@@ -184,8 +190,15 @@ rol yalnız **doğrulanmış** hesapta sayılır (bkz. yukarıda);
 - **format.ts:** `formatDateTime(ms, short?)` "1 Ekim 2026 14:05", `formatDate`, `formatTime` (çağıranı yok), `formatIsoDate("2000-05-01")`,
   `formatRelative(ms, now)` "3 dakika önce", `formatDuration(ms)` "2 sa 13 dk", `formatHours(h)`, `formatPercent(0.615)` "%61,5",
   `formatNumber(n, digits?)`, `formatRational({num,den})` "2/3 (%66,7)", `shortHash(h, n)`, `proposalRef(seq)` "#K-12", `topicRef(seq)` "#T-7",
-  `truncate(s, max)`, `normalizeSearch(s)` (Türkçe duyarsız arama).
-- **prefs.ts:** `getPref/setPref/removePref(key)`, `getJsonPref/setJsonPref`, `isNativePlatform()`, `platformName()`, `PREF_KEYS`. Gizlenen notlar (`PREF_KEYS.dismissed` = `forum.dismissed`, Ana sayfa 'Notu gizle'): `getDismissedSync()` (ilk çizim), `getDismissed()` (kalıcı depo + ayna), `addDismissed(keys)` (tekrarsız, en çok 50); hiçbiri fırlatmaz.
+  `truncate(s, max)`, `normalizeSearch(s)` (Türkçe duyarsız arama; tek kaynak `shared/src/search.ts`, sunucunun önerili aramasıyla aynı kural).
+- **prefs.ts:** `getPref/setPref/removePref(key)`, `getJsonPref/setJsonPref`, `isNativePlatform()`, `platformName()`, `PREF_KEYS` (Keşif anahtarları kullanıcıya göre ekli: `recentOpened` = `forum.sonAcilanlar:<kullanıcı>`, `proposalSort` = `forum.oneriSirasi:<kullanıcı>`). Gizlenen notlar (`PREF_KEYS.dismissed` = `forum.dismissed`, Ana sayfa 'Notu gizle'): `getDismissedSync()` (ilk çizim), `getDismissed()` (kalıcı depo + ayna), `addDismissed(keys)` (tekrarsız, en çok 50); hiçbiri fırlatmaz.
+- **Keşif (deviceStore, recentOpened, personalSort, quickFind):** `deviceStore.ts` oturum sahibine göre anahtarlı eşzamanlı cihaz deposu (localStorage; hiç fırlatmaz,
+  testte `setDeviceStoreForTests(memoryDeviceStore())`). `recentOpened.ts` "son açılanlar": `setRecentOwner(id)` (AuthProvider), `recordOpened(id)` (öneri sayfası),
+  `getRecentOpened()` (en çok 20, yeniden eskiye, yalnız UUID), `clearRecentOpened()` (çıkışta; hesap silme de çıkıştan geçer); anahtar `forum.sonAcilanlar:<kullanıcı>`;
+  YALNIZ cihazda, sunucuya sıralama isteğinde geçici `X-Forum-Recent` başlığıyla gider (adres satırı ters vekil günlüklerine düşerdi). `personalSort.ts`: `sortOptions(loggedIn)` ('Size göre' yalnız üyeye), `resolveListSort(param,
+  {loggedIn, remembered})` (adres önce; varsayılan "En yeni" DEĞİŞMEZ), `rememberedPersonalSort` / `rememberPersonalSort` (`forum.oneriSirasi:<kullanıcı>`). `quickFind.ts`:
+  `quickFindQuery` (2 karakter ya da numara), `groupHits` (sunucu sırası korunur), `quickFindOptions`, `allProposalsHref` (Öneriler › Tümü `?ara=`), `highlightTitle`
+  (Türkçe duyarsız işaretleme), `quickFindStatus`, `comboKey` (WAI-ARIA combobox klavyesi) ve `submitTarget`.
 - **detailLevel.tsx:** Görünüm yoğunluğu `"sade"` (varsayılan) | `"tam"` (`PREF_KEYS.detail` = `forum.detail`; Ayarlar › Görünüm). `useDetailLevel()` → `{ level, full, setLevel }`.
   Yalnız açılır bölümlerin VARSAYILAN açıklığını değiştirir, içerik gizlemez: `resolveDefaultOpen(explicit, level, openInFull?)`. theme.ts gibi ilk çizimde eşzamanlı, sonra Android Preferences'tan okur.
 - **sectionParam.ts:** `useSectionParam(ready)` — `?bolum=<çapa>` varsa veri yüklendikten sonra o kartı/açılırı açar, kaydırır, odağı taşır ve parametreyi `replace` ile siler (`?mesaj=` gibi diğer parametreler kalır). Bağlantı: `routes.proposal(id, { bolum })`.
@@ -252,13 +265,13 @@ rol yalnız **doğrulanmış** hesapta sayılır (bkz. yukarıda);
 | `KeyValue` | `items: ({label, value, hint?} \| null \| false)[]`, `compact?` |
 | `Table<T>` | `columns: {key, header, render?(row,i), align?, hideOnMobile?}[]`, `rows`, `rowKey`, `caption` (zorunlu), `showCaption?`, `empty?`, `rowClassName?` |
 | `Stat`, `StatGrid` | `label`, `value`, `hint?`, `tone?`, `to?` |
-| `PageHeader` | `title`, `subtitle?`, `actions?`, `meta?` (rozet satırı), `back?: {to?, label?}`, `docTitle?` |
+| `PageHeader` | `title`, `subtitle?`, `actions?`, `meta?` (rozet satırı), `back?: {to?, label?}`, `docTitle?`, `tools?` (geri bağlantısıyla AYNI satırın sağında küçük araç, ör. 'Listeme ekle'; başlık satırını sarmaz, telefonda ilk ekranı itmez) |
 | `Section` | `title`, `description?`, `actions?`, `headingLevel?` |
 | `Details` | `summary`, `children`, `open?` (yerel `<details>`; verilmezse sade kipte kapalı, tam kipte açık), `meta?` (özetin sağında gri sayı/hüküm), `id?` (`?bolum=` çapası), `openInFull?` |
 | `ClampText` | `text`, `lines?` (10), `wideLines?` (16, ≥900 px), `openInFull?` — uzun düz metni kırpar; düğme yalnız taşmada çıkar ("Tamamını göster (N kelime)" / "Kısalt"), metin DOM'da tam kalır |
 | `DiffView` | `before`, `after`, `mode?: "lines"\|"inline"`, `context?` (değişmeyen satırları daralt), `label?` |
 | `DropdownMenu` | `label`, `ariaLabel?`, `items: ({label, to?, onClick?, icon?, danger?, badge?} \| "divider" \| null)[]`, `align?` |
-| `Icon` | `name: IconName` (home, topics, proposals, verify, experts, graph, ledger, book, bell, user, users, registrar, admin, settings, more, menu, logout, login, plus, close, chevronDown, chevronRight, back, copy, check, search, info, warning, success, error, clock, ai, external, vote, refresh), `size?` |
+| `Icon` | `name: IconName` (home, topics, proposals, verify, experts, graph, ledger, book, bell, user, users, registrar, admin, settings, more, menu, logout, login, plus, close, chevronDown, chevronRight, back, copy, check, star, starFilled, search, info, warning, success, error, clock, ai, external, vote, refresh), `size?` |
 | `cx(...)` | Sınıf adı birleştirici |
 
 **Ortak bileşenler (`components/`):**
@@ -321,8 +334,8 @@ Silme talebinde kurallar canlı sayaçlı tek satırdır (`role="status"`; `role
 masaüstünde yan sütun korunur. Açık öneri satırları (`ProposalRowList showKind showAuthor`) türü ve '@yazar'ı düz metinle yazar (rozet değil; `proposalRowDetails`); açık öneri yokken alt başlık yeni öneri düğmelerine yönlendirir.
 Çapalar: `?bolum=konu-metni|acik-oneriler|tartisma|alt-konular|surumler`.
 
-**Profil ve Ayarlar (`system/accountLogic.ts`).** Profil en üstte 'Oy hakkınız: Var/Yok' kartıyla açılır (eksik koşullar yazılır, üyenin elindeki TEK eylem 'Siyasi görüş rızası ver'); Hesap özeti, Açık rızalar ve Vekâletler açık; Bilirkişilik, Takma ad, Şifre, KVKK ve Kimlik düzeltme katlı kartlardır
-(başlık görünür, yanında tek satır hüküm). Ayarlar sırası: Görünüm → Sunucu bağlantısı → Bu cihazdaki oy makbuzları → Gelişmiş (Doğrulayıcı anahtarları, Uygulama hakkında; katlı). Çapalar: `?bolum=kvkk|duzeltme|rizalar|…` ve `?bolum=anahtarlar|hakkinda`.
+**Profil ve Ayarlar (`system/accountLogic.ts`).** Profil en üstte 'Oy hakkınız: Var/Yok' kartıyla açılır (eksik koşullar yazılır, üyenin elindeki TEK eylem 'Siyasi görüş rızası ver'); Hesap özeti, Açık rızalar, Vekâletler ve Listem (katlanmaz; içinde 'Kişisel sıralama' anahtarı) açık; Bilirkişilik, Takma ad, Şifre, KVKK ve Kimlik düzeltme katlı kartlardır
+(başlık görünür, yanında tek satır hüküm). Ayarlar sırası: Görünüm → Sunucu bağlantısı → Bu cihazdaki oy makbuzları → Gelişmiş (Doğrulayıcı anahtarları, Uygulama hakkında; katlı). Çapalar: `?bolum=kvkk|duzeltme|rizalar|listem|…` ve `?bolum=anahtarlar|hakkinda`.
 
 **Test-güvenli adlandırma (Faz 3 eklemeleri).** Yeni düğme, bağlantı, bölge ve etiket adları 'Destekle', 'Oyumu ver', 'Daha fazla', 'Sayımı kendim doğrulayayım', 'Kapat', 'Gerekçe', 'Açıklama', 'Azınlık raporu', 'Düğüm' parçalarını İÇERMEZ
 (`e2e/support/sade.ts › reservedParts`; Term düğmeleri 06-sadelik'te taranır). Silme kurallarının canlı satırı `role="status"`'tur. Yeni bölge adları 'Oylama', 'Uzlaşma turu', 'Azınlık raporları', 'Destekçiler (', '1. tur sonucu', 'Azınlık itirazı' içermez.
@@ -382,7 +395,7 @@ belirteç çiftlerini üç blokta e2e taramasıyla (`e2e/support/sade.ts › sca
 
 ## Yerleşim ve rotalar
 
-`components/layout/AppLayout.tsx`: üst çubuk (logo, bildirim zili + sayı, kullanıcı menüsü), ≥ 900 px'de üst gezinme, mobilde alt gezinme
+`components/layout/AppLayout.tsx`: üst çubuk (logo, 'Hızlı bul', bildirim zili + sayı, kullanıcı menüsü), ≥ 900 px'de üst gezinme, mobilde alt gezinme
 (Ana sayfa, Konular, Öneriler, Oy doğrula, Daha fazla) ve "Daha fazla" alt sayfası. Gezinme öğeleri: `components/layout/nav.ts`.
 Bekleyen hesap, oturum süresi dolması ve bağlantı hatası şeritleri otomatik gösterilir (bekleyen/askıdaki/reddedilmiş hesap şeridi `/` rotasında gizlidir: Ana sayfa bunu kendi kartında söyler).
 Gezinme öğesi `topNav: false` ise (Keşfet ve doğrula sayfası) masaüstü üst gezinmede yoktur; 'Daha fazla' sayfasında 'Keşfet ve doğrula' grubunun sonunda ve alt bilgide bağlantısı vardır. 'Ana sayfa' bağlantısında görev sayısı rozeti (`lib/taskStore`).
@@ -412,3 +425,56 @@ sağlar (WCAG 2.4.11). Kaydırma hedefleri yalnız `scroll-margin-top: 12px` nef
 | `/kesfet` | KesfetPage (Keşfet ve doğrula; gezinme öğesi değil) | — |
 
 Sunucu bildirim bağlantıları Türkçe web yollarıdır (`/oneriler/<id>`, `/konular/<id>`); `toAppPath()` İngilizce olanları da çevirir.
+
+Adres parametreleri (Keşif): Öneriler `?sekme=` (`acik`, `sonuc`, `tumu`, `benim`, `listem` ya da bir evre çipi), `?sirala=` (`yeni`, `sure`, `mesaj`, `eski`,
+`sana-gore`; adresteki değer her zaman cihazda hatırlanandan önce gelir), `?ara=` ('Hızlı bul'un 'Tüm önerilerde ara' bağlantısı; sayfanın kendi arama kutusunu doldurur);
+Profil `?bolum=listem`.
+
+## Keşif: 'Hızlı bul', Listem ve 'Size göre'
+
+**'Hızlı bul' (önerili arama; `components/discovery/QuickFind.tsx`, saf mantık `lib/quickFind.ts`).** Her sayfada üst çubukta: ≥ 720 px'de metin kutusu
+(`QuickFindInline`), altında büyüteç düğmesi (`QuickFindButton`) → tam ekran panel (yerel `<dialog>`: odak tuzağı; Esc, 'Geri' ve Android geri tuşu kapatır,
+odak büyütece döner). Alt gezinme (5 sekme) değişmez. 2 karakterden sonra ya da numarada ("#K12", "K-12", "#T3", "7") 150 ms bekleyip `search()` çağrılır; eski istek
+iptal edilir. En çok 8 sonuç Konular / Öneriler diye gruplanır (grup içinde sunucu sırası; gruplar ilk sonucun yerine göre), son seçenek 'Tüm önerilerde ara' →
+`/oneriler?sekme=tumu&ara=…` (Öneriler sayfası adresteki `?ara=` değişince kutusunu günceller). WAI-ARIA combobox: `role=combobox`, `aria-expanded`, `aria-controls` →
+her zaman DOM'daki listbox, `aria-activedescendant`; ↑ ↓ Enter Esc (üst çubukta Esc önce listeyi kapatır, sonra metni siler; panelde paneli kapatır), Tab listeyi
+kapatır. Seçeneksiz Enter YALNIZ güncel sonuçlarla karar verir (`submitDecision`): yeni sorgunun yanıtı gelene kadar önceki sonuçlar ekranda kalır ama
+Enter onlarla karar vermez — numara yazıldıysa yanıt beklenir ve ilk sonuç aynı numara/türün tam eşleşmesiyse ona, değilse 'Tüm önerilerde ara'ya gidilir;
+numara değilse beklemeden 'Tüm önerilerde ara'. '(N öneri)' sayısı da yalnız güncel sonuçtan ve Öneriler sayfasının süzgeciyle AYNI kuraldan gelir (shared
+`proposalMatchesQuery`: numara, başlıkta sırasız kelimeler, yazar). İki biçim aynı metni ve "meşguliyeti" paylaşır: panel açıkken ekran 720 px'i aşarsa (telefon
+yataya) metin üst çubuk kutusuna geçer ve odak ona taşınır; kutuda yazarken daralırsa panel metinle açılır; açan öğe kalktıysa odak görünen arama denetimine döner.
+Android geri tuşu açık sonuç listesini (≥ 720 px) önce kapatır (`lib/backButton.ts`). Eşleşen kelime kalın + altı çizili (`<mark>`; renk değil). Durum ('Sonuç yok',
+'3 sonuç: 1 konu, 2 öneri') `LiveStatus` ile söylenir. **Ad sözleşmesi:** erişilebilir ad 'Hızlı bul' ('Ara', 'Konu ara', 'Başlık', 'Sözlükte ara' … ile alt dize
+çakışması yok); üst çubukta `role="search"` YOKTUR (e2e sayfadaki search bölgesini liste süzgeci sayar); metin kutusu `type="text"` (tarayıcının kendi Esc/temizle
+davranışı combobox'la çakışmasın). CSS: `components/discovery/discovery.css` (styles.css paket sırasında SONRA gelir: `.input`'u ezen kurallar iki sınıflıdır).
+
+**'Listeme ekle' (`SaveToggle`).** Öneri sayfasında `PageHeader tools` (geri bağlantısının satırı), konu sayfasında başlık eylemlerinde. Ad her durumda 'Listeme ekle',
+durum `aria-pressed` + dolu yıldız (☆/★). İlk durum `ProposalDetail.saved` / `TopicDetail.saved`; alan yoksa (oturum sonradan yüklendi) Listem bir kez okunur. Yalnız
+oturumdaki üyeye çizilir. **Listem:** Profil'de 'Listem' kartı (`SavedListCard`, çapa `?bolum=listem`, katlanmaz; satır başına 'Çıkar' düğmesi — adı numarayı
+taşır, "Çıkar: #K-12", başlık `aria-describedby` ile okunur —, çıkarınca odak EKRANDAKİ sıradaki satıra geçer; kartın altında 'Kişisel sıralama' tercihi,
+`Me.personalRanking`) ve Öneriler'de 'Listem' sekmesi ('Benim'in yanında, yalnız üyede; konular yalnız Profil'de; liste yüklenirken ya da hata verince boş
+durum gösterilmez, sayı gizlenir, hata 'Tekrar dene' ile). Kayıtlar yalnız sahibine görünür, KVKK dökümüne girer, hesap
+silmede silinir (sunucu).
+
+**'Size göre' (kişisel sıra).** Öneriler › Sırala'da yalnız üyeye ('En yeni'nin altında). Seçilirse bu cihazda üye başına hatırlanır, başka sıralama seçilince unutulur;
+varsayılan 'En yeni' değişmez, adresteki `?sirala=` önce gelir. Liste `listProposalsForYou` ile gelir (aynı küme ve limit; önce açık öneriler, ana sayfa 'Şu an açık'la
+aynı sırada) ve istemcide yeniden SIRALANMAZ (sekme, tür ve arama yalnız süzer). Kartlarda gri gerekçe çipi (`ReasonChip`: 'Listenizde', '… ile ilgilendiğiniz için',
+'Farklı bir alandan', 'Süresi yaklaşıyor', 'Katıldığınız öneri', 'Yeni'; 'Genel sıralama' gösterilmez; ekran okuyucuya 'Sıralama nedeni: …'). Listenin üstünde tek
+satır not (kişisel sıra yoksa nedeni: etkinlik yetersiz · 'Kişisel sıralama' kapalı · siyasi görüş rızası yok; `personalSortOff`) ve ‘Size göre’ nasıl sıralar?
+açılırı ('siz' hitabı; oy bilgisi kullanılmaz; son açılanlar yalnız cihazda; çeşitlilik "düzenli aralıklarla"). Telefonda hatırlanan 'Size göre' 'Süz ve sırala'
+açılırını açık getirmez (yalnız listeyi daraltan süzgeçler getirir; özetteki sayıya girer). Ana sayfa 'Şu an açık (n)': `Dashboard.openPersonalized` ise satırlarda
+gerekçe çipi, başlığın dışında tek satır not, bağlantı 'Tümü (size göre)' (açtığı Açık sekmesinin ilk 5'i ana sayfanın ilk 5'idir); bölge adı değişmez. 'Sizi
+bekleyenler' kişiselleştirmeden etkilenmez. **Son açılanlar** (`lib/recentOpened`) öneri sayfası açılınca yalnız bu cihaza yazılır, `getDashboard(recent)` ve
+`listProposalsForYou(query, recent)` ile `X-Forum-Recent` başlığında geçici gider, çıkışta silinir. Öneriler sekmeleri sığmazsa (üç basamaklı sayılar, büyütülmüş
+sistem yazısı) alt satıra iner; hiçbir sekme yatay kaydırmanın arkasında kalmaz.
+
+**Testler:** `lib/quickFind.test.ts` (tetikleme, gruplama, bağlantılar, Türkçe işaretleme, durum, combobox klavyesi, güncel sonuç ve Enter kararı), `lib/recentOpened.test.ts`
+(depo, sahiplik, sınır, çıkış, bozuk/erişilemeyen depo; 'Size göre' çözümü ve hatırlanması), `lib/backButton.test.ts` (Android geri tuşu: pencere → menü → 'Hızlı bul'
+listesi), `api/discovery.test.ts` (uç sözleşmesi; son açılanlar başlıkta, adreste değil), `components/discovery/discovery.test.tsx` (ARIA ve ad sözleşmesi,
+'Listeme ekle', gerekçe çipi, Ana sayfa kişisel kipi, Listem satırı ve görsel odak sırası, 'Kişisel sıralama' tercihi, 'Size göre' notu, `PageHeader tools`),
+`pages/proposalsTabs.test.ts` (Listem sekmesi). e2e: `e2e/tests/09-arama-kisisel.spec.ts` (14 test) — 'Hızlı bul' masaüstü (Türkçe harfsiz yazım, 1 karakterde istek yok,
+ARIA, klavye, numara, 'Sonuç yok', 'Tüm önerilerde ara', eski sonuçla Enter yok) ve telefon / kırılma noktası (büyüteç, panel, Esc / 'Geri' / Android geri tuşu, 720 px geçişinde
+metin ve odak), çok kelimeli aramada 'N öneri' = listedeki öneri sayısı, görünürlük (başkasının taslağı), 'Listeme ekle' ve Listem (idempotent, yenilemede durum, yükleniyor / hata),
+'Kişisel sıralama' tercihi, 'Size göre' (soğuk başlangıç, aynı küme, gerekçe çipleri, cihazda hatırlama, %130 yazı boyutunda sekmeler), son açılanların yalnız cihazda kalması
+(`X-Forum-Recent`), Ana sayfa 'Şu an açık' ('Sizi bekleyenler' üstte; ilk 5 Açık › Size göre ile aynı), kontrast / taşma ve ad sözleşmesi; `01-tarama` 'Hızlı bul' panelini ve
+Keşif görünümlerini 360 px'de tarar.

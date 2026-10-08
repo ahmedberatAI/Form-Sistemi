@@ -13,6 +13,8 @@ export const PROFILE_ANCHORS = {
   hesap: "hesap",
   rizalar: "rizalar",
   vekaletler: "vekaletler",
+  /** Listem ('Listeme ekle' ile kaydedilen öneri ve konular; components/discovery/SavedListCard) */
+  listem: "listem",
   bilirkisilik: "bilirkisilik",
   takmaAd: "takma-ad",
   sifre: "sifre",

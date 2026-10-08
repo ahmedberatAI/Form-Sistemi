@@ -124,9 +124,9 @@ describe("görünüm ↔ ?sekme= gidiş-dönüşü", () => {
 });
 
 describe("sekme ve çip üyeliği", () => {
-  it("4 üst sekme: Açık · Sonuçlanan · Tümü · Benim", () => {
-    expect(TOP_TABS.map((t) => t.id)).toEqual(["acik", "sonuc", "tumu", "benim"]);
-    expect(TOP_TABS.map((t) => t.label)).toEqual(["Açık", "Sonuçlanan", "Tümü", "Benim"]);
+  it("5 üst sekme: Açık · Sonuçlanan · Tümü · Benim · Listem", () => {
+    expect(TOP_TABS.map((t) => t.id)).toEqual(["acik", "sonuc", "tumu", "benim", "listem"]);
+    expect(TOP_TABS.map((t) => t.label)).toEqual(["Açık", "Sonuçlanan", "Tümü", "Benim", "Listem"]);
   });
 
   it("taslak dışındaki her durum Açık ya da Sonuçlanan'dan tam birindedir; taslak hiçbirinde değildir", () => {
@@ -183,6 +183,28 @@ describe("sekme ve çip üyeliği", () => {
     expect(inTopTab(prop("enacted", "u2"), "benim", "u1")).toBe(false);
     expect(inTopTab(prop("expired", "u2"), "tumu", "u1")).toBe(true);
     expect(inTopTab(prop("withdrawn", "u2"), "tumu", null)).toBe(true);
+  });
+
+  it("Listem: kimliği kayıtlı kümede olan öneriler, her evrede (kendi taslağı dahil); ziyaretçide ve küme yoksa boş", () => {
+    const saved = new Set(["a", "d"]);
+    const a = { id: "a", status: "enacted" as const, authorId: "u2" };
+    const b = { id: "b", status: "voting" as const, authorId: "u2" };
+    const d = { id: "d", status: "draft" as const, authorId: "u1" };
+    expect(inTopTab(a, "listem", "u1", saved)).toBe(true);
+    expect(inTopTab(b, "listem", "u1", saved)).toBe(false);
+    expect(inTopTab(d, "listem", "u1", saved)).toBe(true);
+    expect(inTopTab(a, "listem", null, saved)).toBe(false);
+    expect(inTopTab(a, "listem", "u1")).toBe(false);
+    expect(inTopTab(prop("enacted", "u1"), "listem", "u1", saved)).toBe(false); // kimliksiz öğe
+    // Kayıtlı küme diğer sekmelerin üyeliğini değiştirmez
+    expect(inTopTab(b, "acik", "u1", saved)).toBe(true);
+    expect(inTopTab(d, "acik", "u1", saved)).toBe(false);
+  });
+
+  it("?sekme=listem yalnız üyede geçerlidir (ziyaretçide akıllı varsayılana düşer)", () => {
+    expect(resolveListTab("listem", counts(2, 3, 5, 0))).toEqual({ tab: "listem", phase: null, auto: false });
+    expect(resolveListTab("listem", counts(2, 3, 5, null))).toEqual({ tab: "acik", phase: null, auto: true });
+    expect(phasesOf("listem")).toEqual([]);
   });
 });
 

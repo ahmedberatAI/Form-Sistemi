@@ -60,11 +60,14 @@ export async function makeForum(opts: { realLedger?: boolean; aiSink?: (ctx: Tes
   await ontology.init();
   const graph = createGraphService(ctx, { ledger });
   const math = createGovernanceMath();
-  const identity = createIdentityService(ctx, { ledger, notifier, audit });
+  // Gerçek uygulamadaki gibi: imha sonrası kişisel sıralama önbelleği düşürülür (app.ts ile aynı geç bağlama).
+  let forgetSignals: (userId: string) => void = () => {};
+  const identity = createIdentityService(ctx, { ledger, notifier, audit, onErased: (userId) => forgetSignals(userId) });
   const ai = createAiService(ctx, { client: null });
   const aiSink = opts.aiSink ? opts.aiSink(ctx, ledger) : createAiRecordSink(ctx, { ledger });
   const experts = createExpertService(ctx, { ledger, graph, math, ai, notifier, audit, ontology, householdOf: (u) => identity.householdOf(u) });
   const forum = createForumServices({ ctx, ledger, ontology, graph, math, identity, ai, aiSink, experts, notifier, audit });
+  forgetSignals = (userId) => forum.discovery.forgetCache(userId);
 
   let n = 0;
   const user: ForumHarness["user"] = (nickname, o = {}) => {

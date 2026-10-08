@@ -491,24 +491,37 @@ export interface PageHeaderProps {
   meta?: ReactNode;
   /** Geri bağlantısı; to verilmezse tarayıcı geçmişinde geri gider */
   back?: { to?: string; label?: string };
+  /**
+   * Geri bağlantısıyla AYNI satırın sağındaki küçük araç (ör. 'Listeme ekle'). Başlık satırını sarmaz: telefonda ilk ekranı aşağı
+   * itmez (öneri sayfasının 'Sıradaki adım' sözleşmesi). Geri bağlantısı yoksa kendi satırında sağa yaslanır.
+   */
+  tools?: ReactNode;
 }
 
-export function PageHeader({ title, docTitle, subtitle, actions, meta, back }: PageHeaderProps) {
+export function PageHeader({ title, docTitle, subtitle, actions, meta, back, tools }: PageHeaderProps) {
   useDocumentTitle(docTitle ?? (typeof title === "string" ? title : null));
   const navigate = useNavigate();
+  const backEl = back ? (
+    back.to ? (
+      <Link className="page-back" to={back.to}>
+        <Icon name="back" size={16} /> {back.label ?? "Geri"}
+      </Link>
+    ) : (
+      <button type="button" className="page-back" onClick={() => navigate(-1)}>
+        <Icon name="back" size={16} /> {back.label ?? "Geri"}
+      </button>
+    )
+  ) : null;
   return (
     <header className="page-header">
-      {back ? (
-        back.to ? (
-          <Link className="page-back" to={back.to}>
-            <Icon name="back" size={16} /> {back.label ?? "Geri"}
-          </Link>
-        ) : (
-          <button type="button" className="page-back" onClick={() => navigate(-1)}>
-            <Icon name="back" size={16} /> {back.label ?? "Geri"}
-          </button>
-        )
-      ) : null}
+      {tools ? (
+        <div className="page-header-top">
+          {backEl ?? <span />}
+          <div className="page-tools">{tools}</div>
+        </div>
+      ) : (
+        backEl
+      )}
       {meta ? <div className="page-meta">{meta}</div> : null}
       <div className="page-header-row">
         <h1 className="page-title">{title}</h1>

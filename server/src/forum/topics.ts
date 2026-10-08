@@ -3,6 +3,7 @@ import type { TopicDetail, TopicRevision, TopicSummary } from "@forum/shared";
 import { conflict, notFound, unprocessable } from "../core/errors";
 import type { TopicService, Viewer } from "../core/forum-contracts";
 import { newId } from "../core/ids";
+import { isSavedBy } from "./detail";
 import { ACTIVE_SQL, textHash, type ForumCore, type TopicRow } from "./util";
 import { querySummaries, topicSummaries } from "./views";
 
@@ -52,7 +53,16 @@ export function createTopicService(core: ForumCore): TopicService {
         `p.parent_topic_id = ? AND (p.status IN ${ACTIVE_SQL} OR (p.status = 'draft' AND p.author_id = ?))`,
         [id, viewerId],
       );
-      return { ...summary, body: t.body, originProposalId: t.origin_proposal_id, revisions, children, ancestors, openProposals };
+      return {
+        ...summary,
+        body: t.body,
+        originProposalId: t.origin_proposal_id,
+        revisions,
+        children,
+        ancestors,
+        openProposals,
+        ...(viewerId ? { saved: isSavedBy(core, viewerId, "topic", id) } : {}),
+      };
     },
 
     createFromProposal(proposalId: string) {

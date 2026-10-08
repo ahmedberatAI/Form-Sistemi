@@ -1,0 +1,296 @@
+/* ── Keşif: 'Hızlı bul' (önerili arama), 'Listeme ekle', Listem ve kişisel sıranın gerekçe çipi ──
+   Yeni renk belirteci yok: yalnız styles.css'teki --surface, --surface-2, --border, --text, --text-muted, --primary, --primary-soft,
+   --shadow-lg kullanılır; koyu tema bu belirteçlerle kendiliğinden uyar (AA çiftleri ui/visualLanguage.test.tsx'te). Renk her zaman
+   bir şekil/metin işaretiyle gelir: etkin seçenek mavi zemin + soldaki çizgi, basılı 'Listeme ekle' dolu yıldız, eşleşen kelime kalın. */
+
+/* ───────────── Hızlı bul (üst çubuk) ───────────── */
+.header-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 30rem;
+  margin-inline: auto;
+}
+.qf {
+  position: relative;
+  min-width: 0;
+}
+.qf-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+.qf-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.qf-field-icon {
+  position: absolute;
+  left: 0.65rem;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+/* İki sınıflı seçici: styles.css (.input) paket sırasında bu dosyadan SONRA gelir, iç boşluğu ezmesin */
+.qf-field .qf-input {
+  padding-left: 2.25rem;
+  padding-right: 2.1rem;
+}
+.qf-inline .qf-field .qf-input {
+  min-height: 40px;
+  padding-block: 0.35rem;
+}
+.qf-spinner {
+  position: absolute;
+  right: 0.7rem;
+}
+
+/* Sonuçlar: üst çubukta kutunun altında açılan liste; panelde panelin gövdesi */
+.qf-popup {
+  position: absolute;
+  left: 0;
+  /* Kutu dar olsa da (720 px civarı) liste okunur genişlikte; ekranın dışına taşmaz */
+  width: max(100%, min(26rem, calc(100vw - 2 * var(--gutter))));
+  top: calc(100% + 4px);
+  z-index: 70;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  max-height: min(70vh, 34rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--sp-1) 0;
+}
+.qf-results[hidden] {
+  display: none;
+}
+.qf-group + .qf-group {
+  border-top: 1px solid var(--border);
+}
+.qf-group-label {
+  padding: var(--sp-2) var(--sp-3) var(--sp-1);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.qf-results {
+  container-type: inline-size;
+}
+/* Seçenek: numara | başlık | durum. Dar listede (telefon paneli, dar açılır) durum başlığın altına iner. */
+.qf-option {
+  display: grid;
+  grid-template-columns: minmax(3.25rem, auto) minmax(0, 1fr) auto;
+  column-gap: 0.5rem;
+  row-gap: 0.2rem;
+  align-items: baseline;
+  min-height: 44px;
+  padding: 0.5rem var(--sp-3);
+  line-height: 1.35;
+  cursor: pointer;
+}
+.qf-option > .badge,
+.qf-option > .qf-meta {
+  justify-self: end;
+}
+@container (max-width: 26rem) {
+  .qf-option {
+    grid-template-columns: minmax(3.25rem, auto) minmax(0, 1fr);
+  }
+  .qf-option > .badge,
+  .qf-option > .qf-meta {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+.qf-option.is-active {
+  background: var(--primary-soft);
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+.qf-ref {
+  flex: none;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.qf-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.qf-title mark {
+  background: none;
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.qf-meta {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+.qf-option-all {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  border-top: 1px solid var(--border);
+  color: var(--primary);
+  font-weight: 600;
+}
+.qf-option-icon {
+  flex: none;
+}
+.qf-option-main {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.qf-option-term {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+.qf-empty {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+.qf-hint {
+  margin: var(--sp-3) 0 0;
+}
+
+/* Telefon paneli: tam ekran yerel <dialog> */
+dialog.qf-dialog {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  max-height: 100%;
+  background: var(--surface);
+  color: var(--text);
+  overflow: hidden;
+}
+dialog.qf-dialog::backdrop {
+  background: rgb(10 14 20 / 0.5);
+}
+.qf-dialog-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: calc(env(safe-area-inset-top, 0px) + var(--sp-2)) var(--gutter) env(safe-area-inset-bottom, 0px);
+}
+.qf-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.qf-panel .qf-results {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: var(--sp-2) calc(-1 * var(--gutter)) 0;
+  border-top: 1px solid var(--border);
+}
+.qf-panel .qf-option,
+.qf-panel .qf-group-label,
+.qf-panel .qf-empty {
+  padding-inline: var(--gutter);
+}
+
+/* ───────────── Listeme ekle ───────────── */
+.save-toggle.is-saved {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+/* ───────────── Kişisel sıra: gerekçe çipi ───────────── */
+/* Kategori hapından (düz kenar) ayrılsın diye kesik kenarlıdır; renk taşımaz (gri), anlamı metindedir. */
+.reason-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  max-width: 100%;
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  border: 1px dashed var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  font-weight: 400;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.reason-chip .icon {
+  flex: none;
+}
+
+/* ───────────── Profil › Listem ───────────── */
+.saved-group-title {
+  font-size: var(--fs-md);
+}
+.saved-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.saved-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) 0;
+  border-top: 1px solid var(--border);
+  min-width: 0;
+}
+.saved-item:first-child {
+  border-top: 0;
+}
+.saved-link {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.4rem;
+  color: var(--text);
+  text-decoration: none;
+}
+.saved-link:hover .saved-title {
+  text-decoration: underline;
+}
+.saved-ref {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+.saved-title {
+  font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.saved-meta {
+  flex-basis: 100%;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+.saved-remove {
+  flex: none;
+}
+/* 'Kişisel sıralama' tercihi: listenin altında, ince bir ayraçla */
+.saved-ranking {
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--border);
+}
+
+/* ───────────── Öneriler › 'Size göre' notu ───────────── */
+.personal-note {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.personal-note > p {
+  margin: 0;
+}

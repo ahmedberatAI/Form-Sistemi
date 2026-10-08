@@ -8,6 +8,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import type { MessageView, ProposalSummary, TopicDetail } from "@forum/shared";
 import { getTopic } from "../api/endpoints";
 import { useAuth } from "../auth/AuthContext";
+import { SaveToggle } from "../components/discovery/SaveToggle";
 import { Discussion } from "../components/participation/Discussion";
 import { VersionHistory } from "../components/participation/VersionHistory";
 import { ProposalRowList } from "../components/proposals/ProposalCard";
@@ -74,14 +75,20 @@ export function TopicDetailView({ t }: { t: TopicDetail }) {
           </>
         }
         actions={
-          active ? (
+          active || auth.user ? (
             <>
-              <LinkButton to={routes.newProposal({ kind: "subtopic", parentTopicId: t.id })} icon="plus" size="sm">
-                Alt konu öner
-              </LinkButton>
-              <LinkButton to={routes.newProposal({ kind: "amendment", parentTopicId: t.id })} icon="proposals" size="sm" variant="primary">
-                Düzenleme teklif et
-              </LinkButton>
+              {/* 'Listeme ekle' (☆/★): yalnız oturumdaki üyeye; arşivlenmiş konu da listeye eklenebilir. */}
+              {auth.user ? <SaveToggle type="topic" id={t.id} saved={t.saved} /> : null}
+              {active ? (
+                <LinkButton to={routes.newProposal({ kind: "subtopic", parentTopicId: t.id })} icon="plus" size="sm">
+                  Alt konu öner
+                </LinkButton>
+              ) : null}
+              {active ? (
+                <LinkButton to={routes.newProposal({ kind: "amendment", parentTopicId: t.id })} icon="proposals" size="sm" variant="primary">
+                  Düzenleme teklif et
+                </LinkButton>
+              ) : null}
             </>
           ) : null
         }

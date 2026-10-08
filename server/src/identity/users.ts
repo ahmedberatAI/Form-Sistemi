@@ -17,6 +17,8 @@ export interface UserRow {
   region_ilce: string | null;
   political_consent: number;
   ai_consent: number;
+  /** Kişisel sıralama tercihi (şema sürümü 4; varsayılan 1 = açık) */
+  personal_ranking: number;
   kvkk_notice_at: number | null;
   created_at: number;
   verified_at: number | null;
@@ -66,6 +68,7 @@ export function toMe(row: UserRow, expert?: ExpertRowLike | null): Me {
     isAdult: row.is_adult === 1,
     aiConsent: row.ai_consent === 1,
     politicalConsent: row.political_consent === 1,
+    personalRanking: row.personal_ranking !== 0,
     regionIl: row.region_il,
     regionIlce: row.region_ilce,
   };

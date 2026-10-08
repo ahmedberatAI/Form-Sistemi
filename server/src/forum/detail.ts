@@ -250,5 +250,11 @@ export function buildProposalDetail(core: ForumCore, clusters: ClusterServiceImp
     parentTopic: parentTopic ? { id: parentTopic.id, title: parentTopic.title } : null,
     enactedEntityId: p.enacted_entity_id,
     ...ledger,
+    ...(viewer ? { saved: isSavedBy(core, viewer.id, "proposal", p.id) } : {}),
   };
+}
+
+/** Görüntüleyenin listesinde mi ("Listeme ekle" düğmesinin durumu; yalnız oturumlu görüntüleyene). */
+export function isSavedBy(core: ForumCore, userId: string, type: "proposal" | "topic", id: string): boolean {
+  return !!core.db.get("SELECT 1 AS x FROM saved_items WHERE user_id = ? AND target_type = ? AND target_id = ?", userId, type, id);
 }

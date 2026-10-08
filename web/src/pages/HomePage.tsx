@@ -8,6 +8,7 @@ import { getDashboard } from "../api/endpoints";
 import { useAuth } from "../auth/AuthContext";
 import { HomeLayout } from "../components/home/HomeLayout";
 import { listReceipts } from "../lib/receipts";
+import { getRecentOpened } from "../lib/recentOpened";
 import { setTasks } from "../lib/taskStore";
 import { useAsync } from "../lib/useAsync";
 
@@ -30,8 +31,9 @@ function useWideScreen(): boolean {
 export default function HomePage() {
   const auth = useAuth();
   const userId = auth.user?.id;
-  // Oturum yüklenmeden pano istenmez: önce ziyaretçi verisi gelip sonra üyeninkiyle değişmesin.
-  const dashboard = useAsync(() => getDashboard(), [userId], { pollMs: 30_000, enabled: !auth.loading });
+  // Oturum yüklenmeden pano istenmez: önce ziyaretçi verisi gelip sonra üyeninkiyle değişmesin. Üyede 'Şu an açık' kişisel sıraya
+  // girebilir: bu cihazdaki son açılanlar (lib/recentOpened; en çok 20 öneri kimliği) her istekte geçici girdi olarak gider.
+  const dashboard = useAsync(() => getDashboard(userId ? getRecentOpened() : undefined), [userId], { pollMs: 30_000, enabled: !auth.loading });
   const receipts = useAsync(() => listReceipts(), [userId], { enabled: !auth.loading && !!userId });
   const wide = useWideScreen();
 

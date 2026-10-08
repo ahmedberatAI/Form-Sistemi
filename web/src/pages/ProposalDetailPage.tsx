@@ -25,6 +25,7 @@ import { getProposal } from "../api/endpoints";
 import { useAuth } from "../auth/AuthContext";
 import { NextStepCard } from "../components/common/NextStepCard";
 import { UserLink } from "../components/UserLink";
+import { SaveToggle } from "../components/discovery/SaveToggle";
 import { AiSummaryCard } from "../components/participation/AiSummaryCard";
 import { AuditCard, auditHasProblem } from "../components/participation/AuditCard";
 import { Discussion } from "../components/participation/Discussion";
@@ -51,6 +52,7 @@ import { useOntology } from "../lib/categories";
 import { useDetailLevel } from "../lib/detailLevel";
 import { proposalRef } from "../lib/format";
 import { proposalNextStep, viewerOf } from "../lib/nextStep";
+import { recordOpened } from "../lib/recentOpened";
 import { routes } from "../lib/routes";
 import { useSectionParam } from "../lib/sectionParam";
 import { useAsync } from "../lib/useAsync";
@@ -105,6 +107,14 @@ export default function ProposalDetailPage() {
   const ready = !!p && !auth.loading;
   const actionFocus = p ? actionFocusSelector(p, viewer.id) : undefined;
   useSectionParam(ready, actionFocus ? { focus: { [PAGE_ANCHORS.action]: actionFocus } } : {});
+
+  // Kişisel sıralamanın ('Size göre') geçici girdisi: açılan öneri YALNIZ bu cihazda, oturum sahibine göre hatırlanır
+  // (en çok 20; lib/recentOpened). Sunucuya bildirilmez; çıkışta silinir.
+  const openedId = p?.id;
+  const viewerId = auth.user?.id;
+  useEffect(() => {
+    if (openedId && viewerId) recordOpened(openedId);
+  }, [openedId, viewerId]);
 
   if (loading && !p) return <Spinner block label="Öneri yükleniyor…" />;
   if (error && !p) return <PageErrorView error={error} onRetry={reload} subject="Öneri" />;
@@ -220,6 +230,7 @@ export default function ProposalDetailPage() {
           title={p.title}
           docTitle={`${proposalRef(p.seq)} ${p.title}`}
           back={{ to: routes.proposals(), label: "Öneriler" }}
+          tools={auth.user ? <SaveToggle type="proposal" id={p.id} saved={p.saved} /> : undefined}
           meta={
             <>
               {/* Rozet bütçesi: tek renkli durum rozeti; no düz metin, katman yalnız T0 dışındaysa (T0 ontoloji hükmünde yazar). */}
