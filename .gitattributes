@@ -3,3 +3,6 @@
 *.png binary
 *.jar binary
 *.apk binary
+
+# Windows toplu iş dosyaları CRLF ister (LF ile etiket/atlama bozulabilir).
+*.cmd text eol=crlf
