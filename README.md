@@ -104,7 +104,8 @@ gitmez: ne sunucu sert biçimde kapanınca (çökme, `taskkill /F`) açılışta
 | `PORT`, `HOST` | `4000`, `0.0.0.0` | Sunucu adresi |
 | `DATA_DIR` | `server/data` | Veritabanı, defter düğümleri, anahtarlar |
 | `TIME_SCALE` | `60` | Simüle saat hızı |
-| `ANTHROPIC_API_KEY` | — | Varsa YZ Claude ile çalışır (`claude-opus-5-5`); yoksa çevrimdışı sezgisel mod |
+| `ANTHROPIC_API_KEY` | — | Varsa YZ Claude ile çalışır; yoksa çevrimdışı sezgisel mod |
+| `AI_MODEL` | `claude-haiku-5-5` | Claude modeli. Sunucu tarafı ret yedeği yalnız destekleyen modellerde (Opus 5.5, Sonnet 5.5, Fable 5.1) gönderilir; Haiku 5.5'te ret, çevrimdışı sezgisele düşer |
 | `AI_ENABLED` | `auto` | `false` → her zaman çevrimdışı |
 | `MASTER_KEY`, `TOKEN_KEY`, `VOTE_KEY` | `DATA_DIR/keys/*` (otomatik üretilir) | Kimlik kasası, oturum, ballotId anahtarları (üretimde KMS/ortam değişkeni) |
 | `NEW_MASTER_KEY` | — | Yalnız ana anahtar dönüşüm betiği için yeni anahtar (`server/scripts/rotate-master-key.ts`, [KVKK §8.1](docs/KVKK.md)) |
@@ -243,7 +244,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 | + | Android uygulaması ve web sitesi | Tek React kodu; Capacitor ile Android. Sunucu adresi ayarlanabilir. 360 px'de taşmasız. | `web/`, `web/android` |
 | + | Dağıtık defter | 4 doğrulayıcılı BFT (propose/prevote/precommit, tur değişimi, kilitleme), RFC 6962 Merkle, Ed25519 commit imzaları, bizans kanıtı, kurcalama tespiti ve onarım. Oy makbuzu ve sayım tarayıcıda doğrulanır. **Defterde kişisel veri yoktur.** | Defter, Oyum kayıtlı mı?; `server/src/ledger/` |
 | + | Bilirkişi entegrasyonu | Başvuru ve onay, alan eşleşmesi. Ağırlıklı kura: tohum önceden taahhüt edilen bloğun hash'inden alınır, çekiliş defterden yeniden üretilebilir. Graf tabanlı çıkar çatışması dışlaması, rapor şeması, hukuki nitelendirme denetimi (6754 s. Kanun md. 3/2), itibar formülü, askı kuralı. **Bilirkişi danışmandır, oyu 1'dir.** | Bilirkişiler; `server/src/experts/` |
-| + | Yapay zekâ entegrasyonu | Claude (`claude-opus-5-5`, yapılandırılmış çıktı, ret durumunda yedek model) ya da çevrimdışı sezgisel mod: sınıflandırma, moderasyon, tartışma özeti (azınlık görüşleri bölümü her zaman var), benzer öneriler (salam taktiği uyarısı), uzlaşma için köprü taslakları, bilirkişi raporu denetimi. Kişisel veri maskelenir, takma adlar K1, K2… olur. YZ'ye gönderim ayrı açık rızaya bağlıdır. **YZ yalnızca danışmandır; durum değiştirmez:** yüksek güvenli bir YZ içerik etiketi bile öneriyi kendi başına "yönetmeliğe aykırı" yapamaz, yalnızca uyarı ve bilirkişi incelemesi doğurur (Madde 12 (2), 14 (1)). Her çıktı etiketlidir. | `server/src/ai/` |
+| + | Yapay zekâ entegrasyonu | Claude (`claude-haiku-5-5`, yapılandırılmış çıktı; ret ya da hata durumunda çevrimdışı yedek) ya da çevrimdışı sezgisel mod: sınıflandırma, moderasyon, tartışma özeti (azınlık görüşleri bölümü her zaman var), benzer öneriler (salam taktiği uyarısı), uzlaşma için köprü taslakları, bilirkişi raporu denetimi. Kişisel veri maskelenir, takma adlar K1, K2… olur. YZ'ye gönderim ayrı açık rızaya bağlıdır. **YZ yalnızca danışmandır; durum değiştirmez:** yüksek güvenli bir YZ içerik etiketi bile öneriyi kendi başına "yönetmeliğe aykırı" yapamaz, yalnızca uyarı ve bilirkişi incelemesi doğurur (Madde 12 (2), 14 (1)). Her çıktı etiketlidir. | `server/src/ai/` |
 | + | İnsanların grafta tutulması | graphology: takip, kefalet, vekâlet (likit demokrasi, cap ve H=3), yakınlık beyanı. PageRank, aracılar, Louvain (çapraz kontrol), SybilRank, kilit adım (lockstep) tespiti, kalıcı kaybeden göstergesi. | Graf; `server/src/graph/` |
 
 ## 5. Çoğunluk azınlığı nasıl tüketmez? (Ve azınlık çoğunluğu nasıl kilitleyemez?)
@@ -292,7 +293,7 @@ Ayrıntı: [MIMARI.md](docs/MIMARI.md).
 │ core/ ScaledClock · Config · AppError · Notifier · AuditLogger      db/ SQLite (node:sqlite)      │
 └───────────────┬───────────────────────────────────────────┬──────────────────────────────────────┘
                 │ yalnız özet/taahhüt/ballotId               │ maskelenmiş metin (yalnız rızayla)
-        defter düğümleri v0..v3                       Claude API (claude-opus-5-5)
+        defter düğümleri v0..v3                       Claude API (claude-haiku-5-5)
 shared/  karar fonksiyonu (decide / evaluateObjection / verifyTally) · kripto · rasyonel · RNG · tipler — sunucu ve istemcide AYNI kod
 ```
 

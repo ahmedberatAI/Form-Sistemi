@@ -47,7 +47,7 @@ export function jsonResponse(data: unknown, extra: Record<string, unknown> = {})
     id: "msg_test",
     type: "message",
     role: "assistant",
-    model: "claude-opus-5-5",
+    model: "claude-haiku-5-5",
     stop_reason: "end_turn",
     content: [
       { type: "thinking", thinking: "", signature: "x" },

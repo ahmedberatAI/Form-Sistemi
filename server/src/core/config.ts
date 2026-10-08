@@ -8,6 +8,8 @@ import { databaseFileHasKeyBoundData, SECRET_ENV, type SecretName } from "./keyc
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const SERVER_ROOT = resolve(here, "..", "..");
+/** Yapay zekâ danışmanının varsayılan modeli (AI_MODEL ile değişir): sınıflandırma ve özet gibi yüksek hacimli işler için Claude Haiku 5.5. */
+export const DEFAULT_AI_MODEL = "claude-haiku-5-5";
 
 export interface Config {
   port: number;
@@ -277,7 +279,7 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
     tokenKey: secret("token"),
     voteKey: secret("vote"),
     timeScale,
-    aiModel: envText("AI_MODEL") ?? "claude-opus-5-5",
+    aiModel: envText("AI_MODEL") ?? DEFAULT_AI_MODEL,
     aiEnabled,
     ledgerMode: ledgerModeFromEnv(),
     ledgerBlockIntervalMs,
@@ -304,7 +306,7 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     tokenKey: "22".repeat(32),
     voteKey: "33".repeat(32),
     timeScale: 1,
-    aiModel: "claude-opus-5-5",
+    aiModel: DEFAULT_AI_MODEL,
     aiEnabled: false,
     ledgerMode: "in-process",
     ledgerBlockIntervalMs: 20,

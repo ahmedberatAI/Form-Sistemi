@@ -823,7 +823,7 @@ export interface AiAnalysisInfo {
   task: AiTask;
   targetType: string;
   targetId: string;
-  model: string; // "claude-opus-5-5" veya "offline-heuristic"
+  model: string; // "claude-haiku-5-5" (varsayılan; AI_MODEL) veya "offline-heuristic"
   offline: boolean;
   output: unknown;
   label: string; // "Yapay zekâ ile üretildi · model · tarih"

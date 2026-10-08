@@ -40,7 +40,7 @@
 └────────────────────────────────────────────────────────────────────────────────────────────────────┘
           │ yalnızca özetler / taahhütler / ballotId              │ maskelenmiş metin (rızayla)
           ▼                                                       ▼
-   Defter düğümleri v0…v3 (ayrı SQLite dosyaları)           Claude API (claude-opus-5-5)
+   Defter düğümleri v0…v3 (ayrı SQLite dosyaları)           Claude API (claude-haiku-5-5)
 ```
 
 `shared/` paketi sunucu ve istemcide **aynı** kodu çalıştırır: karar fonksiyonu (`decide`, `evaluateObjection`, `verifyTally`),

@@ -12,6 +12,14 @@ export const PROMPT_VERSION = "fy-ai/2";
 export const FALLBACK_BETA = "server-side-fallback-2026-07-01";
 export const DEFAULT_TIMEOUT_MS = 60_000;
 
+/**
+ * Sunucu tarafı ret yedeği (`fallbacks: "default"`) yalnız bu modellerde vardır. Varsayılan model Claude Haiku 5.5'te yoktur:
+ * parametre gönderilirse API isteği reddeder ve çağrı sessizce çevrimdışı yedeğe düşerdi. Haiku 5.5'in reddi (`refusal`)
+ * çevrimdışı sezgisele düşerek karşılanır.
+ */
+const SERVER_FALLBACK_MODELS: ReadonlySet<string> = new Set(["claude-fable-5-1", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5"]);
+export const supportsServerFallback = (model: string): boolean => SERVER_FALLBACK_MODELS.has(model);
+
 export interface ClaudeRequest<T> {
   system: string;
   user: string;
@@ -69,8 +77,7 @@ export async function callClaude<T>(
     const params = {
       model,
       max_tokens: 16000,
-      betas: [FALLBACK_BETA],
-      fallbacks: "default",
+      ...(supportsServerFallback(model) ? { betas: [FALLBACK_BETA], fallbacks: "default" } : {}),
       thinking: { type: "adaptive" },
       output_config: { effort: req.effort, format: { type: "json_schema", schema: req.schema } },
       system: req.system,

@@ -24,20 +24,21 @@ describe("Claude çağrısı", () => {
     const { client, calls } = fakeClient(() => jsonResponse(classifyOk));
     const ai = createAiService(makeCtx(), { client });
     expect(ai.mode()).toBe("claude");
-    expect(ai.model()).toBe("claude-opus-5-5");
+    expect(ai.model()).toBe("claude-haiku-5-5");
     const r = await ai.classifyProposal(input, classifyCtx);
     expect(r.offline).toBe(false);
-    expect(r.model).toBe("claude-opus-5-5");
+    expect(r.model).toBe("claude-haiku-5-5");
     expect(r.categories).toEqual([{ iri: fy("TopluTasima"), confidence: 0.92 }]);
     expect(r.rightsAffected).toEqual([{ right: fy("ErisimHakki"), direction: "expand", confidence: 0.4 }]);
     expect(r.rationale).toBe(classifyOk.rationale);
 
     expect(calls).toHaveLength(1);
     const p = calls[0].params;
-    expect(p.model).toBe("claude-opus-5-5");
+    expect(p.model).toBe("claude-haiku-5-5");
     expect(p.max_tokens).toBe(16000);
-    expect(p.betas).toEqual(["server-side-fallback-2026-07-01"]);
-    expect(p.fallbacks).toBe("default");
+    // Claude Haiku 5.5'te sunucu tarafı ret yedeği yok: parametre gönderilirse API isteği reddeder.
+    expect(p).not.toHaveProperty("betas");
+    expect(p).not.toHaveProperty("fallbacks");
     expect(p.thinking).toEqual({ type: "adaptive" });
     expect(p.output_config.effort).toBe("low");
     expect(p.output_config.format.type).toBe("json_schema");
@@ -53,6 +54,15 @@ describe("Claude çağrısı", () => {
     expect(p.system).toContain("Hukuki nitelendirme yapmazsın");
     expect(calls[0].opts.timeout).toBe(60_000);
     expect(PROMPT_VERSION).toBe("fy-ai/2");
+  });
+
+  it("sunucu tarafı ret yedeği yalnız destekleyen modelde gönderilir (AI_MODEL=claude-opus-5-5)", async () => {
+    const { client, calls } = fakeClient(() => jsonResponse(classifyOk));
+    const ai = createAiService(makeCtx({ aiModel: "claude-opus-5-5" }), { client });
+    await ai.classifyProposal(input, classifyCtx);
+    expect(calls[0].params.model).toBe("claude-opus-5-5");
+    expect(calls[0].params.betas).toEqual(["server-side-fallback-2026-07-01"]);
+    expect(calls[0].params.fallbacks).toBe("default");
   });
 
   it("şema JSON Schema kısıtları: her nesnede additionalProperties:false + required; sayısal sınır yok", async () => {
@@ -252,7 +262,7 @@ describe("Claude çıktısının işlenmesi", () => {
     );
     const s = await createAiService(makeCtx(), { client }).summarize({ topicTitle: "Seferler", messages: msgs });
     expect(s.offline).toBe(false);
-    expect(s.model).toBe("claude-opus-5-5");
+    expect(s.model).toBe("claude-haiku-5-5");
     expect(s.commonGround[0].cites).toEqual(["u-1", "u-3"]);
     expect(s.contested[0].cites).toEqual(["u-2", "u-3"]);
     expect(s.openQuestions[0].cites).toEqual(["u-4"]);

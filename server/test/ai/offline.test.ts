@@ -19,7 +19,7 @@ describe("çevrimdışı mod", () => {
       expect(createAiService(makeCtx({ aiEnabled: false })).mode()).toBe("offline");
       const live = createAiService(makeCtx({ aiEnabled: true }));
       expect(live.mode()).toBe("claude");
-      expect(live.model()).toBe("claude-opus-5-5");
+      expect(live.model()).toBe("claude-haiku-5-5");
     } finally {
       if (saved === undefined) delete process.env.ANTHROPIC_API_KEY;
       else process.env.ANTHROPIC_API_KEY = saved;
