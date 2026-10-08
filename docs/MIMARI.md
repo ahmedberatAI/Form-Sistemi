@@ -24,7 +24,8 @@
 │    ├─ TopicService     ── konu ağacı, revizyonlar                                                   │
 │    ├─ MessageService   ── tartışma (silinmez), karartma, mezar taşı, onay/ret, köprü skoru           │
 │    ├─ ClusterService   ── görüş kümeleri anlık görüntüsü                                            │
-│    └─ CommunityService ── profil, vekâlet görünümü, bildirim, pano, sistem bilgisi                  │
+│    ├─ CommunityService ── profil, vekâlet görünümü, bildirim, pano, sistem bilgisi                  │
+│    └─ DiscoveryService ── önerili arama, Listem, kişisel sıralama (algoritma: shared/recommend.ts)  │
 │    │                                                                                               │
 │  Çekirdek dışı modüller (arayüzleri contracts.ts; ortak SQLite şeması, bkz. §2)                     │
 │    ├─ ledger/     4 doğrulayıcılı BFT defter (Tendermint tarzı), Merkle kanıtları, kurcalama/onarım │
@@ -36,7 +37,7 @@
 │    └─ experts/    bilirkişi listesi, tohumlu kura, çıkar çatışması, rapor, itibar                  │
 │    │                                                                                               │
 │  core/  Clock (ScaledClock: TIME_SCALE), Config, AppError, Notifier, AuditLogger                    │
-│  db/    SQLite (node:sqlite, WAL) — schema.sql, migrations.ts (şema sürümü 2: + ledger_outbox)     │
+│  db/    SQLite (node:sqlite, WAL) — schema.sql, migrations.ts (şema sürümü 4)                      │
 └────────────────────────────────────────────────────────────────────────────────────────────────────┘
           │ yalnızca özetler / taahhütler / ballotId              │ maskelenmiş metin (rızayla)
           ▼                                                       ▼
@@ -53,7 +54,7 @@ ontoloji IRI sabitleri ve API tipleri. Böylece bir oylama sonucunu tarayıcı y
   IdentityService, AiService, AiRecordSink, ExpertService, Notifier). Forum, YZ analiz kayıtlarına (kaydet, getir, listele, insan
   onayı) yalnızca `AiRecordSink` üzerinden erişir; `../ai` iç yardımcılarını içe aktarmaz (bir test bu sınırı denetler).
 - `server/src/core/forum-contracts.ts`: forum çekirdeğinin arayüzleri (ProposalService, LifecycleEngine, TopicService, MessageService,
-  ClusterService, CommunityService).
+  ClusterService, CommunityService, DiscoveryService).
 - Bileşim kökü `server/src/app.ts` (`createApp`) tüm servisleri kurar ve birbirine arayüz tipleriyle enjekte eder; testlerde sahte
   uygulamalarla (`server/test/helpers/fakes.ts`) değiştirilebilir.
 
@@ -78,8 +79,8 @@ tablosu, tek göç listesi (`db/migrations.ts`, §7) ve mimari bağımlılık te
 
 | Modül | Yazdığı tablolar (sahibi) | Başka modüllerden okuduğu tablolar |
 |---|---|---|
-| `identity/` | `users` (hesap alanları), `identity_vault`, `identity_corrections`, `pii_access_log`, `sessions`, `meta` (anahtar sürümü, `identity.pending_since:<üye>`) | KVKK dökümü ve hesap silme için üyenin kendi `proposals`, `messages*`, `ballots`, `objections`, `minority_reports`, `expert_*`, `graph_edges`, `cluster_snapshots`, `notifications` ve `audit_log` satırları |
-| `forum/` | `proposals`, `proposal_versions`, `proposal_sponsors`, `proposal_suggestions`, `phase_events`, `eligible_voters`, `ballots`, `tallies`, `objections`, `minority_reports`, `expert_requests`, `messages`, `message_versions`, `message_rebuttals`, `message_endorsements`, `hidden_access_log`, `topics`, `topic_revisions`, `cluster_snapshots`; `users.objection_budget_used`; `notifications` (okundu işareti) | `users`, `experts`, `expert_*`, `notifications`, `audit_log` (görünümler) |
+| `identity/` | `users` (hesap alanları), `identity_vault`, `identity_corrections`, `pii_access_log`, `sessions`, `meta` (anahtar sürümü, `identity.pending_since:<üye>`) | KVKK dökümü ve hesap silme için üyenin kendi `proposals`, `messages*`, `ballots`, `objections`, `minority_reports`, `expert_*`, `graph_edges`, `cluster_snapshots`, `notifications`, `saved_items` (hesap silmede aynı işlemde siler) ve `audit_log` satırları |
+| `forum/` | `proposals`, `proposal_versions`, `proposal_sponsors`, `proposal_suggestions`, `phase_events`, `eligible_voters`, `ballots`, `tallies`, `objections`, `minority_reports`, `expert_requests`, `messages`, `message_versions`, `message_rebuttals`, `message_endorsements`, `hidden_access_log`, `topics`, `topic_revisions`, `cluster_snapshots`, `saved_items` (Listem; `forum/discovery.ts`); `users.objection_budget_used`; `notifications` (okundu işareti) | `users`, `experts`, `expert_*`, `notifications`, `audit_log` (görünümler) |
 | `experts/` | `experts`, `expert_questions`, `expert_panels`, `expert_assignments`, `expert_reports`; `users.reputation` | `users`, `proposals` (yazar ve kategoriler) |
 | `graph/` | `graph_edges`, `graph_runs` | `users`, `proposals`, `ballots`, `tallies`, `experts`, `cluster_snapshots` (kilit adım, kalıcı kaybeden, uzlaşı grafı, Louvain tohumu) |
 | `ontology/` | `bylaw_versions` | `users` (doğrulanmış üye sayısı) |
@@ -114,6 +115,30 @@ kuralı da taşırlar:
   alanları yalnız görüntüleyenin kendi düğümünde kalır. Politika `GraphService.visualization` içinde de uygulanır (`includePrivate`,
   `viewerId`); rota yalnız savunma derinliği olarak yeniden süzer. Küme görünümleri `anonymizeClusterView` ile anonimleştirilir;
   yönetici küme yeniden hesabı (`POST /api/admin/clusters/recompute`) de kimliksiz anlık görüntü döndürür.
+
+### 2.3 Keşif: arama, Listem ve kişisel sıralama
+
+Formları bulmayı ve ilgiye göre sıralamayı sağlayan parça, karar mekanizmasının dışında, salt okunur bir "okuma modeli"dir (kayıt yazan tek
+şey Listem'dir).
+
+| Parça | Yer | Görev |
+|---|---|---|
+| Saf arama kuralları | `shared/src/search.ts` | `normalizeSearch` (Türkçe duyarsız), `parseSearchRef` (#K12, K-12, #T3), `matchTitle`, `compareSearchHits`, `proposalMatchesQuery`. Sunucu ve istemci AYNI kodu kullanır: arama kutusu ile Öneriler sayfasının süzgeci aynı sonucu verir |
+| Saf sıralama | `shared/src/recommend.ts` | `buildInterestProfile` (kategori ontolojisinde ilgi profili, L2 normalize), `rankForUser` (kosinüs + aciliyet + yenilik, çeşitlilik, gerekçe). Girdi tipinde oy alanı **yoktur**; belirlenimci; çıktı girdinin permütasyonudur |
+| Servis | `server/src/forum/discovery.ts` (`DiscoveryService`, `ForumServices.discovery`) | `search`, `saved` / `setSaved` / `isSaved`, `personalize`, `openForDashboard`; sinyal sorgusu ve kullanıcı başına sinyal önbelleği |
+| HTTP | `http/routes/discovery.ts`; `routes/proposals.ts` (`sort=sana-gore`), `routes/system.ts` (`/api/dashboard`) | `GET /api/search`, `/api/me/saved*`; son açılanlar `X-Forum-Recent` başlığında |
+| Şema | `db/migrations.ts` | Sürüm 3: `saved_items` + `idx_sponsors_user`; sürüm 4: `users.personal_ranking` (§7) |
+| İstemci | `web/src/components/discovery/`, `lib/quickFind.ts`, `lib/personalSort.ts`, `lib/recentOpened.ts` | 'Hızlı bul', 'Listeme ekle', Profil › Listem, 'Size göre' ([web/src/README.md](../web/src/README.md#keşif-hızlı-bul-listem-ve-size-göre)) |
+
+**Veri akışı (kişisel sıra):** istek → görüntüleyenin izni (`users.political_consent` ve `users.personal_ranking`; her istekte okunur) →
+izin yoksa varsayılan sıra (`personalized: false`) → varsa **tek toplama sorgusu** (yazarlık: `proposals`; Listem: `saved_items`;
+destek: `proposal_sponsors`; mesaj: `messages`) → `buildInterestProfile` → `rankForUser` → yanıt. Profil saklanmaz; sinyal toplamı
+kullanıcı başına en çok 60 sn önbelleklenir. Model ya da dış hizmet yoktur; ölçülen maliyet kullanıcı başına ≈ 0,1 ms
+([ALGORITMA §13](ALGORITMA.md)).
+
+**Bağımlılık yönleri:** `forum` yalnız `shared`'ın saf işlevlerine dayanır (`ai`'ya bağımlı değildir; §2.2 testi). Kimlik servisi forumu
+bilmez: hesap silme, kayıt memuru reddi ve bayat başvuru imhası, kimlik servisinin kurulumunda verilen `onErased` kancasını (`IdentityDeps`) çağırır; `app.ts` kancayı
+`discovery.forgetCache`'e geç bağlar (modül döngüsü yok). `saved_items` hesap silmede kimlik servisince, kripto-imhayla aynı işlemde silinir.
 
 ## 3. Bir önerinin yaşamı (veri akışı)
 
@@ -257,6 +282,20 @@ Siyasi seçim düzeyinde zorlamaya dayanıklılık (MACI benzeri) ve cihazda imz
   Kimlik modülünün gönderdiği bir defter kaydı reddedilirse bu artık yutulmaz: denetim günlüğüne `identity.ledger_error` (yalnız işlem
   türü ve hata kodu; üye bilgisi ve hata iletisi yok) ve sunucu günlüğüne düşer.
 
+### 5.3 Kişisel sıralama ve oy gizliliği
+
+Oy gizliliği kişisel sıralamada da korunur ve bu **yapısal olarak** zorlanır, söze bırakılmaz:
+
+- `forum/discovery.ts`'in sinyal sorgusu yalnız `proposals`, `saved_items`, `proposal_sponsors` ve `messages` tablolarına bakar (mesajın
+  tutumu okunmaz). `ballots`, `eligible_voters`, `objections`, `minority_reports` ve `message_endorsements` hiç okunmaz; bir test bu dosyanın
+  kaynağını tarar.
+- Saf sıralama işlevinin girdi tipinde oy alanı yoktur (`REC_SIGNAL_KINDS` = yazarlık, listeye ekleme, destek, mesaj, açma); bilinmeyen
+  bir tür yok sayılır. "Aynı etkileşimler + farklı oy (evet / hayır / oy yok) → birebir aynı sıra, puan ve gerekçe" testle sınanır.
+- İzin kapısı sunucudadır: siyasi görüş rızası (KVKK md. 6/3-a) ya da "Kişisel sıralama" tercihi yoksa sinyal hiç okunmaz; istemcinin
+  gönderdiği "son açılanlar" tek başına sıralama yaptırmaz.
+- "Son açılanlar" yalnız istemcinin cihazında tutulur; sıralama isteğiyle `X-Forum-Recent` **başlığında** geçici gelir (adres satırı ters
+  vekil erişim günlüklerine düşerdi; sorgu dizesinde 400), sunucuda saklanmaz. Ayrıntı: [KVKK.md §3.4](KVKK.md).
+
 ## 6. Zaman
 
 - Alan mantığı `Date.now()` kullanmaz; tüm modüller enjekte edilen `Clock` arayüzünü kullanır. **İstisna — gerçek duvar saatiyle
@@ -288,9 +327,10 @@ Siyasi seçim düzeyinde zorlamaya dayanıklılık (MACI benzeri) ve cihazda imz
 - Tartışma, öneri, konu ve graf kayıtları fiziksel olarak silinmez; yalnızca durum/görünürlük alanları değişir.
 - Kişinin kendi verisini silmesi kimlik kasasında **kripto-imha** ile yapılır (KVKK.md).
 - **Şema sürümü ve göçler:** `meta.schema_version` ve `db/migrations.ts` içindeki sıralı `MIGRATIONS` listesi. Sürüm 1 = taban
-  (`schema.sql`); **sürüm 2** = `ledger_outbox` tablosu. Yeni bir şema değişikliği sürüm 3 ve sonrası olarak listeye eklenir ve
-  `schema.sql` da güncellenir. Eksik göçler tek işlemde uygulanır; daha yeni sürümlü bir veritabanını eski yazılım açmaz
-  (`SchemaVersionError`). Bu yüzden sürüm 2'ye geçilmiş bir veri klasörü eski yazılımla açılamaz.
+  (`schema.sql`); **sürüm 2** = `ledger_outbox` tablosu; **sürüm 3** = `saved_items` (Listem) tablosu ve `idx_sponsors_user` indeksi
+  (kişisel sıralamanın sinyal sorgusu); **sürüm 4** = `users.personal_ranking` sütunu ("Kişisel sıralama" tercihi, varsayılan 1; KVKK
+  md. 6/3-a). Yeni bir şema değişikliği sürüm 5 ve sonrası olarak listeye eklenir ve `schema.sql` da güncellenir. Eksik göçler tek işlemde uygulanır; daha yeni sürümlü bir veritabanını eski yazılım açmaz (`SchemaVersionError`). Bu
+  yüzden yükseltilmiş bir veri klasörü eski yazılımla açılamaz (aşağıdaki el ile geri dönüş adımları hariç).
 - **Sürüm 2'den 1'e el ile geri dönüş** (yazılım şema sürümü 2'den önceki bir sürüme geri alınacaksa):
   1. Sunucuyu **düzgün** kapatın (Ctrl+C / SIGTERM; `taskkill /F` değil). Kapanış defter havuzunu boşaltır ve onaylanan işlemlerin
      giden kutusu satırlarını siler.
@@ -300,8 +340,19 @@ Siyasi seçim düzeyinde zorlamaya dayanıklılık (MACI benzeri) ve cihazda imz
      **deftere hiç yazılmaz** (veritabanı kaydı kalır, defter kaydı kaybolur).
   4. Aynı işlemde: `BEGIN; DROP TABLE ledger_outbox; UPDATE meta SET value = '1' WHERE key = 'schema_version'; COMMIT;`
      (ör. `sqlite3 server/data/forum.db`). Eski yazılım veritabanını artık açar; yeniden yükseltmede sürüm 2 göçü tabloyu yeniden kurar.
-- **Süreç belleğinde tutulanlar** (kalıcı değildir, yeniden başlatmada sıfırlanır): hesap başına giriş sayaçları ve `Idempotency-Key`
-  yanıt deposu (§5.2). Doğrulayıcı havuzlarının bellek kopyası giden kutusu sayesinde kayıpsızdır (§4).
+- **Sürüm 3'ten 2'ye el ile geri dönüş:** sunucuyu düzgün kapatıp veri klasörünü yedekledikten sonra aynı işlemde
+  `BEGIN; DROP TABLE saved_items; DROP INDEX idx_sponsors_user; UPDATE meta SET value = '2' WHERE key = 'schema_version'; COMMIT;`.
+  Tablo **mutlaka** düşürülmelidir: sürüm 2 yazılımı Listem kayıtlarını KVKK dökümüne almaz ve hesap silmede silmez. Üyelerin Listem
+  kayıtları kaybolur (yeniden yükseltmede tablo boş kurulur); öneri, oy ve defter verisi etkilenmez. Sürüm 1'e inmek için önce bu adım,
+  sonra yukarıdaki adımlar uygulanır.
+- **Sürüm 4'ten 3'e el ile geri dönüş:** sunucuyu düzgün kapatıp veri klasörünü yedekledikten sonra aynı işlemde
+  `BEGIN; ALTER TABLE users DROP COLUMN personal_ranking; UPDATE meta SET value = '3' WHERE key = 'schema_version'; COMMIT;`.
+  Dikkat: sürüm 3 yazılımı bu tercihi (ve siyasi görüş rızası denetimini) bilmez; kişisel sıralamayı kapatmış üyeler yeniden kişisel
+  sırada görünür. Yeniden yükseltmede sütun eklenir ve herkesin tercihi açık başlar. Daha eski sürüme inmek için önce bu adım, sonra
+  yukarıdakiler uygulanır.
+- **Süreç belleğinde tutulanlar** (kalıcı değildir, yeniden başlatmada sıfırlanır): hesap başına giriş sayaçları, `Idempotency-Key`
+  yanıt deposu (§5.2) ve kişisel sıralamanın sinyal önbelleği (üye başına en çok 60 sn; 30 sn'lik düzenli temizlik; imhada kimlik
+  servisinin `onErased` kancasıyla hemen düşer — `app.ts` kancayı forum servislerine geç bağlar). Doğrulayıcı havuzlarının bellek kopyası giden kutusu sayesinde kayıpsızdır (§4).
 
 ## 8. İstemci
 
@@ -309,6 +360,9 @@ Siyasi seçim düzeyinde zorlamaya dayanıklılık (MACI benzeri) ve cihazda imz
 - `web/src/auth/AuthContext.tsx`: oturum, rol yardımcıları, sunucu saatine göre düzeltilmiş `now()`. Yetkiler saf `derivePermissions`
   ile hesaplanır: görev rolleri (kayıt memuru, denetçi, yönetici) ve bilirkişilik yalnız **doğrulanmış** hesapta geçerlidir
   (sunucudaki `requireRole` / `requireExpert` ile aynı sonuç).
+- Keşif (`web/src/components/discovery/`): üst çubukta 'Hızlı bul' (≥ 720 px kutu, daha dar ekranda büyüteç + tam ekran panel; WAI-ARIA
+  combobox), 'Listeme ekle' düğmesi, Profil › Listem, Öneriler'de 'Listem' sekmesi ve 'Size göre' sıralama. Kişisel sıra istemcide yeniden
+  hesaplanmaz: sunucunun sırası aynen gösterilir. 'Son açılanlar' `localStorage`'da (üye başına, çıkışta silinir) tutulur (§2.3, §5.3).
 - `web/src/api/client.ts`: oturumlu her değiştiren isteğe otomatik `Idempotency-Key` ekler; yanıtı belirsiz kalan aynı istek yeniden
   gönderilince aynı anahtar kullanılır (§5.2).
 - HashRouter: aynı paket hem web'de (sunucunun `web/dist`'i sunması ya da Vite geliştirme sunucusu) hem Android WebView'de çalışır.

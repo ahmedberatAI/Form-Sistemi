@@ -20,6 +20,9 @@
    bilgisinin açık sayım için deftere yazıldığı iki dar istisna §4.3'te açıklanır.
 5. **Kendi verisini silmek oylanmaz.** Silme talebi bir KVKK hakkıdır; çoğunluk oyuna bağlanamaz. **Kripto-imha** ile
    anında yerine getirilir.
+6. **Kişisel sıralama oy verisini kullanmaz.** "Size göre" sıralama yalnız kişinin kendi öneri, destek, mesaj ve Listem
+   kayıtlarından kurulur; oy içeriği, oy verip vermediği, itiraz imzası ve azınlık raporu hiç okunmaz (testle zorlanır). Yalnız
+   siyasi görüş açık rızası olan üyede çalışır ve ayrıca kapatılabilir (§3.4, envanter #17).
 
 ## 2. Veri envanteri
 
@@ -41,6 +44,12 @@
 | 14 | Düzeltme talepleri | Düzeltilecek alan adları, önerilen değerler, gerekçe, durum, karar notu | KVKK md. 11/1-d düzeltme hakkının yerine getirilmesi | md. 5/2-ç (hukuki yükümlülük) | Öneri karar/geri çekme anında imha; gerekçe ve kayıt hesap süresince, silmede NULL | `identity_corrections` — öneri ve gerekçe kişinin DEK'iyle şifreli; alan adları ve durum şifresiz (değer yok) |
 | 15 | Defter giden kutusu | Henüz blokta onaylanmamış defter işlemlerinin yükü (özet, tür, nonce; **kişisel veri değil**) | Sert kapanışta (çökme, `taskkill /F`) ve elektrik kesintisinde işlem kaybını önleme | Kişisel veri işlenmez; deftere yazılacak yükün aynısıdır (§4.3) | Blokta onaylanıp doğrulayıcı depoları diske indirilene dek (genellikle bir tick, ~1,6 sn) | `ledger_outbox` (ana veritabanı, şema sürümü 2) |
 | 16 | Geçici bellek kayıtları | Giriş sayaçları (tanımlayıcı özeti); `Idempotency-Key` yanıt deposu (oturumlu kullanıcının başarılı yanıtları) | Hesap başına kaba kuvvet sınırı; yeniden gönderimde çift kaydı önleme | md. 5/2-f (güvenliğin sağlanması) | En çok 15 dk (giriş kilidi) ve 10 dk (yanıt deposu); yalnız süreç belleği, yeniden başlatmada silinir | Süreç belleği; diske yazılmaz (§4.5) |
+| 17 | Listem ve kişisel sıralama | "Listeme ekle" kayıtları (öneri/konu kimliği, ekleme zamanı); kişisel sıralamanın sinyalleri (kişinin kendi yazarlık, destek, mesaj yazma ve listeye ekleme kayıtlarından türetilir; **yeni veri toplanmaz**). Öneri, destek ve mesaj kayıtları #9 gibi **siyasi görüş — özel nitelikli veridir**; bunlardan türetilen ilgi profili bir profillemedir | Kişinin kendi seçtiklerini bulması; listelerin kişiye göre sıralanması ("Size göre", ana sayfa "Şu an açık") | Listem kayıtları: md. 5/2-c (üyelik hizmetinin ifası). **Sıralama: açık rıza, md. 6/3-a** — siyasi görüş rızası olmayan üyede hiçbir sinyal okunmaz ve sıra varsayılandır; rıza olsa da üye Profil › Listem'deki "Kişisel sıralama" tercihiyle bu amacı ayrıca kapatabilir (`users.personal_ranking`, varsayılan açık; dökümde `consents.personalRanking`; değişiklik `identity.consents` denetim kaydıyla). Sıralama yalnız sırayı değiştirir, hiçbir içeriği gizlemez ve hiçbir hukuki ya da benzeri sonuç doğurmaz | Kayıt: kişi listeden çıkarana ya da hesabını silene dek (hesap silmede kripto-imha ile **aynı işlemde** silinir). Sinyal: yalnız son 180 gün; sunucu belleğinde en çok 60 sn (simüle ve gerçek saat) geçerli önbellek, süresi dolan her çağrıda ve 30 sn'lik düzenli temizlikte atılır (en geç ~90 sn); hesap silme, kayıt memuru reddi ve bayat başvuru imhası kaydı hemen düşürür (§4.5) | `saved_items` (şema sürümü 3; yalnız sahibine görünür, denetim günlüğüne yazılmaz, KVKK dökümünde `savedItems`); `users.personal_ranking` (şema sürümü 4). **Oy, oy verip vermediği, itiraz ve azınlık raporu sıralamada hiç kullanılmaz** (md. 6). "Son açılanlar" yalnız istemcinin cihazında tutulur; sıralama isteğiyle **`X-Forum-Recent` istek başlığında** geçici olarak gelir (adres satırında değil: ters vekil ve CDN erişim günlükleri adresi sorgu dizesiyle düz yazar, başlık değerlerini varsayılan olarak yazmaz; sorgu dizesindeki `recent` 400 ile reddedilir), saklanmaz. Vekil yapılandırmasında bu başlığı günlüğe yazan bir `log_format` kullanılmamalıdır (README "Ters vekil arkasında") |
+
+**Arama metni:** "Hızlı bul"a yazılan metin (`GET /api/search?q=`) uygulamada saklanmaz: veritabanına ve denetim günlüğüne yazılmaz,
+yanıt önbelleklenmez; sonuçlar görünürlük kurallarına uyar (başkasının taslağı çıkmaz). Metin GET adresinde taşındığı için
+`LOG_LEVEL=info` sunucu günlüğünde ve ters vekil erişim günlüklerinde (istemci IP'siyle) görünebilir; vekilde `/api/` için sorgu dizesiz
+bir günlük biçimi önerilir (README "Ters vekil arkasında"). "Son açılanlar" ise adreste değil `X-Forum-Recent` **başlığında** gider.
 
 **Veri aktarımı (md. 8–9):** Kimlik verileri hiçbir üçüncü kişiye aktarılmaz. Yalnızca YZ rızası veren üyelerin içerik
 metni, kişisel verisi maskelenmiş ve takma adları K1, K2… ile değiştirilmiş olarak YZ sağlayıcısına (Anthropic, Claude API —
@@ -54,13 +63,13 @@ Kayıt formunda üç ayrı onay kutusu vardır ve her biri ayrı bir alana yazı
 | Alan | Niteliği | Zorunlu mu? | Verilmezse |
 |---|---|---|---|
 | `kvkkNoticeAccepted` | **Aydınlatma** (md. 10): yalnızca okunduğunun teyidi; rıza DEĞİLDİR | Evet (`false` → 400 `validation`) | Kayıt yapılamaz |
-| `politicalConsent` | **Açık rıza** (md. 6/3-a): siyasi görüş niteliğindeki oy verisinin işlenmesi | Hayır | Üye olunur, okunur, tartışılır; **oy kullanılamaz** (`isVoter` = doğrulanmış ∧ reşit ∧ siyasi rıza) |
+| `politicalConsent` | **Açık rıza** (md. 6/3-a): siyasi görüş niteliğindeki oy verisinin işlenmesi; ayrıca kişisel sıralama (§3.4) | Hayır | Üye olunur, okunur, tartışılır; **oy kullanılamaz** (`isVoter` = doğrulanmış ∧ reşit ∧ siyasi rıza); listeler kişiye göre sıralanmaz |
 | `aiConsent` | **Açık rıza** (md. 6/3-a + md. 9): içeriğin YZ analizine ve yurt dışına aktarılması | Hayır, **varsayılan kapalı** | İçerik YZ'ye gönderilmez; tüm işlevler çevrimdışı çalışır |
 
 Hizmet açık rızaya bağlanmaz (Kurul kararı 2021/389): rıza vermeyen üye forumu kullanmaya devam eder. Rızalar
 `PATCH /api/me/consents` ile her an geri alınabilir; geri alma ileriye etkilidir (önceki işlemenin hukuka uygunluğunu
-etkilemez). Siyasi rıza geri alındığında üye o andan itibaren oy kullanamaz; daha önce verilmiş oylar ve kapanmış sayımlar
-değişmez. Her rıza değişikliği `audit_log`'a (`identity.consents`, eski/yeni değer, zaman) yazılır.
+etkilemez). Siyasi rıza geri alındığında üye o andan itibaren oy kullanamaz ve listeler artık kişiye göre sıralanmaz; daha önce
+verilmiş oylar ve kapanmış sayımlar değişmez. Her rıza değişikliği `audit_log`'a (`identity.consents`, eski/yeni değer, zaman) yazılır.
 
 ### 3.1 Aydınlatma metni (taslak — md. 10)
 
@@ -76,6 +85,11 @@ değişmez. Her rıza değişikliği `audit_log`'a (`identity.consents`, eski/ye
 > **Hukuki sebepler:** Üyelik sözleşmesinin kurulması ve ifası (md. 5/2-c), hukuki yükümlülük (md. 5/2-ç), meşru menfaat
 > (md. 5/2-f). Siyasi görüşünüzü açığa çıkarabilecek oy verileriniz yalnızca ayrıca vereceğiniz açık rızaya dayanılarak
 > işlenir (md. 6/3-a).
+>
+> **Listelerin sıralanması:** Açık rızanız varsa yazdığınız, desteklediğiniz ve mesaj yazdığınız öneriler ile "Listem" kayıtlarınız,
+> listelerin size göre sıralanmasında da kullanılır (md. 6/3-a). Yalnız sıra değişir; hiçbir içerik gizlenmez, oyunuz, oy verip
+> vermediğiniz, itiraz imzalarınız ve azınlık raporlarınız kullanılmaz. Profil › Listem'deki "Kişisel sıralama" anahtarıyla bunu
+> istediğiniz an kapatabilirsiniz.
 >
 > **Saklama ve güvenlik:** Kimlik verileriniz alan bazında şifrelenmiş ayrı bir kasada tutulur; yalnızca yetkili kayıt
 > memuru, denetçi ve yönetici, amaç belirterek ve her erişim kayda geçirilerek görebilir. Üyeliğiniz sona erdiğinde ya da
@@ -97,7 +111,9 @@ değişmez. Her rıza değişikliği `audit_log`'a (`identity.consents`, eski/ye
 > kişisel veri olduğunu; bu verilerin yalnızca üye kimliğimle (gerçek kimliğimden ayrı olarak) saklanacağını, dağıtık
 > deftere yalnızca anahtarlı özetlerinin yazılacağını ve kararların sayımı ile görüş kümelerinin hesaplanması amacıyla
 > işleneceğini anladım. Bu rızayı vermesem de forumu kullanabileceğimi, ancak oy kullanamayacağımı; rızamı istediğim zaman
-> profil sayfamdan geri alabileceğimi biliyorum. **[ ] Açık rıza veriyorum.**
+> profil sayfamdan geri alabileceğimi biliyorum. Bu rıza, yazdığım, desteklediğim ve mesaj yazdığım önerilerin ile "Listem"
+> kayıtlarımın listelerin bana göre sıralanmasında kullanılmasını da kapsar (oylarım kullanılmaz); bunu Profil › Listem'den ayrıca
+> kapatabileceğimi biliyorum. **[ ] Açık rıza veriyorum.**
 
 ### 3.3 Açık rıza metni — yapay zekâ analizi ve yurt dışına aktarım
 
@@ -107,6 +123,21 @@ değişmez. Her rıza değişikliği `audit_log`'a (`identity.consents`, eski/ye
 > oy veremeyeceğini, bir kararı tek başına belirleyemeyeceğini ve tüm çıktılarının "Yapay zekâ ile üretildi" etiketi
 > taşıyacağını biliyorum. Bu rıza varsayılan olarak kapalıdır ve istediğim zaman geri alınabilir.
 > **[ ] Açık rıza veriyorum.**
+
+### 3.4 Kişisel sıralama: kapsam, izin ve kapatma yolları
+
+"Size göre" sıralama (Öneriler › Sırala) ve ana sayfadaki "Şu an açık" listesi, üyenin **kendi** etkinliğinden bir ilgi profili çıkarıp
+listeyi o profile göre dizer ([ALGORITMA.md §13](ALGORITMA.md); envanter #17).
+
+| Soru | Cevap |
+|---|---|
+| Hangi veri kullanılır? | Yalnız kişinin kendi yazarlık, destekleme (eş imza), mesaj yazma ve Listem kayıtları (son 180 gün; 30 gün yarı ömürle sönümlenir) ve cihazındaki "son açılanlar" (en çok 20 öneri kimliği). **Yeni veri toplanmaz.** |
+| Hangi veri HİÇ kullanılmaz? | **Oy içeriği, oy verip vermediği, seçmen listesi, itiraz imzası ve azınlık raporu**; ayrıca mesajların tutumu (`stance`) ve ileti destekleri. Sinyal sorgusu bu tablolara bakmaz; saf sıralama işlevinin girdi tipinde de oy alanı yoktur. Testle zorlanır: kaynak taraması ve "aynı etkileşimler + farklı oy (evet / hayır / oy yok) → birebir aynı sıra, puan ve gerekçe". Yani oy vermek ya da vermemek sıralamayı değiştirmez. |
+| Hukuki sebep | **Açık rıza (md. 6/3-a).** Öneri, destek ve mesaj kayıtları envanterde (#9) siyasi görüş niteliğinde sayıldığından, siyasi görüş rızası olmayan üyede hiçbir sinyal okunmaz. Rıza varken de üye bu amaca ayrıca "hayır" diyebilir. |
+| Sonuç | Yalnız sıra değişir. Hiçbir öneri gizlenmez ya da listeden düşmez; hiçbir hukuki ya da benzeri sonuç doğurmaz; oylama, uygunluk ve görünürlük kararlarına girmez. Her satırda kısa bir gerekçe görünür ("Enerji (Çevre) ile ilgilendiğiniz için", "Listenizde" …). |
+| Saklama | İlgi profili saklanmaz: her istekte hesaplanır. Sinyal toplamı yalnız süreç belleğinde en çok 60 sn önbelleklenir (§4.5). "Son açılanlar" yalnız kişinin cihazındadır (`localStorage`, üye başına, çıkışta silinir); sıralama isteğiyle `X-Forum-Recent` başlığında geçici gelir, sunucuda saklanmaz. |
+| **Nasıl kapatılır?** | (1) Profil › Listem › **"Kişisel sıralama"** anahtarı (`PATCH /api/me/consents` `{"personalRanking": false}`): hemen etkilidir, `identity.consents` denetim kaydı düşer, dökümde `consents.personalRanking` görünür. (2) Profil › Açık rızalar'dan **siyasi görüş rızasını geri almak**: kişisel sıra da durur (ayrıca oy kullanılamaz, §3). (3) Öneriler › Sırala'da başka bir sıralama seçmek: varsayılan "En yeni"dir; "Size göre" seçimi yalnız o cihazda hatırlanır ve başka bir sıralama seçilince unutulur. (4) Çıkış yapmak "son açılanlar"ı cihazdan siler. Kapalıyken ya da rıza yokken sıra varsayılandır ve gerekçe çipi yoktur; "son açılanlar" başlığı gelse bile okunmaz. |
+| Kapatınca Listem | Listem kayıtları kalır (hizmetin parçasıdır, md. 5/2-c), yalnız sahibine görünür; hesap silmede kripto-imhayla aynı işlemde silinir. |
 
 ## 4. Teknik tedbirler
 
@@ -261,6 +292,7 @@ Aşağıdakiler yalnız süreç belleğindedir; diske, yedeklere ya da deftere y
 | Kayıt | İçerik | Süre ve sınır | Kişisel veri |
 |---|---|---|---|
 | Giriş ve şifre teyidi sayaçları | Tanımlayıcı özeti (şifre teyidinde üye kimliğinin özeti) → başarısız deneme sayısı, pencere ve kilit zamanı | 15 dk pencere, 15 dk kilit (gerçek saat); en çok 10 000 tanımlayıcı; dolunca önce süresi dolmuşlar, sonra kilitsiz kayıtlardan en az denemesi olan atılır (kilitli kayıt ancak hepsi kilitliyse) | Tanımlayıcı düz metin değil özet olarak tutulur (e-posta için kör indeksten türetilir) |
+| Kişisel sıralama sinyal önbelleği | Üye kimliği → kendi yazarlık/destek/mesaj/Listem kayıtlarının hedef kimlikleri, zamanları ve kategorileri (veritabanındaki satırların kopyası) | En çok 60 sn geçerli (simüle VE gerçek saatle; hangisi önce dolarsa); süresi dolanlar her çağrıda ve sunucunun 30 sn'lik (gerçek saat) düzenli temizliğinde atılır — kayıt boşta da en geç ~90 sn'de bellekten çıkar; en çok 1000 üye, eskiler önce atılır; listeye ekleme/çıkarma kaydı, hesap silme, kayıt memuru reddi ve bayat başvuru imhası (kimlik servisinin `onErased` kancası, işlem tamamlanınca) kaydı hemen düşürür. Siyasi görüş rızası ya da "Kişisel sıralama" tercihi olmayan üyenin kaydı hiç oluşmaz | Yalnız kişinin kendi kayıtları; oy, itiraz ve azınlık raporu YOK |
 | `Idempotency-Key` yanıt deposu | Oturumlu kullanıcı + yöntem + yol + anahtar → ilk başarılı (2xx) yanıt | İlk istekten itibaren 10 dk (gerçek saat); 5000 kayıt, toplam 32 MB, kullanıcı başına 4 MB, yanıt başına 1 MB (bayt sınırında yalnız gövde bırakılır, "işlendi" bilgisi kalır) | **Yanıt gövdeleri** (ör. yazılan mesajın metni, `MessageView`) süreç belleğinde en çok 10 dakika durur. **İstek gövdeleri saklanmaz**; yalnız süreç başına rastgele anahtarlı bir HMAC özeti tutulur |
 
 `Idempotency-Key` kapsamı dışında kalanlar: anonim istekler, `/api/auth/*`, şifre içeren `/api/me/password`, çözülmüş kişisel veri
@@ -274,13 +306,13 @@ erişim kaydına (`pii_access_log`) yeniden yazılır.
 | md. 11 | Hak | Uygulamadaki karşılığı |
 |---|---|---|
 | a | İşlenip işlenmediğini öğrenme | `GET /api/me` ve `GET /api/me/export` |
-| b | İşlenmişse bilgi talep etme | `GET /api/me/export` → `exportOwnData`: hesap, **çözülmüş kimlik verisi (tam TCKN dahil)**, rızalar, oturumlar, kişisel verisine kimin hangi amaçla eriştiği (`piiAccessLog`), hesabıyla ilgili denetim olayları, kendi öneri/mesaj/sürüm/oy/itiraz/azınlık raporu/vekâlet/ilişki/bilirkişi kayıtları ve bildirimleri. Döküm de denetim günlüğüne yazılır (`identity.export`) |
+| b | İşlenmişse bilgi talep etme | `GET /api/me/export` → `exportOwnData`: hesap, **çözülmüş kimlik verisi (tam TCKN dahil)**, rızalar, oturumlar, kişisel verisine kimin hangi amaçla eriştiği (`piiAccessLog`), hesabıyla ilgili denetim olayları, kendi öneri/mesaj/sürüm/oy/itiraz/azınlık raporu/vekâlet/ilişki/bilirkişi kayıtları, Listem kayıtları (`savedItems`), "Kişisel sıralama" tercihi (`consents.personalRanking`) ve bildirimleri. Döküm de denetim günlüğüne yazılır (`identity.export`) |
 | c | Amacını ve amaca uygun kullanılıp kullanılmadığını öğrenme | Aydınlatma metni; dökümdeki `processing` bölümü; `piiAccessLog`'daki erişim amaçları |
 | ç | Aktarıldığı üçüncü kişileri bilme | Aydınlatma metni (yalnız YZ sağlayıcısı, yalnız rızayla); `aiConsent` durumu dökümde |
 | d | Eksik/yanlış verinin düzeltilmesi | **Düzeltme talebi akışı** (§5.1): `POST /api/me/corrections` (Profil → "Kimlik bilgilerimi düzelt") → kayıt memuru amaç belirterek inceler (`POST /api/registrar/corrections/:id/review`) ve belgeyle doğruladıktan sonra karar verir (`…/decide`). Takma ad ve şifre bu akışın konusu değildir; kişi bunları Profil sayfasından kendisi değiştirir: takma ad `PATCH /api/me/nickname` (mevcut şifreyle teyit, 30 günde bir, tekillik ve benzerlik denetimi), şifre `POST /api/me/password`. |
-| e | Silinmesi / yok edilmesi | `POST /api/me/erase` (`"SİL"` onayı + şifre) → `eraseSelf`: **kripto-imha**, oylamaya konmaz, anında. Ön koşullar (hesap açık, son yönetici değil, şifre, onay) her yan etkiden önce denetlenir; imha, denetim kaydı ve vekâletlerin geri alınması veritabanında tek işlemdedir (biri başarısız olursa hiçbiri uygulanmaz). Defter kayıtları da işlemin sonucuna bağlıdır: geri alınan vekâletlerin `DELEGATION` kayıtları işlem COMMIT olunca iletilir (işlem geri alınırsa hiç iletilmez), `MEMBER_ERASED` yalnız hesap gerçekten silindiyse ve işlemden sonra yazılır |
+| e | Silinmesi / yok edilmesi | `POST /api/me/erase` (`"SİL"` onayı + şifre) → `eraseSelf`: **kripto-imha**, oylamaya konmaz, anında. Ön koşullar (hesap açık, son yönetici değil, şifre, onay) her yan etkiden önce denetlenir; imha, denetim kaydı ve vekâletlerin geri alınması veritabanında tek işlemdedir (biri başarısız olursa hiçbiri uygulanmaz). Defter kayıtları da işlemin sonucuna bağlıdır: geri alınan vekâletlerin `DELEGATION` kayıtları işlem COMMIT olunca iletilir (işlem geri alınırsa hiç iletilmez), `MEMBER_ERASED` yalnız hesap gerçekten silindiyse ve işlemden sonra yazılır. Listem kayıtları (`saved_items`) da aynı işlemde silinir (§6) |
 | f | (d) ve (e)'nin aktarılan üçüncü kişilere bildirilmesi | Kimlik verisi aktarılmadığından gerekmez; YZ sağlayıcısına giden metin takma adsız ve maskelidir |
-| g | Yalnızca otomatik sistemlerle analiz sonucu aleyhine bir sonuca itiraz | YZ yalnızca danışmandır: durum değiştirmez, içerik gizlemez, oy vermez; her YZ çıktısı etiketlidir; moderasyon önerileri insana gider. YZ'nin içerik etiketi (yüksek güvenli olsa bile) bir öneriyi otomatik olarak kabul edilemez kılmaz: yalnızca uyarı ve bilirkişi incelemesi doğurur, karar insanındır (Madde 12 (2), 14 (1)) |
+| g | Yalnızca otomatik sistemlerle analiz sonucu aleyhine bir sonuca itiraz | YZ yalnızca danışmandır: durum değiştirmez, içerik gizlemez, oy vermez; her YZ çıktısı etiketlidir; moderasyon önerileri insana gider. YZ'nin içerik etiketi (yüksek güvenli olsa bile) bir öneriyi otomatik olarak kabul edilemez kılmaz: yalnızca uyarı ve bilirkişi incelemesi doğurur, karar insanındır (Madde 12 (2), 14 (1)). Kişisel sıralama da otomatik bir karar değildir: yalnız listenin sırasını değiştirir, hiçbir içeriği gizlemez ve hiçbir sonuç doğurmaz; açık rızaya dayanır ve her an kapatılabilir (§3.4) |
 | ğ | Zararın giderilmesini talep | Veri sorumlusunun başvuru kanalı (aydınlatma metninde) |
 
 Başvuru süresi: en geç 30 gün (md. 13). Döküm ve silme anında yerine getirildiği için bu süre fiilen sıfırdır.
@@ -309,6 +341,7 @@ verisinin silinmesini isteyebilir ve bu oylamaya konamaz. Çözüm, **kimlik** i
 | Defter | `MEMBER_ERASED {memberRef}` eklenir; eski kayıtlar değişmez ama zaten kişisel veri içermez |
 | Mesajlar, öneriler, sürümler | **Silinmez.** Yazar artık "Silinmiş üye #…" olarak görünür; içerik, kimseye bağlanamayan takma adlı bir kayıt olarak kalır |
 | Bilirkişi kaydı | Aynı işlemde kapatılır: durum `removed`, serbest metin yeterlilik beyanı (`credentials`) boşaltılır, uzmanlık alanları `[]`, yaptırım notu NULL; kabul edilmiş ya da davet bekleyen görevler yaptırım akışındaki gibi yedeğe devredilir; `EXPERT_IN` graf kenarları iptal edilir. Kayıt hiçbir bilirkişi listesinde görünmez, profilde "bilirkişi" yazmaz, yeniden onaylanamaz ya da yaptırıma konu olamaz (409 `invalid_state`). Verilmiş raporlar kamusal kayıt olarak kalır, yazarı "Silinmiş üye #…" görünür. Bu kuraldan önce silinmiş hesapların kayıtları açılışta kapatılır, asılı görevleri zamanlayıcının ilk turunda yedeğe devredilir |
+| Listem | "Listeme ekle" kayıtları (`saved_items`) kripto-imhayla **aynı işlemde** silinir (kişisel tercih kaydıdır; tartışma kaydı değildir); işlem tamamlanınca kişisel sıralamanın bellek önbelleği de düşürülür (`onErased` kancası; kayıt memuru reddi ve bayat başvuru imhasında da) |
 | Graf ilişkileri | Kapanmış hesap yeni takip, kefalet ya da yakınlık beyanının hedefi olamaz (409 `invalid_state`); eski kenarlar geri alınabilir |
 | Oylar ve sayımlar | Kapanmış sayımlar değişmez (silme geriye etkili değildir); `ballots` satırları yalnızca artık kimliğe bağlanamayan üye kimliğini taşır |
 | Denetim ve erişim günlükleri | Saklanır (silme kayıtlarının en az 3 yıl saklanması yükümlülüğü); kişisel veri içermez |
@@ -343,6 +376,7 @@ süreyi yeniden başlatır.
 | Hesap başına giriş kilidi | `server/src/identity/login-throttle.ts` |
 | Yeniden gönderimde çift kayıt önleme (`Idempotency-Key`) | `server/src/http/idempotency.ts` |
 | Defter giden kutusu (sert kapanışta kayıpsızlık) | `server/src/ledger/outbox.ts`, `server/src/db/migrations.ts` (sürüm 2) |
+| Listem ve kişisel sıralama (sinyal sorgusu yalnız yazarlık/Listem/destek/mesaj; oy verisi yok; md. 6/3-a izin denetimi; son açılanlar başlıkta), önerili arama | `server/src/forum/discovery.ts`, `server/src/http/routes/discovery.ts` (`X-Forum-Recent`), `shared/src/recommend.ts`, `shared/src/search.ts`, `server/src/db/migrations.ts` (sürüm 3 ve 4); imha kancası `server/src/identity/index.ts` (`onErased`) |
 | Takma ad: anahtar/iskelet (`nicknameKey`, `nicknameSkeleton`), herkese açık katılım günü (`publicJoinDay`) | `shared/src/privacy.ts` |
 | Takma ad: benzerlik denetimi, anahtar göçü, bildirimlerde takma adın güncellenmesi/anonimleştirilmesi | `server/src/identity/nickname.ts`; arayüz: Profil → "Takma ad değiştir" |
 | Düzeltme talebi akışı (md. 11/1-d) | `server/src/identity/corrections.ts`; arayüz: Profil → "Kimlik bilgilerimi düzelt", Kayıt memuru → "Düzeltme talepleri" |

@@ -27,7 +27,8 @@
   `Idempotency-Key` saklama süresi **gerçek saatledir**; saatlik YZ analiz kotası (429 `rate_limited`) simüle saatle sayılır, bu yüzden
   onun `Retry-After`'ı simüle saniyedir (`TIME_SCALE=60`'ta gerçek bekleme 60 kat kısadır).
 - **CORS kökenleri:** `http://localhost` (Capacitor Android), `capacitor://localhost`, `https://localhost`, `http://localhost:5173`.
-  İzin verilen istek başlıkları: `Authorization`, `Content-Type`, `Accept`, `Idempotency-Key`; istemciye açılan yanıt başlıkları:
+  İzin verilen istek başlıkları: `Authorization`, `Content-Type`, `Accept`, `Idempotency-Key`, `X-Forum-Recent` (yalnız kişisel sıralamanın
+  geçici girdisi; [aşağıda](#kişisel-sıralama-size-göre)); istemciye açılan yanıt başlıkları:
   `Retry-After`, `X-RateLimit-*`, `Idempotent-Replayed`.
 - **Hız sınırı:** genel 300 istek/dk/IP; `auth/*` 20 istek/dk (ortam değişkenleri `RATE_LIMIT_GLOBAL`, `RATE_LIMIT_AUTH`;
   `0` → o sınırlayıcı kapalı, yalnız test/uçtan uca ortam için). Şifre teyidi isteyen ya da kimlik verisi soran hesap uçları
@@ -90,7 +91,7 @@ kısa), `foreign_question` / `duplicate_answer` (raporda bu öneriye ait olmayan
 
 | Durum | Kod | Ne zaman |
 |---|---|---|
-| 400 | `validation` | Gövde, sorgu ya da yol doğrulaması başarısız; `details` = `{ "alan.yolu": "ileti" }` |
+| 400 | `validation` | Gövde, sorgu ya da yol doğrulaması başarısız; `details` = `{ "alan.yolu": "ileti" }`. Keşif uçları: `GET /api/search` için `details.q` / `details.limit`, `/api/me/saved/:type/:id` için `details.type` (yalnız `proposal` \| `topic`), `X-Forum-Recent` başlığı (en çok 20 UUID) ya da sorgu dizesindeki `recent` için `details.recent` |
 | 400 | `bad_request` | Genel geçersiz istek |
 | 400 | `wrong_password` | Şifre teyidi yanlış (`/api/me/erase`, `/api/me/nickname`, `/api/me/password`) |
 | 400 | `minority_question_unanswered` | Azınlık güvenceli soru yanıtsız (`details.questionIds`) |
@@ -117,6 +118,7 @@ kısa), `foreign_question` / `duplicate_answer` (raporda bu öneriye ait olmayan
 | 422 | `objection_budget` | 30 günde 2 itiraz bütçesi doldu (`details.nextAvailableAt`) |
 | 422 | `deletion_limit`, `suggestion_limit` | Açık silme talebi (3) / günlük talep (5) / açık metin önerisi sınırı |
 | 422 | `nickname_change_limit` | Takma ad 30 günde bir değişir (`details.nextAllowedAt`) |
+| 422 | `saved_limit` | Listem dolu (en çok 500 kayıt; `details.max`): yenisini eklemek için listeden biri çıkarılmalı (`PUT /api/me/saved/:type/:id`) |
 | 422 | `own_proposal`, `own_message`, `invalid_kind`, `invalid_target`, `delegate_not_verified`, `bylaw_patch_invalid` | Kendi önerisini/mesajını desteklemek vb., geçersiz tür ya da hedef, doğrulanmamış delege, geçersiz yönetmelik yaması |
 | 422 | `ledger_pii`, `ledger_bad_*`, `ledger_rejected`, `ledger_too_large` | Defter işlemi reddedildi (kişisel veri anahtarı, geçersiz yük) |
 | 422 | `idempotency_key_reused` | Aynı anahtar aynı uçta farklı istekle kullanıldı |
@@ -197,7 +199,7 @@ geçirirdi) engellemek. Giriş kilidinden bağımsızdır: biri diğerini kilitl
 |---|---|---|---|---|
 | GET | `/api/health` | — | | `{ok:true}` |
 | GET | `/api/system` | — | | `SystemInfo` |
-| GET | `/api/dashboard` | — | | `Dashboard` |
+| GET | `/api/dashboard` | — | İsteğe bağlı başlık `X-Forum-Recent` (son açılan en çok 20 öneri kimliği, virgülle; geçici, saklanmaz). Sorgu dizesinde `recent` → 400 `validation`, `details.recent` | `Dashboard`. `open` (Şu an açık, en çok 10): varsayılan evre bitişi en yakın olanlar; oturumlu, kişisel sıralamaya izinli (siyasi görüş rızası + "Kişisel sıralama" tercihi) ve ilgi profili olan görüntüleyende TÜM açık öneriler [kişisel sıraya](#kişisel-sıralama-size-göre) dizilip ilk 10'u gelir (`openPersonalized: true`, her satırda `score` ve `reason`; `sort=sana-gore` listesinin açık bölümüyle aynı sıra). `tasks` (Sizi bekleyenler) kişiselleştirmeden etkilenmez |
 
 ## Kimlik ve hesap
 
@@ -207,7 +209,7 @@ geçirirdi) engellemek. Giriş kilidinden bağımsızdır: biri diğerini kilitl
 | POST | `/api/auth/login` | — | `LoginRequest` | `AuthResponse` (hatalı: 401 `invalid_credentials`; hesap başına kilit: 429 `login_locked` + `Retry-After`) |
 | POST | `/api/auth/logout` | U | | `OkResponse` |
 | GET | `/api/me` | U | | `Me` |
-| PATCH | `/api/me/consents` | U | `ConsentsRequest` | `Me` |
+| PATCH | `/api/me/consents` | U | `ConsentsRequest` (`politicalConsent`, `aiConsent`, `personalRanking`: "Kişisel sıralama" tercihi — rıza değil; yalnız siyasi görüş rızasıyla birlikte etkilidir) | `Me` (`personalRanking` dahil). Değişiklik `identity.consents` denetim kaydıyla aynı işlemde |
 | POST | `/api/me/password` | U | `ChangePasswordRequest` | `OkResponse` (yanlış eski şifre 400 `wrong_password`; şifre teyidi kilidi 429 `login_locked`) |
 | PATCH | `/api/me/nickname` | U | `ChangeNicknameRequest` (yeni takma ad + mevcut şifre) | `Me` (yanlış şifre 400 `wrong_password`; şifre teyidi kilidi 429 `login_locked`; 409 `duplicate_nickname` / `similar_nickname`; 30 günde bir → 422 `nickname_change_limit`, `details.nextAllowedAt`) |
 | GET | `/api/me/export` | U | | KVKK döküm JSON (kendi verisi, şifresi çözülmüş) |
@@ -223,6 +225,9 @@ geçirirdi) engellemek. Giriş kilidinden bağımsızdır: biri diğerini kilitl
 | POST | `/api/me/notifications/read` | U | `MarkReadRequest` | `OkResponse` |
 | GET | `/api/me/tasks` | U | | `DashboardTask[]` |
 | GET | `/api/me/assignments` | E | | `MyAssignment[]` |
+| GET | `/api/me/saved` | U | | `SavedList` (Listem: yalnız sahibine; en son eklenen önce; artık görülemeyen hedefler listelenmez) |
+| PUT | `/api/me/saved/:type/:id` | U | `type` = `proposal` \| `topic` | `SavedState` (listeye ekler; idempotent: yinelenen istek `savedAt`'i değiştirmez. Hedef yok ya da görüntüleyene görünmüyor (başkasının taslağı) → 404 `not_found`; liste dolu → 422 `saved_limit`) |
+| DELETE | `/api/me/saved/:type/:id` | U | `type` = `proposal` \| `topic` | `SavedState` (`saved: false`; idempotent, hedefin varlığını belli etmez) |
 
 ## Kayıt memuru
 
@@ -302,10 +307,10 @@ günlüğünde (`graph.relation_revoked`) görünür. Kefaletin geri alınması 
 
 | Yöntem | Yol | Yetki | Gövde | Yanıt |
 |---|---|---|---|---|
-| GET | `/api/proposals` | — | `ProposalListQuery` (sorgu dizesi) | `ProposalSummary[]` |
+| GET | `/api/proposals` | — | `ProposalListQuery` (sorgu dizesi); `sort=sana-gore` ile isteğe bağlı başlık `X-Forum-Recent` | `ProposalSummary[]`; `sort=sana-gore` ile `PersonalizedProposalList` ([kişisel sıra](#kişisel-sıralama-size-göre): aynı süzgeç ve `limit` ile AYNI küme, yalnız sıra değişir; `X-Forum-Recent` yalnız bu sıralamayla kabul edilir, aksi halde 400 `validation`, `details.recent`; sorgu dizesinde `recent` her zaman 400) |
 | POST | `/api/proposals/precheck` | V | `CreateProposalRequest` | `PrecheckResponse` (yan etkisiz) |
 | POST | `/api/proposals` | V | `CreateProposalRequest` | `ProposalDetail` (alt konu ve düzenleme teklifinde `parentTopicId` eksikse 400 `validation`, `details.parentTopicId`; verilmiş ama konu yoksa 404 `not_found`) |
-| GET | `/api/proposals/:id` | — | | `ProposalDetail` (oylama sürerken sonuç yok, yalnız katılım) |
+| GET | `/api/proposals/:id` | — | | `ProposalDetail` (oylama sürerken sonuç yok, yalnız katılım; oturumluysa `saved`: görüntüleyenin Listem'inde mi) |
 | PATCH | `/api/proposals/:id` | V (yazar) | `UpdateProposalRequest` | `ProposalDetail` (yeni sürüm) |
 | POST | `/api/proposals/:id/submit` | V (yazar) | | `ProposalDetail` |
 | POST | `/api/proposals/:id/sponsor` | V | | `ProposalDetail` |
@@ -325,12 +330,103 @@ günlüğünde (`graph.relation_revoked`) görünür. Kefaletin geri alınması 
 | POST | `/api/proposals/:id/ai/bridging` | V | | `AiAnalysisInfo` |
 | POST | `/api/ai/analyses/:id/approve` | V (yazar) | `AiApproveRequest` | `AiAnalysisInfo` |
 
+### Kişisel sıralama ("Size göre")
+
+`GET /api/proposals?sort=sana-gore` ve `GET /api/dashboard` (Şu an açık) önerileri görüntüleyenin **kendi** etkileşimlerine göre sıralar.
+Algoritma `shared/src/recommend.ts`'tedir (saf, belirlenimci; ayrıntı [ALGORITMA.md](ALGORITMA.md) §13 "Kişisel sıralama"):
+
+- **İzin (KVKK md. 6/3-a):** yalnız siyasi görüş rızası olan ve "Kişisel sıralama" tercihi açık (`Me.personalRanking`, varsayılan açık;
+  `PATCH /api/me/consents`) üyede. İzin yoksa hiçbir sinyal okunmaz; son açılanlar gelse bile `personalized: false`.
+- **Sinyaller (yalnız son 180 gün, yarı ömür 30 gün):** yazarlık 3, listeye ekleme 3, destekleme 2, mesaj yazma 2 (öneri/konu başına
+  toplam en çok 3), açma 0,5. **Oy içeriği, oy verip vermediği, itiraz imzası ve azınlık raporu hiç kullanılmaz** (oy gizliliği; siyasi
+  görüş KVKK md. 6). Açma sinyali sunucuda saklanmaz: istemci son açtığı en çok 20 öneri kimliğini yalnız kendi cihazında tutar ve
+  **`X-Forum-Recent` istek başlığıyla** gönderir (virgülle ayrılmış UUID; fazlası ya da UUID olmayan öğe → 400 `validation`,
+  `details.recent`). Adres satırında gönderilmez — ters vekil ve CDN erişim günlükleri sorgu dizesini düz yazar —; sorgu dizesindeki
+  `recent` 400 ile reddedilir (eski bir istemci yine de gönderirse sunucu günlüğüne `[gizli]` yazılır). Başlık CORS'ta izinlidir.
+- **Puan** = w_i · kosinüs(ilgi profili, öneri kategorileri; üst kategoriler yarı ağırlıkla) + w_a · aciliyet (evre bitişine yakınlık) +
+  w_y · yenilik. Genel 0,6 / 0,2 / 0,2; süren (açık) öneriler 0,3 / 0,3 / 0,4. Görüntüleyenin zaten yazdığı, desteklediği ya da mesaj
+  yazdığı önerinin ilgi terimi 0'dır. Kişisel listede önce açık öneriler (panoyla aynı sıra), sonra diğerleri gelir. Her grupta her 4.
+  konuma, kişinin en çok ilgilendiği 2 kategori ve bunların üst kategorileri dışından en yüksek puanlı öneri gelir (çeşitlilik).
+- **Hiçbir öneri gizlenmez ya da düşmez**; profil boşsa (soğuk başlangıç), izin yoksa ya da oturum yoksa varsayılan sıra döner:
+  `personalized: false`, `score` ve `reason` `null`.
+- Her satırda `reason` (`RankReason`): `{kind, text, categories}`; öncelik sırasıyla `kind` = `saved` ("Listenizde"), `diverse`
+  ("Farklı bir alandan"), `interest` (ör. "Enerji (Çevre) ile ilgilendiğiniz için"; `categories` eşleşen kategori IRI'leri, üst-alt
+  çiftinde önce alt), `urgent` ("Süresi yaklaşıyor"), `engaged` ("Katıldığınız öneri"), `new` ("Yeni"), `general` ("Genel sıralama").
+- Maliyet: kullanıcı başına bir izin okuması + tek toplama sorgusu + aritmetik; sinyaller kullanıcı başına en çok 60 sn (simüle ve
+  gerçek saat) önbelleklenir, 30 sn'de bir süresi dolanlar atılır; listeye ekleme/çıkarma, hesap silme, kayıt memuru reddi ve bayat
+  başvuru imhası önbelleği hemen düşürür.
+- **Hiçbir şey saklanmaz:** `X-Forum-Recent` yalnız o isteğin hesabında kullanılır; sunucu ne veritabanına ne günlüğe yazar. Eski bir
+  istemci yine de adres satırında gönderirse istek 400 ile reddedilir.
+
+```http
+GET /api/proposals?sort=sana-gore
+X-Forum-Recent: 76f5fd43-1031-4803-a3f8-453127b5fb20,2b622e09-3398-4e2d-a2fe-5e232c06a4c4
+
+{ "personalized": true,
+  "items": [
+    { "id": "…", "seq": 31, "status": "voting", "title": "…", /* ProposalSummary alanları */
+      "score": 0.762053,
+      "reason": { "kind": "interest", "text": "Parklar ve yeşil alanlar (Çevre) ile ilgilendiğiniz için",
+                  "categories": ["https://forumsistemi.org/ont#YesilAlan"] } },
+    { "id": "…", "seq": 20, "status": "enacted", "title": "…", "score": 0.321724,
+      "reason": { "kind": "diverse", "text": "Farklı bir alandan", "categories": [] } } ] }
+```
+
+Kişisel sıra yoksa (oturum yok, izin yok, profil boş) aynı biçim döner: `{ "personalized": false, "items": [ { …, "score": null, "reason": null } ] }`
+ve `items` varsayılan listeyle birebir aynı sıradadır.
+
+## Önerili arama
+
+| Yöntem | Yol | Yetki | Gövde | Yanıt |
+|---|---|---|---|---|
+| GET | `/api/search` | — | `?q=&limit=` (`SearchQuery`: `q` en çok 100 karakter, `limit` 1–8, varsayılan 8) | `SearchResponse` (öneri ve konu başlıkları; başkasının taslağı hiç görünmez, oturumlu yazar kendi taslağını bulur) |
+
+- **Eşleşme:** Türkçe büyük/küçük harf ve aksan duyarsız (`normalizeSearch`: "İ/ı/i", "ş~s", "ğ~g", "ü~u", "ö~o", "ç~c"). 2 karakterden
+  kısa metin boş sonuç verir; numara (`#K12`, `K-12`, `#K-12`, `#T3`, `T-3`, `#12`) hemen aranır. Açık numara yalnız numarayla eşleşir;
+  yalın rakamlar ("2026") hem numara hem başlık olarak aranır.
+- **Sıra** (`compareSearchHits`): numara tam eşleşme (`ref`) > başlık yazılanla başlıyor (`prefix`) > her kelime bir kelimenin başında
+  (`word`) > içinde geçiyor (`contains`); eşitlikte açık/etkin olanlar (taslak ya da işleyen evre; yürürlükteki konu), sonra yeniler önce.
+- `items` en çok `limit` sonuçtur (türler karışık; istemci "Konular" ve "Öneriler" diye gruplar). `total.topics` kesilmeden önceki
+  konu eşleşmesi sayısıdır; `total.proposals` **Öneriler sayfasının aynı terimle göstereceği öneri sayısıdır** (`proposalMatchesQuery`:
+  numara, başlıkta sırasız kelimeler ya da yazar adı) — 'Tüm önerilerde ara (N öneri)' seçeneğindeki N ile açılan liste aynıdır.
+- Uç herkese açıktır ve genel IP hız sınırına tabidir (ayrı bir sınırı yoktur). İstemci 150 ms bekler ve eski isteği iptal eder.
+  Arama metni uygulama tarafından saklanmaz (veritabanına ve denetim günlüğüne yazılmaz); ancak GET adresinde taşındığı için
+  `LOG_LEVEL=info` sunucu günlüğüne ve ters vekil erişim günlüklerine düşebilir (README "Erişim günlüğü ve kişisel veri"; [KVKK §2](KVKK.md)).
+
+```http
+GET /api/search?q=ULASIM&limit=3
+
+{ "q": "ULASIM",
+  "items": [
+    { "type": "topic", "id": "…", "seq": 1, "title": "Kent İçi Ulaşımın Yeniden Düzenlenmesi",
+      "match": "word", "open": true, "createdAt": 1788253246620, "status": "active" },
+    { "type": "proposal", "id": "…", "seq": 21, "title": "Kent İçi Ulaşım tartışmasındaki hakaret içeren mesajın gizlenmesi",
+      "match": "word", "open": false, "createdAt": 1788253246620, "kind": "deletion", "status": "enacted" } ],
+  "total": { "proposals": 2, "topics": 1 } }
+```
+
+## Listem (kayıtlı öneri ve konular)
+
+Uçlar [Kimlik ve hesap](#kimlik-ve-hesap) tablosundadır (`GET /api/me/saved`, `PUT` / `DELETE /api/me/saved/:type/:id`). Kurallar:
+
+- **Yalnız sahibine görünür.** Başka bir üyenin listesini okuyan uç yoktur; her uç oturum ister (`U`).
+- **Tür beyaz listesi:** `:type` yalnız `proposal` ya da `topic`; başka değer 400 `validation` (`details.type`).
+- **İdempotenttir.** Yinelenen `PUT` kaydı çoğaltmaz ve ilk `savedAt`'i korur; `DELETE` listede olmayan kayıtta da 200 döner ve hedefin var
+  olup olmadığını belli etmez.
+- **Görünürlük:** hedef yoksa ya da görüntüleyene görünmüyorsa (başkasının taslağı) `PUT` 404 `not_found` verir ("yok" ile aynı yanıt).
+  Sonradan görülemez olan kayıtlar `GET` listesinde yer almaz.
+- **Sınır:** en çok 500 kayıt; dolu listeye ekleme 422 `saved_limit` (`details.max`).
+- **Sıra:** `SavedList.items` en son eklenen önce; öğe `{type: "proposal", id, savedAt, proposal: ProposalSummary}` ya da
+  `{type: "topic", id, savedAt, topic: TopicSummary}`.
+- **KVKK:** denetim günlüğüne yazılmaz (kişisel tercih); `GET /api/me/export` dökümünde `savedItems`; hesap silmede kripto-imhayla
+  aynı işlemde silinir ([KVKK #17](KVKK.md)). Ekleme ve çıkarma kişisel sıralamanın önbelleğini hemen düşürür ("Listenizde" gerekçesi).
+
 ## Konular ve tartışma
 
 | Yöntem | Yol | Yetki | Gövde | Yanıt |
 |---|---|---|---|---|
 | GET | `/api/topics` | — | | `TopicSummary[]` (düz liste, `parentId` ile ağaç) |
-| GET | `/api/topics/:id` | — | | `TopicDetail` |
+| GET | `/api/topics/:id` | — | | `TopicDetail` (oturumluysa `saved`: görüntüleyenin Listem'inde mi) |
 | GET | `/api/threads/:type/:id` | — | `type` = `topic` \| `proposal` | `ThreadResponse` |
 | POST | `/api/threads/:type/:id` | V | `PostMessageRequest` | `MessageView` (kişisel veri → 422 `pii_detected`, `details.pii`) |
 | POST | `/api/messages/precheck` | V | `MessagePrecheckRequest` | `MessagePrecheckResponse` |

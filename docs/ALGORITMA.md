@@ -335,3 +335,101 @@ Bu maddeler karar fonksiyonunun sonucunu değiştirmez; nötr küme kuralının 
 ### Test döngüsü eklemeleri
 
 23. **Bağımsız yeniden sayımın yapısal denetimleri (§11, `verifyTally`).** Meşru sunucu pusulası olan seçmeni her zaman `via = "direct"`, yalnız pusulası olmayan uygun seçmeni `via = "delegated"` açıklar ve açıklamaları uygun seçmen listesinden üretir (§5.1: doğrudan oy her zaman önceliklidir). Bu yüzden `verifyTally` iki durumu, bülten kendi içinde tutarlı olsa bile (`revealHash`, toplamlar, `inputsHash`) uyuşmazlık sayar ve `ok = false` döner: (a) taahhüt haritası verildiğinde, defterde `VOTE_COMMIT` taahhüdü olan bir pusulanın `via ≠ "direct"` açıklanması ("Defterde taahhüdü olan pusula vekâletle açıklanmış"); (b) taahhüt haritası olsun olmasın, tekil açıklama sayısının `TALLY.eligibleCount`'u (|E|) aşması ("Açıklanan oy sayısı … uygun seçmen sayısını … aşıyor"). Bu denetimler olmasaydı sahte bir bülten, taahhütlü bir oyu yalnız `via` etiketini değiştirerek seçim karşılaştırmasının dışına çıkarabilir ya da |E|'yi aşan hayali vekâlet pusulaları ekleyebilirdi. Sunucu, tohum ve tarayıcıdaki doğrulama aynı işlevi kullanır.
+
+## 13. Kişisel sıralama ve önerili arama (karar dışı)
+
+Bu bölüm **hiçbir kararı, sayımı, uygunluğu ya da görünürlüğü etkilemez**: yalnız listelerin gösterim sırasını ve aramayı tanımlar.
+Kod: `shared/src/recommend.ts` ve `shared/src/search.ts` (saf, belirlenimci; birim testleri `server/test/shared-recommend.test.ts`,
+`server/test/shared-search.test.ts`), sinyal toplama `server/src/forum/discovery.ts`.
+
+### 13.1 Kişisel sıralama ("Size göre", ana sayfa "Şu an açık")
+
+- **İzin:** kişisel sıra yalnız siyasi görüş açık rızası olan (KVKK md. 6/3-a; öneri, destek ve mesaj kayıtları uygulamanın envanterinde
+  özel nitelikli veridir) ve Profil › Listem'deki "Kişisel sıralama" tercihini kapatmamış (`users.personal_ranking`, varsayılan açık)
+  üyede yapılır. İzin yoksa hiçbir sinyal okunmaz, son açılanlar tek başına gelse bile sıra varsayılandır (`personalized: false`).
+- **Girdi (yalnız bunlar):** görüntüleyenin son 180 gündeki yazarlığı (3), listeye eklemesi (3), desteklemesi/eş imzası (2), mesaj
+  yazması (2; bir öneri ya da konudaki mesajların toplam katkısı en çok 3 — tutum/`stance` okunmaz) ve istemcinin YALNIZ kendi cihazında
+  tuttuğu son açılan en çok 20 öneri (0,5; `X-Forum-Recent` istek başlığıyla gelir — adres satırında değil —, sunucuda saklanmaz, sönüm
+  uygulanmaz). **Oy içeriği, oy verip vermediği, seçmen listesi, itiraz imzası ve azınlık raporu girdi tipinde hiç yoktur** (oy
+  gizliliği; siyasi görüş KVKK md. 6). Aynı etkileşimleri olup farklı oy veren iki üyenin sırası, puanı ve gerekçesi birebir aynıdır
+  (`server/test/forum/discovery.test.ts`).
+- **Zaman sönümü:** katkı = ağırlık · 0,5^(yaş / 30 gün); 180 günden eski sinyal katkı vermez.
+- **İlgi profili:** her sinyal hedefinin kategori vektörüne eklenir — açık kategori 1, ontolojideki üst kategori yarısı (her üst düzey
+  bir öncekinin yarısı), vektör birim uzunluğa ölçeklenir. Toplam L2 normalize edilir. Profil boşsa **soğuk başlangıç**: varsayılan sıra
+  aynen döner (`personalized: false`).
+- **Puan** = w_i · kosinüs(profil, öneri vektörü) + w_a · aciliyet + w_y · yenilik. Genel ağırlıklar **0,6 / 0,2 / 0,2**; süren (açık)
+  öneriler — ana sayfa "Şu an açık" ve kişisel listenin açık bölümü, yani "şimdi harekete geç" listesi — **0,3 / 0,3 / 0,4** ile
+  sıralanır (ağırlıklar ölçümle seçildi, §13.3; ilk tasarım 0,7 / 0,2 / 0,1 idi). Aciliyet: işleyen evrede `1 − min(1, kalan / 7 gün)`,
+  taslak/kapanmış/süresi geçmişte 0. Yenilik: `0,5^(yaş / 14 gün)`. Puan 6 basamağa yuvarlanır; eşitlikte varsayılan sıra korunur.
+- **Katılınmış öneri:** görüntüleyenin zaten yazdığı, desteklediği ya da mesaj yazdığı önerinin ilgi terimi **0** sayılır (aciliyet ve
+  yenilikle sıralanır, çeşitlilik konumuna seçilmez). Profil bu önerilerden kurulduğu için kendi kategorileriyle en yüksek kosinüsü alır
+  ve kişiye zaten bildiğini listenin başında gösterirdi (kendini besleyen döngü). Profil yine bu önerilerden kurulur. Listeye ekleme ve
+  açma katılım sayılmaz.
+- **Çeşitlilik:** her grupta 1 tabanlı her 4. konuma, profilin en güçlü 2 kategorisi **ve bunların üst kategorileri** DIŞINDAN en yüksek
+  puanlı, kategorisi olan, katılınmamış öneri yerleşir ("Enerji" güçlüyse "Çevre" altındaki kardeşler de içeride sayılır); yoksa konum
+  olağan sırayla dolar. Arayüz bunu "düzenli aralıklarla" diye anlatır (süzülmüş sekmede konum değişebilir).
+- **Gruplar ve tutarlılık:** kişisel listede önce süren (açık) öneriler — panodaki "Şu an açık" ile **aynı girdi sırası** (evre bitişi
+  en yakın önce) ve aynı ağırlıklarla, dolayısıyla birebir aynı sırada —, sonra diğerleri (varsayılan sıra, genel ağırlıklar) gelir.
+  Ana sayfadaki "Tümü (size göre)" bağlantısının açtığı Açık sekmesinin ilk 5'i ana sayfanın ilk 5'idir.
+- **Hiçbir öneri gizlenmez ya da düşmez:** çıktı girdi kümesinin permütasyonudur. Öneriler sayfasında küme varsayılan listeyle aynıdır
+  (aynı süzgeç ve sınır); ana sayfada tüm açık öneriler sıralanıp ilk 10'u gösterilir (varsayılan 10'luk pencerenin kişisel karşılığı),
+  "Sizi bekleyenler" ayrı kalır ve kişiselleştirmeden etkilenmez.
+- **Gerekçe** (öncelik sırasıyla): "Listenizde" → "Farklı bir alandan" (çeşitlilik konumu) → "… ile ilgilendiğiniz için" (kosinüs ≥ 0,2;
+  en çok iki kategori; biri ötekinin üst kategorisiyse "Alt (Üst)" — ör. "Enerji (Çevre) ile ilgilendiğiniz için" —, ilgisiz iki
+  kategori "A ve B"; etiketlerden biri virgül ya da "ve" içeriyorsa tırnaklı: "‘Kültür, sanat ve spor’ ve ‘Ulaşım’") → "Süresi
+  yaklaşıyor" (≤ 2 gün) → "Katıldığınız öneri" → "Yeni" (≤ 7 gün) → "Genel sıralama" (çip gösterilmez).
+- **Maliyet:** kullanıcı başına bir izin okuması (birincil anahtar) + tek toplama sorgusu (indeksli) + O(sinyal + aday) aritmetik;
+  sinyaller kullanıcı başına en çok 60 sn (hem simüle hem gerçek saatle) önbelleklenir; süresi dolanlar her çağrıda ve sunucunun 30
+  sn'lik temizliğinde atılır (kayıt en geç ~90 sn'de bellekten çıkar). Listeye ekleme/çıkarma, hesap silme, başvuru reddi ve bayat
+  başvuru imhası kaydı hemen düşürür. Model ya da dış hizmet yoktur. Ölçülen süre: kullanıcı başına p50 0,08 ms, p95 0,11 ms (34 aday);
+  yapay 1000 aday × 500 sinyal 1,5 ms.
+
+### 13.2 Önerili arama ("Hızlı bul", `GET /api/search`)
+
+- **Normalleştirme** (`normalizeSearch`): tr-TR küçük harf → NFD → birleşen işaretler atılır → "ı" → "i". İ/ı/i, ş/s, ğ/g, ü/u, ö/o, ç/c
+  aynı sayılır. İstemcinin yerel süzgeçleri de aynı işlevi kullanır.
+- **Numara:** `#K12`, `K-12`, `k 12` → öneri 12; `#T3`, `T-3` → konu 3; `#12` → her ikisi; yalın rakamlar ("2026") numara ve başlık
+  olarak aranır. Numara 2 karakter beklemeden aranır; diğer metinler en az 2 anlamlı karakter ister.
+- **Düzey:** numara tam eşleşme > başlık yazılanla başlıyor > her kelime bir kelimenin başında > içinde geçiyor. Eşitlikte açık/etkin
+  olan (taslak ya da işleyen evre; yürürlükteki konu), sonra yeni (oluşturma anı, numara) önce; kalan eşitlikte konu, sonra kimlik.
+- **Görünürlük:** başkasının taslağı hiçbir yoldan (numara dahil) çıkmaz; en çok 8 sonuç.
+- **`total.proposals` = Öneriler sayfasının aynı terimle göstereceği öneri sayısı** (`proposalMatchesQuery`: numara; başlıkta sırasız
+  kelimeler — `matchTitle` —; ya da yazarın takma adı). Öneriler sayfasının arama kutusu aynı işlevle süzer: 'Tüm önerilerde ara (N
+  öneri)' seçeneğindeki N ile açılan liste aynıdır (çok kelimeli aramada da).
+- **Enter:** seçenek seçilmeden Enter yalnız yazılan metnin GÜNCEL sonuçlarıyla karar verir (`submitDecision`): numara yazıldıysa ve
+  ilk sonuç aynı numara ve türün tam eşleşmesiyse ona, değilse 'Tüm önerilerde ara'ya gider; numaranın yanıtı henüz gelmediyse beklenir
+  ("#K1" sonuçları ekrandayken "2" yazıp hemen Enter → #K-12).
+
+### 13.3 Ölçüm (ağırlıkların gerekçesi)
+
+Geçici bir demo tohumu (34 öneri, 7'si etkin; 35 üyenin sinyali var) üzerinde, kullanıcı kümelemeli önyüklemeyle (%95 GA) dört protokol
+ölçüldü (betik deponun dışında; protokoller aşağıda):
+
+- **P1** durağan bir-dışarıda: üyenin etkileştiği bir öneri tüm sinyalleriyle saklanır, kalanlarla sıralanır (yazarlık hariç, n = 206).
+  "Ham": diğer etkileşilmiş öneriler adayda kalır (ürünün gerçek durumu); "süzülmüş": aday dışı.
+- **P2** zamansal: her yeni etkileşim, yalnız ondan önceki sinyallerle ve o anda var olan (görülmemiş) öneriler arasında (n = 180).
+- **P3** pano: P2 gibi, ama yalnız o anda süren öneriler arasında — ana sayfa "Şu an açık" (n = 172, ortalama 10,5 aday; isabet@3).
+
+| Yapılandırma | P1 ham isabet@5 / MRR | P1 süzülmüş | P2 isabet@5 / MRR | P3 isabet@3 / MRR |
+|---|---|---|---|---|
+| İlk tasarım (0,7/0,2/0,1; katılınmış öneri işaretsiz; tek liste) | 0,107 / 0,107 | 0,248 / 0,169 | 0,700 / 0,453 | 0,331 / 0,286 |
+| **Son** (katılınmışta ilgi 0; açıklar önce 0,3/0,3/0,4; diğerleri 0,6/0,2/0,2) | **0,214 / 0,143** | 0,228 / 0,162 | **0,839 / 0,642** | **0,692 / 0,616** |
+| Taban: en yeni | 0,155 / 0,118 | 0,204 / 0,141 | 1,000 / 0,885 | 0,948 / 0,863 |
+| Taban: süreye göre (eski pano sırası) | 0,175 / 0,125 | 0,218 / 0,152 | 0,761 / 0,696 | 0,657 / 0,665 |
+| Taban: rastgele (beklenen) | 0,151 / 0,124 | 0,194 / 0,149 | 0,416 / 0,262 | 0,396 / 0,333 |
+
+- Son − ilk ΔMRR: P1 ham +0,036 [0,006; 0,063], P1 süzülmüş −0,007 [−0,040; 0,024] (fark yok), P2 +0,189 [0,156; 0,219],
+  P3 +0,330 [0,282; 0,376]. Son − süreye göre (P3): −0,049 [−0,103; 0,008] → eski pano sırasıyla istatistiksel olarak aynı düzey
+  (isabet@3 daha yüksek). Katılınmışta ilgi 0 tek başına: P1 ham ΔMRR +0,059 [0,036; 0,088], P3 +0,185 [0,151; 0,219].
+- Genel 0,6/0,2/0,2 (0,7/0,2/0,1'e göre): P2 ΔMRR +0,038 [0,024; 0,055], P3 +0,015 [0,003; 0,026], P1'de fark yok. Açık bölüm
+  0,3/0,3/0,4: P3 +0,145 [0,109; 0,177], P1 ham −0,011 [−0,023; −0,001] (küçük kayıp).
+- Çeşitlilik (ilk 8): farklı kök 3,43 → 5,00, farklı kategori 6,66 → 9,51; "Farklı bir alandan" konumlarında en güçlü kategorilerle
+  aynı köke düşen 27/280 → 0/231. Gerekçelerde virgülle belirsiz metin 0. Panonun ilk 3'ünde zaten katılınmış öneri 1,34 → 0,37.
+- Yarı ömür (7/14/30/60 gün, sönümsüz) ve üst kategori katsayısı ölçülebilir fark yaratmadı (tohum yalnız 37 günü kapsıyor); 30 gün ve
+  0,5 kaldı.
+- **Sınır:** demo tohumunda etkileşimler ilgiden bağımsızdır (destekçiler görüş bloğuna göre karıştırılır, mesajlar senaryoya göre
+  sabittir) ve destekçiler öneri açılır açılmaz eklenir; bu yüzden tohum yeniliği ödüllendirir ("en yeni" P2/P3'te en iyisidir) ve
+  ilginin değerini gösteremez. Tohum değiştirilmedi (vitrin sonuçları, yaşam döngüsü eşikleri ve uçtan uca testler ona bağlı). Bunun
+  yerine `server/test/shared-recommend.test.ts` › "ölçüm" testi her üyeye 1–2 ilgi kategorisi veren yapay bir toplulukta bir-dışarıda
+  ölçer: kişisel sıra MRR 0,34–0,42, en yeni ve rastgele ~0,06, katılım işaretsiz 0,20–0,27 (3 tohum). Ağırlıklar yeniliğe kayıp ilgi
+  işlevsizleşirse ya da katılınmış öneriler yine başa yerleşirse bu test kırılır.

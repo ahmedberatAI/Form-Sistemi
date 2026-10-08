@@ -46,6 +46,23 @@ Ana sayfa vitrinindeki 'Gösterim rehberi ›', masaüstü alt bilgisi ya da mob
 veriden kurulan 7 adımlı gösterim rehberi, 8 temel ilke ve yönetmelik terimlerinin sözlüğü. Yönetmelik terimleri ekranda aynen
 kalır; dokununca günlük karşılıkları açılır. Ayrıntı: [Arayüz hafifletme planı](docs/ARAYUZ_PLANI.md).
 
+**Keşif (arama ve kişisel sıra):** formları kolay bulmak ve ilgiye göre öne almak için üç parça.
+
+- **Hızlı bul (önerili arama).** Her sayfada üst çubukta tek bir kutu (telefonda büyüteç düğmesi → tam ekran panel). İki karakterden sonra
+  — ya da `#K12`, `K-12`, `#T3` gibi bir numarada hemen — en çok 8 öneri ve konu başlığı çıkar: Türkçe büyük/küçük harf ve aksan duyarsız
+  ("ULASIM" ≈ "Ulaşım"), başlığı yazılanla başlayanlar önce, Konular ve Öneriler diye gruplu; son seçenek 'Tüm önerilerde ara'.
+  Klavye (↑ ↓ Enter Esc) ve ekran okuyucuyla kullanılır (WAI-ARIA combobox). Uç: `GET /api/search`.
+- **Listem.** Öneri ve konu sayfalarındaki 'Listeme ekle' (☆/★) ile işaretlenenler yalnız size görünür: Profil › Listem ve Öneriler › Listem.
+  KVKK dökümüne girer, hesap silinince aynı işlemde silinir.
+- **Size göre (kişisel sıra).** Üyeler Öneriler › Sırala › 'Size göre' ile (ve ana sayfadaki 'Şu an açık' listesinde) listeyi kendi etkinliklerine
+  göre sıralayabilir. İlgi profili yalnız sizin yazdığınız, desteklediğiniz ve mesaj yazdığınız öneriler ile listenize eklediğiniz öneri ve konulardan
+  (son 180 gün, yarı ömür 30 gün) ve bu cihazda tutulan 'son açılanlar'dan kurulur; her satırda kısa bir gerekçe görünür ('Enerji (Çevre) ile
+  ilgilendiğiniz için', 'Listenizde', 'Süresi yaklaşıyor' …). **Hiçbir öneri gizlenmez**, varsayılan sıra ('En yeni') değişmez; **oy içeriği, oy
+  verip vermediğiniz, itiraz imzası ve azınlık raporu hiç kullanılmaz**. Yalnız siyasi görüş açık rızası olan üyede çalışır (KVKK md. 6/3-a)
+  ve Profil › Listem'deki 'Kişisel sıralama' anahtarıyla ayrıca kapatılabilir. Maliyet: tek indeksli sorgu + aritmetik (kullanıcı başına
+  ≈ 0,1 ms), model ya da dış hizmet yok. Algoritma ve ölçüm: [ALGORITMA §13](docs/ALGORITMA.md); uçlar: [API.md](docs/API.md);
+  gizlilik: [KVKK #17](docs/KVKK.md).
+
 **Geliştirme modu** (sıcak yeniden yükleme):
 
 ```bash
@@ -61,7 +78,7 @@ npm run dev:web                      # yalnız Vite, port 5173 (/api → VITE_AP
 
 ```bash
 npm run typecheck                    # shared + server + web
-npm test                             # sunucu (110 dosya, 1094) + web (54 dosya, 896) testleri
+npm test                             # sunucu (115 dosya, 1228) + web (59 dosya, 974) testleri
 npm run sim -w server                # Monte Carlo simülasyonu → docs/SIMULASYON.md
 ```
 
@@ -69,7 +86,7 @@ npm run sim -w server                # Monte Carlo simülasyonu → docs/SIMULAS
 
 ```bash
 npx playwright install chromium      # bir kez: test tarayıcısı
-npm run e2e                          # Playwright, 8 senaryo dosyası, 75 test (≈11 dk)
+npm run e2e                          # Playwright, 9 senaryo dosyası, 89 test (≈11 dk)
 npm run e2e:typecheck                # e2e/ kaynaklarının tip denetimi
 ```
 
@@ -81,7 +98,9 @@ taraması, kayıttan kesin sayıma oylama akışı, silme talebi, itiraz/uzlaşm
 sözleşmeleri (Sıradaki adım, 'Bu sayfada', derin bağlantılar, 'Tam' görünüm, kontrast; Faz 3: sözlük penceresi, Keşfet ve
 gösterim rehberi, görev sayısı rozeti, bildirimler, yeni öneri formu, Profil/Ayarlar/Konular), hesap güvenliği (hesap başına giriş kilidi
 429, hesap silme kaskadı, `Idempotency-Key`) ve test döngüsü regresyonları (çerçeveleme koruması, silinen bilirkişinin kaydı, boş graf
-süzgeci, "Oyum kayıtlı mı?" pusula süzgeci, sunucu adresi değişince belirteç, kayıt formu kuralları, şifre teyidi kilidi)
+süzgeci, "Oyum kayıtlı mı?" pusula süzgeci, sunucu adresi değişince belirteç, kayıt formu kuralları, şifre teyidi kilidi) ile Keşif
+(`09-arama-kisisel`: 'Hızlı bul'un Türkçe duyarsız arama, klavye/ARIA ve telefon paneli sözleşmeleri, 'Listeme ekle' ve Listem, 'Size göre'
+sıralama ve 'Kişisel sıralama' tercihi, son açılanların yalnız cihazda kalması, ana sayfada kişisel 'Şu an açık', kontrast ve taşma)
 ([TEST_RAPORU §3](docs/TEST_RAPORU.md)). Seçenekler: `E2E_PORT` (taban port), `E2E_BUILD=1|0` (web'i her zaman derle / yalnız `web/dist` yoksa derle),
 `E2E_KEEP=1` (geçici klasörü ve sunucu günlüklerini bırak). Rapor: `e2e/playwright-report/index.html`.
 
@@ -150,8 +169,23 @@ location / {
 HOST=127.0.0.1 TRUST_PROXY=127.0.0.1 npm start     # sunucu yalnız yerel vekile açık; yalnız onun başlığına güvenilir
 ```
 
-Vekil `Idempotency-Key` ve `Authorization` başlıklarını olduğu gibi iletmelidir (varsayılan davranış). Üretimde TLS'i vekil sonlandırır;
-sunucunun kendisi HTTPS konuşmaz.
+Vekil `Idempotency-Key`, `Authorization` ve `X-Forum-Recent` başlıklarını olduğu gibi iletmelidir (varsayılan davranış). Üretimde TLS'i
+vekil sonlandırır; sunucunun kendisi HTTPS konuşmaz.
+
+**Erişim günlüğü ve kişisel veri:** nginx'in varsayılan `combined` biçimi isteğin adresini sorgu dizesiyle birlikte, istemci IP'siyle
+diske yazar. Uygulama kişisel bilgiyi adres satırına koymaz: kişisel sıralamanın geçici girdisi ("son açılanlar", hangi önerilere
+bakıldığı) yalnız `X-Forum-Recent` **başlığıyla** gider ve sorgu dizesinde reddedilir (docs/KVKK.md #17). Bu başlığı (ya da tüm
+başlıkları) günlüğe yazan bir `log_format` tanımlamayın. Ek önlem olarak `/api/` için sorgu dizesiz bir biçim kullanılabilir:
+
+```nginx
+log_format api_noquery '$remote_addr - [$time_local] "$request_method $uri" $status $body_bytes_sent';
+location /api/ {
+  proxy_pass         http://127.0.0.1:4000;
+  proxy_set_header   Host $host;
+  proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+  access_log         /var/log/nginx/forum-api.log api_noquery;   # ya da: access_log off;
+}
+```
 
 ## 2. Demo hesapları
 
@@ -250,6 +284,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 | + | Bilirkişi entegrasyonu | Başvuru ve onay, alan eşleşmesi. Ağırlıklı kura: tohum önceden taahhüt edilen bloğun hash'inden alınır, çekiliş defterden yeniden üretilebilir. Graf tabanlı çıkar çatışması dışlaması, rapor şeması, hukuki nitelendirme denetimi (6754 s. Kanun md. 3/2), itibar formülü, askı kuralı. **Bilirkişi danışmandır, oyu 1'dir.** | Bilirkişiler; `server/src/experts/` |
 | + | Yapay zekâ entegrasyonu | Claude (`claude-haiku-5-5`, yapılandırılmış çıktı; ret ya da hata durumunda çevrimdışı yedek) ya da çevrimdışı sezgisel mod: sınıflandırma, moderasyon, tartışma özeti (azınlık görüşleri bölümü her zaman var), benzer öneriler (salam taktiği uyarısı), uzlaşma için köprü taslakları, bilirkişi raporu denetimi. Kişisel veri maskelenir, takma adlar K1, K2… olur. YZ'ye gönderim ayrı açık rızaya bağlıdır. **YZ yalnızca danışmandır; durum değiştirmez:** yüksek güvenli bir YZ içerik etiketi bile öneriyi kendi başına "yönetmeliğe aykırı" yapamaz, yalnızca uyarı ve bilirkişi incelemesi doğurur (Madde 12 (2), 14 (1)). Her çıktı etiketlidir. | `server/src/ai/` |
 | + | İnsanların grafta tutulması | graphology: takip, kefalet, vekâlet (likit demokrasi, cap ve H=3), yakınlık beyanı. PageRank, aracılar, Louvain (çapraz kontrol), SybilRank, kilit adım (lockstep) tespiti, kalıcı kaybeden göstergesi. | Graf; `server/src/graph/` |
+| + | Formları kolay bulma ve kişiye göre sıralama | Önerili arama ('Hızlı bul'): Türkçe duyarsız, numarayla, en çok 8 sonuç. 'Listeme ekle'. Kişisel sıra ('Size göre'): kişinin kendi etkinliğinden (yazarlık, destek, mesaj, Listem, son açılanlar; **oy yok**) kategori ontolojisi üzerinde ilgi profili; puan = ilgi (kosinüs) + aciliyet + yenilik, her 4. konumda çeşitlilik, hiçbir öneri gizlenmez. Açık rıza (md. 6/3-a) ve kapatma anahtarı. Kullanıcı başına ≈ 0,1 ms, model yok. | Üst çubuk, Öneriler › Sırala › Size göre, Ana sayfa, Profil › Listem; `shared/src/recommend.ts`, `server/src/forum/discovery.ts`, [ALGORITMA §13](docs/ALGORITMA.md) |
 
 ## 5. Çoğunluk azınlığı nasıl tüketmez? (Ve azınlık çoğunluğu nasıl kilitleyemez?)
 
@@ -287,10 +322,10 @@ Ayrıntı: [MIMARI.md](docs/MIMARI.md).
 ```
   Web (React 19 + Vite)      Android (aynı kod, Capacitor 8)
   · verifyTally / verifyInclusionProof tarayıcıda · makbuzlar cihazda · doğrulayıcı anahtarları sabitlenir (TOFU)
-                     │  REST/JSON (Bearer)  — docs/API.md (104 uç nokta)
+                     │  REST/JSON (Bearer)  — docs/API.md (108 uç nokta)
 ┌────────────────────▼──────────────────────────────────────────────────────────┐
 │ Fastify 5  http/  (yetki U/V/VV/R/D/A/E · zod · hata biçimi · CORS · hız sınırı · web/dist + SPA)  │
-│ forum/   öneri · yaşam döngüsü (zamanlayıcı) · sayım · konu · tartışma · küme · topluluk          │
+│ forum/   öneri · yaşam döngüsü (zamanlayıcı) · sayım · konu · tartışma · küme · topluluk · keşif  │
 │ ─── arayüzlerle bağlı, ortak SQLite tabloları (core/contracts.ts; MIMARI §2) ───                   │
 │ ledger/ BFT×4 · ontology/ TTL+N3+SHACL · governance/ PCA/k-means, vekâlet, kura · graph/          │
 │ identity/ kasa+KVKK · ai/ Claude ya da çevrimdışı · experts/ kura+rapor+itibar                    │
@@ -305,10 +340,10 @@ shared/  karar fonksiyonu (decide / evaluateObjection / verifyTally) · kripto �
 
 | Klasör | İçerik |
 |---|---|
-| `shared/src/` | Ortak tipler, API sözleşmesi, karar fonksiyonu, kriptografi, ontoloji IRI'leri |
+| `shared/src/` | Ortak tipler, API sözleşmesi, karar fonksiyonu, kriptografi, ontoloji IRI'leri, arama ve kişisel sıralama (saf, `search.ts`, `recommend.ts`) |
 | `server/src/` | Modüller: `core`, `db`, `ledger`, `ontology`, `governance`, `graph`, `identity`, `ai`, `experts`, `forum`, `http`, `seed` |
 | `server/ontology/` | `fy-schema.ttl`, `yonetmelik.ttl`, `yonetmelik-sekiller.ttl`, `yonetmelik-kurallar.n3` |
-| `server/test/` | Modül bazında testler (110 dosya, 1094 test; [TEST_RAPORU §2](docs/TEST_RAPORU.md)) |
+| `server/test/` | Modül bazında testler (115 dosya, 1228 test; [TEST_RAPORU §2](docs/TEST_RAPORU.md)) |
 | `server/scripts/simulate.ts` | Simülasyon betiği |
 | `web/src/` | `api`, `auth`, `ui`, `lib`, `components`, `pages`; altyapı kılavuzu `web/src/README.md` |
 | `web/android/` | Capacitor Android projesi |
@@ -337,8 +372,15 @@ shared/  karar fonksiyonu (decide / evaluateObjection / verifyTally) · kripto �
   indirilmeden silinmez: elektrik kesintisinde depolardan son blok kaybolsa bile işlem açılışta yeniden gönderilir ve yeni bir bloğa
   girer (o bloğun yüksekliği ve kanıtı değişebilir). Bir veritabanı işlemi içinden gönderilen defter kaydı işlem COMMIT olunca
   iletilir; geri alınan işlem deftere kayıt bırakmaz ([MIMARI §4](docs/MIMARI.md)).
-- Giriş kilidi (hesap başına) ve `Idempotency-Key` yanıt deposu **süreç belleğindedir**: yeniden başlatmada sıfırlanır, birden çok
-  sunucu sürecinde paylaşılmaz. Yeniden başlatmadan sonra gelen bir yeniden gönderim baştan işlenir.
+- Giriş kilidi (hesap başına), `Idempotency-Key` yanıt deposu ve kişisel sıralamanın sinyal önbelleği (en çok 60 sn) **süreç belleğindedir**:
+  yeniden başlatmada sıfırlanır, birden çok sunucu sürecinde paylaşılmaz. Yeniden başlatmadan sonra gelen bir yeniden gönderim baştan işlenir.
+- Kişisel sıralama ("Size göre") bir **tahmindir**, karar mekanizmasının parçası değildir: yalnız listelerin sırasını değiştirir, hiçbir öneriyi
+  gizlemez ve oy verisini kullanmaz. Ağırlıklar demo verisi üzerinde ölçülerek seçildi ([ALGORITMA §13.3](docs/ALGORITMA.md)): ana sayfadaki
+  'Şu an açık' listesinde üyenin sonradan etkileştiği öneri ilk 3'te %69 (ilk tasarımda %33; rastgele sıralamada %40; eski süreye göre sırada %66,
+  istatistiksel olarak aynı düzey). Demo tohumunda etkileşimler ilgiden bağımsız üretildiği ve destekçiler öneri açılır açılmaz geldiği için
+  'en yeni önce' sırası bu veride daha yüksek çıkar (%95); ilgi örüntüsü olan yapay toplulukta ise kişisel sıra en yeni ve rastgele sıranın çok
+  üstündedir (MRR 0,34–0,42 ve ≈ 0,06). Gerçek kullanıcı verisiyle ölçülmedi. Hukuki dayanak açık rızadır; rıza ya da 'Kişisel sıralama' tercihi
+  yoksa sıra varsayılandır ([KVKK #17](docs/KVKK.md)).
 - Anahtarlar demo ortamında dosyada (`server/data/keys`, 0600) tutulur; üretimde KMS ya da ortam değişkeni kullanılmalıdır.
   Ana anahtar `server/scripts/rotate-master-key.ts` ile döndürülebilir (DEK'ler yeni KEK ile yeniden sarılır; `--dry-run`).
 - Personel hesapları için iki faktörlü kimlik doğrulama yoktur; gerekçe ve telafi edici tedbirler [KVKK.md §8](docs/KVKK.md).
